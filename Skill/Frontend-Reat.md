@@ -74,7 +74,9 @@
 export interface HoldingDTO {
   stock_id: string;
   avg_cost: number;
+  shares_held: number;
   current_price?: number;
+  change?: number;
   // ... 後端原始欄位
 }
 
@@ -228,7 +230,7 @@ const StockOverviewPage: React.FC = () => {
 |---|---|---|
 | **Model** | 打 API + DTO → Domain 轉換 | 不管 state、不做跨資料彙總 |
 | **ViewModel** | state 管理、跨資料邏輯 | 不碰 DOM、不寫 JSX |
-| **View** | UI 顯示與互動 | 不呼叫 API、不做計算 |
+| **View** | UI 顯示與互動 | 不呼叫 API、不做商務計算 |
 | **Types** | DTO + Domain 型別定義 | 不含行為方法 |
 
 ---

@@ -1,7 +1,7 @@
 # 個人理財雲端系統 — 開發計畫
 
 > 最後更新：2026-04-21
-> 狀態：規劃階段
+> 狀態：架構重建中
 
 ---
 
@@ -15,19 +15,20 @@
 
 ### 前端
 - **框架**：React.js (TypeScript)
-- **架構模式**：MVVM（ViewModel 層透過 Custom Hook 實作）
+- **架構模式**：MVVM（Model 層負責 API 呼叫 + 反序列化，ViewModel 層透過 Custom Hook 實作）
+- **資料夾結構**：`api/` / `types/` / `models/` / `viewmodels/` / `views/`
 - **UI 元件庫**：React Bootstrap 5（react-bootstrap）
 - **圖表庫**：lightweight-charts（K線、MA線、走勢迷你圖）、Recharts（複利走勢）
 - **狀態管理**：Zustand
 - **HTTP Client**：Axios
 
 ### 後端
-- **執行環境**：Node.js
-- **框架**：Express.js (TypeScript)
-- **架構**：RESTful API
-- **DB SDK**：Firebase Admin SDK（取代 ORM）
-- **快取**：node-cache（In-memory TTL cache，取代 Redis，個人規模足夠）
-- **排程**：node-cron（定時預熱股價 cache）
+- **語言 / 框架**：Node.js / Express.js (TypeScript)
+- **架構**：薄 API 層（routes/ → controllers/ → models/），不含業務邏輯
+- **設計原則**：Model 自行存取 Firestore + 反序列化，Controller 直接呼叫 Model，所有計算在前端完成
+- **資料夾結構**：`routes/` / `controllers/` / `models/` / `middleware/` / `global/`
+- **DB SDK**：Firebase Admin SDK
+- **快取**：node-cache（In-memory TTL 60s，用於市場指數 API）
 
 ### 資料庫
 - **主資料庫**：Google Cloud Firestore（NoSQL 文件型資料庫）
@@ -50,11 +51,13 @@
 
 ### 部署
 - **開發階段**：
-  - Backend + Frontend 本地直接啟動（`npm run dev`）
-  - Firestore 使用 Firebase Emulator Suite 本地模擬（不需 Docker DB）
-  - 若需容器化：Docker Compose 只需 Backend + Frontend 兩個服務
-- **正式階段**：Google Cloud Platform（Cloud Run + Firestore + IAP）
-  - 無需 Cloud SQL、無需 Memorystore，大幅降低維運成本
+  - Backend：`npm run dev`（ts-node-dev 熱重載，`http://localhost:3001`）
+  - Frontend：`npm run dev`（Vite，`http://localhost:5173`）
+  - Firestore：Firebase Emulator Suite 本地模擬（`firebase emulators:start`）
+- **正式階段**：
+  - Backend：**Google Cloud Run**（Node.js Linux 容器，完整支援）
+  - Frontend：Firebase Hosting
+  - DB：Google Cloud Firestore + IAP 身分驗證
 
 ---
 
@@ -238,7 +241,7 @@ yearly_records/
 | 費城半導體指數（SOX） | Yahoo Finance（^SOX） | 即時指數、漲跌幅 |
 | 台灣出口景氣燈號 | NDC 國發會 公開資料爬蟲 | 最新月份、燈號顏色、景氣分數 |
 
-> **Cache 策略**：所有指數資料存入 Redis，TTL 60秒，避免頻繁呼叫外部 API。
+> **Cache 策略**：市場指數資料使用 node-cache（In-memory TTL），指數 60秒、景氣燈號 3600秒，避免頻繁呼叫外部 API。
 
 ---
 
@@ -252,7 +255,7 @@ yearly_records/
 | Method | Endpoint | 說明 |
 |--------|----------|------|
 | GET | `/stocks/search?q={keyword}` | 搜尋股票（串接 TWSE） |
-| GET | `/stocks/{id}/quote` | 取得即時報價（Yahoo Finance，Redis cache） |
+| GET | `/stocks/{id}/quote` | 取得即時報價（Yahoo Finance，node-cache） |
 | GET | `/stocks/{id}/history?days=90` | 取得歷史K線資料（Yahoo Finance） |
 | GET | `/stocks/{id}/profile` | 取得股票基礎資料 |
 
@@ -444,101 +447,118 @@ yearly_records/
 
 ## 八、開發任務清單
 
+> ⚠️ **架構重建注意**：前後端資料夾已於 Session 006 刪除重建，所有程式碼相關項目重置為未完成。
+> Firebase 雲端資源（P0-05）與本地工具安裝（P0-06）不受影響，維持已完成狀態。
+
 ### Phase 0：環境建置
-- [ ] P0-01：建立 Monorepo 結構（`/frontend`、`/backend`）
-- [ ] P0-02：Backend — 初始化 Express + TypeScript
-- [ ] P0-03：Backend — 安裝 firebase-admin SDK + node-cache
-- [ ] P0-04：Firebase 專案建立 + Firestore 啟用 + Service Account 金鑰下載
-- [ ] P0-05：Firebase Emulator Suite 安裝與設定（本地 Firestore 模擬）
-- [ ] P0-06：Frontend — 初始化 React + TypeScript + React Bootstrap
-- [ ] P0-07：ESLint / Prettier 統一設定
-- [ ] P0-08：Yahoo Finance API 連線測試
-- [ ] P0-09：（可選）Docker Compose 設定 — 僅 Backend + Frontend 兩服務
 
-### Phase 1：後端核心 API
-- [ ] P1-01：Yahoo Finance 整合層（統一封裝呼叫 + Redis cache TTL 60s）
-- [ ] P1-02：指數 API（台股大盤/TWSE、台指期、NASDAQ、S&P500、道瓊、SOX）
-- [ ] P1-03：台灣出口景氣燈號爬蟲（NDC 資料）
-- [ ] P1-04：股票搜尋 API（串接 TWSE 開放資料）
-- [ ] P1-05：即時報價 API（Yahoo Finance，Redis cache）
-- [ ] P1-06：歷史 K 線 API（90天，Yahoo Finance）
-- [ ] P1-07：股票基礎數據 API（Yahoo Finance fundamentals）
-- [ ] P1-08：交易紀錄 CRUD API
-- [ ] P1-09：庫存計算引擎（方法一＋方法二）
-- [ ] P1-10：庫存查詢 API（含即時股價整合）
-- [ ] P1-11：投報計畫 CRUD + 複利試算邏輯
-- [ ] P1-12：年度結算 CRUD API
-- [ ] P1-13：使用者設定 API + 切換算法重算
+#### 後端初始化
+- [ ] P0-01：建立後端專案（`/backend`）— Express + TypeScript 初始化（`tsconfig.json` / `package.json`）
+- [ ] P0-02：後端 — 安裝套件（`express` / `cors` / `dotenv` / `firebase-admin` / `node-cache` / `axios` / `typescript` / `ts-node-dev`）
+- [ ] P0-03：後端 — 建立資料夾結構（`routes/` / `controllers/` / `models/` / `middleware/` / `global/`）
+- [ ] P0-04：後端 — 建立基礎骨架（`index.ts` / `global/firebase.ts` / `global/cache.ts` / `global/apiResponse.ts` / `middleware/errorHandler.ts`）
 
-### Phase 2：前端 — Layout 與 Dashboard
-- [ ] P2-01：React Router 設定
-- [ ] P2-02：左側 NavBar 元件（固定，兩個主要頁面連結）
-- [ ] P2-03：指數卡片元件（8張，Bootstrap Card）
-- [ ] P2-04：未實現損益摘要列
-- [ ] P2-05：持股 Table 元件（含 90天迷你走勢圖）
-- [ ] P2-06：Table 展開 — K線 + MA線 + 成交量（inline expand）
-- [ ] P2-07：Table 展開 — 股票基礎數據
-- [ ] P2-08：歷史買賣紀錄 Modal（📋 圖示觸發，含編輯/刪除）
-- [ ] P2-09：新增買賣紀錄 Modal（➕ 圖示觸發）
+#### Firebase（雲端資源 & 本地工具，不受程式碼刪除影響）
+- [x] P0-05：Firebase 專案建立 + Firestore 啟用 + Service Account 金鑰下載
+- [x] P0-06：Firebase Emulator Suite 安裝與設定（本地 Firestore 模擬）
 
-### Phase 3：前端 — 資產計畫頁
-- [ ] P3-01：計畫參數設定區（可編輯）
-- [ ] P3-02：複利試算表（逐年展開，里程碑標記）
-- [ ] P3-03：20年/30年摘要卡片
-- [ ] P3-04：年度實際結算表（可點擊編輯）
-- [ ] P3-05：年度結算新增 Modal
+#### 前端初始化
+- [ ] P0-07：建立前端專案（`/frontend`）— Vite + React + TypeScript 初始化
+- [ ] P0-08：前端 — 安裝套件（`react-bootstrap` / `axios` / `zustand` / `react-router-dom` / `lightweight-charts` / `recharts`）
+- [ ] P0-09：前端 — 建立資料夾結構（`api/` / `types/` / `models/` / `viewmodels/` / `views/`）
 
-### Phase 4：整合測試與優化
-- [ ] P4-01：API 整合測試（iTick cache 驗證）
-- [ ] P4-02：前後端整合測試
-- [ ] P4-03：RWD 響應式設計調整
-- [ ] P4-04：效能優化（Redis TTL 調整）
-
-### Phase 5：GCP 部署
-- [ ] P5-01：Cloud Run — Backend 部署
-- [ ] P5-02：Firebase Hosting — Frontend 部署
-- [ ] P5-03：Firestore 正式環境安全規則設定
-- [ ] P5-04：環境變數與 Secret Manager 設定
-- [ ] P5-05：Identity-Aware Proxy（IAP）設定與授權帳號
-- [ ] P5-06：Domain 設定與 HTTPS
+#### 共用設定
+- [ ] P0-10：前後端 ESLint + Prettier 統一設定
+- [ ] P0-11：Yahoo Finance API 連線測試
+- [ ] P0-12：（可選）Docker Compose 設定 — 僅 Backend + Frontend 兩服務
 
 ---
 
-## 九、工作日誌
+### Phase 1：後端核心 API
+> 後端只負責資料存取與外部 API 代理，**不含任何計算邏輯**
 
-### 2026-04-21 — Session 001
-**完成事項**：
-- 確認系統功能範圍與需求
-- 確認技術架構：React + Bootstrap + Node.js + MySQL
-- 確認股票市場：台灣股市（台股）
-- 確認持有單位：張（1張 = 1000股）
-- 確認成本計算：加權平均，賣出提供「獲利歸還法」與「成本保留法」供 User 自選
-- 確認 K 線展開互動設計（點擊列 inline 展開）
-- 確認交易紀錄以 Offcanvas Drawer 呈現
-- 確認底部快速買賣輸入區設計
-- 確認指數卡片清單（8張）
-- 調查 iTick API：支援台股/台指期/美股指數，REST+WebSocket，免費5次/分鐘
-- 更新開發計畫文件（v2）
+#### 市場資料（外部 API 代理 + node-cache）
+- [ ] P1-01：Yahoo Finance 工具函式整合（axios 封裝，node-cache TTL 60s）
+- [ ] P1-02：`GET /market/indices` — 台股/台指期/NASDAQ/S&P500/道瓊/SOX 指數
+- [ ] P1-03：`GET /market/export-indicator` — 台灣出口景氣燈號（NDC 爬蟲，node-cache TTL 3600s）
+- [ ] P1-04：`GET /stocks/search?q=` — 股票搜尋（TWSE 開放資料）
+- [ ] P1-05：`GET /stocks/:id/quote` — 即時報價（Yahoo Finance，node-cache TTL 60s）
+- [ ] P1-06：`GET /stocks/:id/history?days=90` — 歷史 K 線（Yahoo Finance）
+- [ ] P1-07：`GET /stocks/:id/profile` — 股票基礎數據
 
-**Session 003 修訂**：
-- 資料庫從 MySQL 8.0 改為 **Google Cloud Firestore**（NoSQL，免費額度足夠個人使用）
-- 移除 Redis，改用 node-cache（In-memory TTL）取代
-- 移除 Prisma ORM，改用 Firebase Admin SDK
-- 開發環境改用 Firebase Emulator Suite 模擬 Firestore，不需 Docker DB container
-- 部署架構簡化：Cloud Run + Firestore（移除 Cloud SQL + Memorystore）
-- 完整重新設計 Firestore Collection/Document 結構（含多資產擴充設計）
+#### Firestore CRUD（Model 自行存取，Controller 直接呼叫）
+- [ ] P1-08：交易紀錄 CRUD — `GET/POST/PUT/DELETE /transactions`
+- [ ] P1-09：`GET /holdings` — 庫存查詢（Firestore 讀取 + 即時報價注入後回傳）
+- [ ] P1-10：`POST /holdings/recalculate` — 庫存整批重算觸發（由前端計算後寫回）
+- [ ] P1-11：投報計畫 CRUD — `GET/PUT /plan`
+- [ ] P1-12：年度結算 CRUD — `GET/POST/PUT /plan/yearly-records`
+- [ ] P1-13：使用者設定 CRUD — `GET/PUT /settings`
 
-**Session 002 修訂**：
-- 股價來源改回 Yahoo Finance + TWSE（iTick 免費方案每分鐘僅5次，不敷使用）
-- 身分驗證改用 GCP IAP，後端不實作登入
-- 買賣輸入 UI 改為圖示按鈕 → Modal
-- 歷史買賣紀錄改為圖示按鈕 → Modal
-- NavBar 採分組結構，預留債券/外幣/其他資產擴充群組
-- 資產計畫頁改為 Tab 架構（現有台股 Tab + 預留 Bond/Forex + 總覽彙總）
-- DB Schema：investment_plan / yearly_records 加入 asset_type 欄位支援多資產
+> **前端負責的計算（後端不處理）**
+> - 庫存均價、未實現損益（成本保留法 / 獲利歸還法）
+> - 複利試算、里程碑計算
+> - 年度報酬率計算
+> - 所有 ViewModel 內的業務邏輯
 
-**待討論 / 下次繼續**：
-- 確認電腦是否已安裝 Docker
-- 開始 Phase 0 環境建置
+---
+
+### Phase 2：前端 — Layout 與 Dashboard
+
+#### 基礎骨架
+- [ ] P2-01：`api/axios.ts` — Axios 實例 + 攔截器（baseURL 從 `.env` 讀取）
+- [ ] P2-02：`types/` — 所有 DTO 與 Domain 型別定義（holding / transaction / market / plan / settings）
+- [ ] P2-03：`App.tsx` — React Router 設定（BrowserRouter + Outlet 架構）
+- [ ] P2-04：`views/layout/SideNav.tsx` — 左側 NavBar（固定，分組結構，預留擴充）
+- [ ] P2-05：`views/layout/MainLayout.tsx` — Outlet 容器
+- [ ] P2-06：`views/pages/` — 三頁骨架（StockOverviewPage / PlanPage / SettingsPage）
+
+#### 台股總覽頁（`/`）— 市場指數區
+- [ ] P2-07：`models/marketModel.ts` — 市場指數 API 呼叫 + 反序列化
+- [ ] P2-08：`viewmodels/useMarketViewModel.ts` — 指數狀態管理
+- [ ] P2-09：指數卡片元件（8張，Bootstrap Card，含漲跌顏色紅/綠）
+
+#### 台股總覽頁（`/`）— 庫存 Table 區
+- [ ] P2-10：`models/holdingModel.ts` — 庫存 API 呼叫 + 反序列化 + 衍生欄位（未實現損益 / 成長率 / isUp）
+- [ ] P2-11：`viewmodels/useHoldingsViewModel.ts` — 庫存狀態管理 + 彙總計算（總損益 / 整體報酬率）
+- [ ] P2-12：未實現損益摘要列（總損益金額 / 報酬率 / 當日變化）
+- [ ] P2-13：持股 Table 元件（欄位定義、漲跌顏色、操作圖示欄）
+- [ ] P2-14：持股 Table — 90天迷你走勢圖（lightweight-charts SparkLine）
+- [ ] P2-15：持股 Table — inline 展開 K線 + MA5/MA20/MA60 + 成交量
+- [ ] P2-16：持股 Table — inline 展開 股票基礎數據（本益比 / 殖利率 / 52週高低 / 市值）
+
+#### 台股總覽頁（`/`）— 交易 Modal
+- [ ] P2-17：`models/transactionModel.ts` — 交易紀錄 API 呼叫 + 反序列化
+- [ ] P2-18：`viewmodels/useTransactionsViewModel.ts` — 交易狀態管理
+- [ ] P2-19：歷史買賣紀錄 Modal（📋 圖示觸發，含逐筆編輯 / 刪除）
+- [ ] P2-20：新增買賣紀錄 Modal（➕ 圖示觸發，含成本計算後寫回 holdings）
+
+---
+
+### Phase 3：前端 — 資產計畫頁（`/plan`）
+- [ ] P3-01：`models/planModel.ts` — 計畫 API 呼叫 + 反序列化 + `buildCompoundRows()` 複利試算
+- [ ] P3-02：`viewmodels/usePlanViewModel.ts` — 計畫狀態管理 + 試算結果聚合
+- [ ] P3-03：計畫參數設定區（每年投入 / 殖利率 / 起始年份，可編輯表單）
+- [ ] P3-04：複利試算表（逐年展開，第 10/15/20/30 年里程碑高亮標記）
+- [ ] P3-05：20年/30年摘要卡片
+- [ ] P3-06：年度實際結算表（可點擊列行內編輯）
+- [ ] P3-07：年度結算新增 Modal
+
+---
+
+### Phase 4：整合測試與優化
+- [ ] P4-01：前後端整合測試（API 連線 + Firestore Emulator 驗證）
+- [ ] P4-02：node-cache 行為驗證（市場指數 TTL 60s / 景氣燈號 TTL 3600s）
+- [ ] P4-03：RWD 響應式設計調整（Bootstrap 斷點測試）
+- [ ] P4-04：效能優化（API 回應時間量測、node-cache 命中率）
+
+---
+
+### Phase 5：GCP 部署
+- [ ] P5-01：Cloud Run — Backend 容器化部署（`Dockerfile` 建置 + `gcloud run deploy`）
+- [ ] P5-02：Firebase Hosting — Frontend 部署（`npm run build` + `firebase deploy`）
+- [ ] P5-03：Firestore 正式環境安全規則設定
+- [ ] P5-04：環境變數與 Secret Manager 設定（`FIRESTORE_PROJECT_ID` / `GOOGLE_APPLICATION_CREDENTIALS`）
+- [ ] P5-05：Identity-Aware Proxy（IAP）設定與授權 Google 帳號
+- [ ] P5-06：Domain 設定與 HTTPS
 
 ---

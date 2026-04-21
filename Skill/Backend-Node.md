@@ -1,63 +1,39 @@
-# Backend Node.js 架構設計指南（TypeScript 版）
+# Backend Node.js 架構設計指南（Express.js / TypeScript）
 
 ## 🎯 設計定位
 
-本後端採用「**薄 API 層**」設計：
+本後端採用「**薄 API 層**」設計，與 `Backend-NET.md` 相同概念，語言改為 TypeScript：
 
 | 層級 | 職責 |
 |------|------|
 | **DB（Firestore）** | 純資料存放，不含任何邏輯 |
-| **後端（Node.js）** | 存取 DB，將資料物件化為 DTO 後回傳前端 |
+| **後端（Node.js）** | Model 自行存取 DB、反序列化為物件，Controller 直接呼叫 Model |
 | **前端（React）** | 接收 JSON，透過 Model 層反序列化，所有計算與互動在 MVVM 框架內完成 |
 
-> 後端不計算、不判斷業務，只負責「資料搬運與物件化」。
+> 後端不「投資決策與商務演算法」，但允許「外部數據聚合與注入」。
+
+---
+
+## ☁️ GCP 部署相容性
+
+| 項目 | 結果 |
+|------|------|
+| **Google Cloud Run** | ✅ **完整支援** — Node.js 跑 Linux 容器，Cloud Run 原生支援 |
+| **Google Cloud Firestore** | ✅ **完整支援** — Firebase Admin SDK 官方 Node.js 套件 |
 
 ---
 
 ## 🏗️ 資料夾結構
 
 ```plaintext
-backend/src/
+src/
 │
-├── lib/                        ← Tool Box（共用工具）
-│   ├── firebase.ts             ✅ Firestore 初始化
-│   ├── cache.ts                ✅ node-cache getOrSet 工具
-│   ├── errors.ts               ✅ 自訂例外類別
-│   └── response.ts             ✅ 統一 API Response 格式
-│
-├── types/                      ← DTO 定義（Firestore ↔ JSON 契約）
-│   ├── holding.ts
-│   ├── transaction.ts
-│   ├── market.ts
-│   ├── plan.ts
-│   └── settings.ts
-│
-├── repositories/               ← 資料存取層（唯一與 Firestore 溝通的地方）
-│   ├── HoldingRepository.ts
-│   ├── TransactionRepository.ts
-│   ├── PlanRepository.ts
-│   └── SettingsRepository.ts
-│
-├── controllers/                ← HTTP 處理層（取參數 → 呼叫 Repository → 回傳 JSON）
-│   ├── HoldingController.ts
-│   ├── TransactionController.ts
-│   ├── MarketController.ts     ← Yahoo Finance + Cache，不存 DB
-│   ├── PlanController.ts
-│   ├── StockController.ts
-│   └── SettingsController.ts
-│
-├── routes/                     ← 路由定義（只做對應，不含邏輯）
-│   ├── holdings.ts
-│   ├── transactions.ts
-│   ├── market.ts
-│   ├── plan.ts
-│   ├── stocks.ts
-│   └── settings.ts
-│
-├── middleware/
-│   └── errorHandler.ts         ← 全域例外處理
-│
-└── index.ts                    ← App 入口
+├── index.ts                    ← 入口點（Express app 啟動）
+├── routes/                     ← 路由定義（URL 對應 Controller）
+├── controllers/                ← HTTP 處理層（解析參數 → 呼叫 Model → 回傳 JSON）
+├── models/                     ← 物件結構 + Firestore 操作 + 反序列化（三合一）
+├── middleware/                 ← 全域 Middleware（例外處理等）
+└── global/                     ← 共用工具（Firestore 初始化、Cache、Response 格式）
 ```
 
 ---
@@ -68,228 +44,331 @@ backend/src/
 HTTP Request
     │
     ▼
-[ Route ]         → 路由定義，對應 Controller 方法
+[ Express Router ]    → 路由對應 Controller
     │
     ▼
-[ Controller ]    → 解析 req 參數，呼叫 Repository，sendSuccess 回傳
+[ Controller ]        → 解析參數，呼叫 Model 方法，回傳 JSON
     │
     ▼
-[ Repository ]    → Firestore CRUD，資料轉為 DTO 後回傳
+[ Model ]             → Firestore CRUD + 反序列化為物件
     │
     ▼
 [ Firestore ]
+    
+    ※ errorHandler middleware 包覆整個管道，統一處理例外
 ```
 
-**原則：Controller 不碰 Firestore，Repository 不碰 req/res。**
+**原則：Controller 不碰 Firestore，Model 不碰 Request/Response。**
 
 ---
 
 ## 🧱 各層設計說明
 
-### 1. `lib/errors.ts`
-
-```typescript
-export class AppError extends Error {
-  constructor(public readonly statusCode: number, message: string) {
-    super(message);
-    this.name = 'AppError';
-  }
-}
-export class NotFoundError extends AppError {
-  constructor(resource: string) { super(404, `${resource} 不存在`); }
-}
-export class ValidationError extends AppError {
-  constructor(message: string) { super(400, message); }
-}
-```
-
----
-
-### 2. `lib/response.ts`
-
-```typescript
-export const sendSuccess = <T>(res: Response, data: T, status = 200) =>
-  res.status(status).json({ success: true, data });
-
-export const sendNoContent = (res: Response) => res.status(204).send();
-```
-
----
-
-### 3. `types/`（DTO，資料契約）
-
-欄位命名統一 `snake_case`，與 Firestore 欄位保持一致，前端 Model 層負責轉換為 `camelCase`。
-
-```typescript
-// types/holding.ts
-export interface HoldingResponseDTO {
-  stock_id: string;
-  stock_name: string;
-  shares_held: number;
-  avg_cost: number;
-  total_cost: number;
-  realized_profit: number;
-  current_price?: number;   // 由 MarketController 即時注入
-  change?: number;
-  change_percent?: number;
-}
-```
-
----
-
-### 4. `repositories/`（資料存取層）
-
-Repository 只負責 Firestore 讀寫，**不含任何業務判斷**，回傳 DTO。
-
-```typescript
-// repositories/HoldingRepository.ts
-import { db } from '../lib/firebase';
-import { HoldingResponseDTO } from '../types/holding';
-
-export class HoldingRepository {
-  private col = db.collection('holdings');
-
-  async findAll(): Promise<HoldingResponseDTO[]> {
-    const snap = await this.col.get();
-    return snap.docs.map((doc) => ({ stock_id: doc.id, ...doc.data() } as HoldingResponseDTO));
-  }
-
-  async findById(stockId: string): Promise<HoldingResponseDTO | null> {
-    const doc = await this.col.doc(stockId).get();
-    if (!doc.exists) return null;
-    return { stock_id: doc.id, ...doc.data() } as HoldingResponseDTO;
-  }
-
-  async save(stockId: string, data: Partial<HoldingResponseDTO>): Promise<void> {
-    await this.col.doc(stockId).set(data, { merge: true });
-  }
-
-  async delete(stockId: string): Promise<void> {
-    await this.col.doc(stockId).delete();
-  }
-}
-```
-
----
-
-### 5. `controllers/`（HTTP 處理層）
-
-Controller 只負責：**解析 req → 呼叫 Repository → 回傳 JSON**，不含計算。
-
-```typescript
-// controllers/HoldingController.ts
-import { Request, Response, NextFunction } from 'express';
-import { HoldingRepository } from '../repositories/HoldingRepository';
-import { sendSuccess } from '../lib/response';
-
-export class HoldingController {
-  private repo = new HoldingRepository();
-
-  getAll = async (_req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.repo.findAll();
-      sendSuccess(res, data);
-    } catch (err) { next(err); }
-  };
-
-  getById = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.repo.findById(req.params.stockId);
-      if (!data) return next(new NotFoundError('Holding'));
-      sendSuccess(res, data);
-    } catch (err) { next(err); }
-  };
-}
-```
-
-```typescript
-// controllers/MarketController.ts
-// 特殊：不存 DB，直接呼叫 Yahoo Finance + Cache
-
-import { getOrSet } from '../lib/cache';
-import axios from 'axios';
-
-export class MarketController {
-  getIndices = async (_req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await getOrSet('market:indices', () => this.fetchIndices(), 60);
-      sendSuccess(res, data);
-    } catch (err) { next(err); }
-  };
-
-  private async fetchIndices() {
-    // 呼叫 Yahoo Finance，回傳 MarketIndexResponseDTO[]
-  }
-}
-```
-
----
-
-### 6. `routes/`（路由定義）
-
-```typescript
-// routes/holdings.ts
-import { Router } from 'express';
-import { HoldingController } from '../controllers/HoldingController';
-
-const router = Router();
-const ctrl = new HoldingController();
-
-router.get('/', ctrl.getAll);
-router.get('/:stockId', ctrl.getById);
-
-export default router;
-```
-
----
-
-### 7. `middleware/errorHandler.ts`
-
-```typescript
-import { AppError } from '../lib/errors';
-
-export const errorHandler = (err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  if (err instanceof AppError) {
-    res.status(err.statusCode).json({ success: false, error: err.message });
-    return;
-  }
-  console.error(err);
-  res.status(500).json({ success: false, error: '伺服器內部錯誤' });
-};
-```
-
----
-
-### 8. `index.ts`
+### 1. `index.ts`（入口點）
 
 ```typescript
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { errorHandler } from './middleware/errorHandler';
-import holdingRoutes    from './routes/holdings';
-import transactionRoutes from './routes/transactions';
-import marketRoutes     from './routes/market';
-import planRoutes       from './routes/plan';
-import stockRoutes      from './routes/stocks';
-import settingsRoutes   from './routes/settings';
+import holdingsRouter    from './routes/holdings';
+import transactionsRouter from './routes/transactions';
+import marketRouter      from './routes/market';
+import planRouter        from './routes/plan';
+import stocksRouter      from './routes/stocks';
+import settingsRouter    from './routes/settings';
 
 dotenv.config();
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
 const api = '/api/v1';
-app.use(`${api}/holdings`,     holdingRoutes);
-app.use(`${api}/transactions`, transactionRoutes);
-app.use(`${api}/market`,       marketRoutes);
-app.use(`${api}/plan`,         planRoutes);
-app.use(`${api}/stocks`,       stockRoutes);
-app.use(`${api}/settings`,     settingsRoutes);
+app.use(`${api}/holdings`,     holdingsRouter);
+app.use(`${api}/transactions`, transactionsRouter);
+app.use(`${api}/market`,       marketRouter);
+app.use(`${api}/plan`,         planRouter);
+app.use(`${api}/stocks`,       stocksRouter);
+app.use(`${api}/settings`,     settingsRouter);
 
 app.use(errorHandler);
-app.listen(process.env.PORT ?? 3001);
+
+const port = process.env.PORT ?? 3001;
+app.listen(port, () => console.log(`Server running on port ${port}`));
 ```
+
+---
+
+### 2. `middleware/errorHandler.ts`（全域例外處理）
+
+```typescript
+import { Request, Response, NextFunction } from 'express';
+
+export class AppError extends Error {
+  constructor(public statusCode: number, message: string) {
+    super(message);
+  }
+}
+
+export const errorHandler = (
+  err: Error,
+  _req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  const statusCode = err instanceof AppError ? err.statusCode : 500;
+  const message    = err instanceof AppError ? err.message : '伺服器內部錯誤';
+  res.status(statusCode).json({ success: false, error: message });
+};
+```
+
+---
+
+### 3. `global/apiResponse.ts`（統一 Response 格式）
+
+```typescript
+export const ApiResponse = {
+  success: (data: unknown) => ({ success: true, data }),
+  error:   (message: string) => ({ success: false, error: message }),
+};
+```
+
+**Controller 用法：**
+
+```typescript
+res.json(ApiResponse.success(data));
+res.status(404).json(ApiResponse.error('Holding 不存在'));
+```
+
+---
+
+### 4. `global/firebase.ts`（Firestore 初始化）
+
+```typescript
+import * as admin from 'firebase-admin';
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+    projectId:  process.env.FIRESTORE_PROJECT_ID,
+  });
+}
+
+export const db = admin.firestore();
+```
+
+`.env`：
+```
+FIRESTORE_PROJECT_ID=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+PORT=3001
+```
+
+---
+
+### 5. `global/cache.ts`（node-cache）
+
+```typescript
+import NodeCache from 'node-cache';
+
+const cache = new NodeCache();
+
+export const getOrSet = async <T>(
+  key: string,
+  factory: () => Promise<T>,
+  ttlSeconds = 60
+): Promise<T> => {
+  const cached = cache.get<T>(key);
+  if (cached !== undefined) return cached;
+
+  const value = await factory();
+  cache.set(key, value, ttlSeconds);
+  return value;
+};
+```
+
+---
+
+### 6. `models/Holding.ts`（Model 範例）
+
+每個 Model 同時乘載三件事：**屬性結構**、**Firestore 操作方法**、**反序列化（fromSnapshot）**。
+各 Model 自行宣告對應的 Firestore Collection，不使用抽象基底類別。
+
+```typescript
+import { db } from '../global/firebase';
+import { DocumentSnapshot } from 'firebase-admin/firestore';
+
+export class Holding {
+  // ── 屬性 ────────────────────────────────────────
+  stockId!:        string;
+  stockName!:      string;
+  sharesHeld!:     number;
+  avgCost!:        number;
+  totalCost!:      number;
+  realizedProfit!: number;
+
+  // 即時股價由 MarketController 注入，不存 Firestore
+  currentPrice?:  number;
+  change?:        number;
+  changePercent?: number;
+
+  private static readonly col = db.collection('holdings');
+
+  // ── 讀取 ────────────────────────────────────────
+
+  /** 取得所有庫存 */
+  static async findAll(): Promise<Holding[]> {
+    const snap = await this.col.get();
+    return snap.docs.map(doc => Holding.fromSnapshot(doc));
+  }
+
+  /** 依 stockId 取得單筆庫存 */
+  static async findById(stockId: string): Promise<Holding | null> {
+    const doc = await this.col.doc(stockId).get();
+    return doc.exists ? Holding.fromSnapshot(doc) : null;
+  }
+
+  // ── 寫入 ────────────────────────────────────────
+
+  /** 新增或更新庫存 */
+  async save(): Promise<void> {
+    await Holding.col.doc(this.stockId).set(this.toFirestoreData(), { merge: true });
+  }
+
+  /** 刪除庫存 */
+  async delete(): Promise<void> {
+    await Holding.col.doc(this.stockId).delete();
+  }
+
+  // ── 反序列化 ─────────────────────────────────────
+
+  /** Firestore DocumentSnapshot → Holding 物件 */
+  private static fromSnapshot(doc: DocumentSnapshot): Holding {
+    const data = doc.data()!;
+    const h = new Holding();
+    h.stockId        = doc.id;
+    h.stockName      = data['stock_name'];
+    h.sharesHeld     = data['shares_held'];
+    h.avgCost        = data['avg_cost'];
+    h.totalCost      = data['total_cost'];
+    h.realizedProfit = data['realized_profit'];
+    return h;
+  }
+
+  /** Holding 物件 → Firestore 寫入用 object */
+  private toFirestoreData(): Record<string, unknown> {
+    return {
+      stock_name:      this.stockName,
+      shares_held:     this.sharesHeld,
+      avg_cost:        this.avgCost,
+      total_cost:      this.totalCost,
+      realized_profit: this.realizedProfit,
+    };
+  }
+}
+```
+
+---
+
+### 7. `controllers/holdingsController.ts`（Controller 範例）
+
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { Holding } from '../models/Holding';
+import { ApiResponse } from '../global/apiResponse';
+import { AppError } from '../middleware/errorHandler';
+
+export const getAll = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await Holding.findAll();
+    res.json(ApiResponse.success(data));
+  } catch (err) { next(err); }
+};
+
+export const getById = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await Holding.findById(req.params.stockId);
+    if (!data) throw new AppError(404, 'Holding 不存在');
+    res.json(ApiResponse.success(data));
+  } catch (err) { next(err); }
+};
+
+export const save = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const holding = Object.assign(new Holding(), req.body) as Holding;
+    await holding.save();
+    res.json(ApiResponse.success(holding));
+  } catch (err) { next(err); }
+};
+
+export const remove = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const holding = Object.assign(new Holding(), { stockId: req.params.stockId });
+    await holding.delete();
+    res.status(204).send();
+  } catch (err) { next(err); }
+};
+```
+
+---
+
+### 8. `routes/holdings.ts`（路由定義）
+
+```typescript
+import { Router } from 'express';
+import * as ctrl from '../controllers/holdingsController';
+
+const router = Router();
+
+router.get('/',          ctrl.getAll);
+router.get('/:stockId',  ctrl.getById);
+router.post('/',         ctrl.save);
+router.delete('/:stockId', ctrl.remove);
+
+export default router;
+```
+
+---
+
+### 9. MarketController（Yahoo Finance + Cache）
+
+```typescript
+// controllers/marketController.ts
+import { Request, Response, NextFunction } from 'express';
+import { getOrSet } from '../global/cache';
+import { MarketIndex } from '../models/MarketIndex';
+import { ApiResponse } from '../global/apiResponse';
+
+export const getIndices = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await getOrSet('market:indices', () => MarketIndex.fetchAll(), 60);
+    res.json(ApiResponse.success(data));
+  } catch (err) { next(err); }
+};
+
+export const getExportIndicator = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await getOrSet('market:export-indicator', () => MarketIndex.fetchExportIndicator(), 3600);
+    res.json(ApiResponse.success(data));
+  } catch (err) { next(err); }
+};
+```
+
+---
+
+## 📦 npm 套件清單
+
+| 套件 | 用途 |
+|------|------|
+| `express` | Web 框架 |
+| `cors` | CORS 支援 |
+| `dotenv` | 環境變數 |
+| `firebase-admin` | Firestore SDK |
+| `node-cache` | In-memory Cache（TTL） |
+| `axios` | 呼叫外部 API（Yahoo Finance） |
+| `typescript` | TypeScript 編譯器 |
+| `@types/express` | Express 型別定義 |
 
 ---
 
@@ -297,11 +376,10 @@ app.listen(process.env.PORT ?? 3001);
 
 | 層級 | 職責 | 禁止事項 |
 |------|------|---------|
-| **Route** | 路由定義 | 不含任何邏輯 |
-| **Controller** | 解析 req/res，呼叫 Repository | 不碰 Firestore，不做計算 |
-| **Repository** | Firestore CRUD，資料轉 DTO | 不含業務判斷 |
-| **lib/** | 共用工具 | 不含業務邏輯 |
-| **types/** | DTO 契約定義 | 不含行為方法 |
+| **Middleware** | 全域例外處理 | 不含業務邏輯 |
+| **Controller** | 解析 Request，呼叫 Model，回傳 JSON | 不碰 Firestore，不做計算 |
+| **Model** | 屬性定義、Firestore CRUD、反序列化 | 不含業務計算、不碰 Request/Response |
+| **Global/** | 共用工具（Firestore、Cache、Response） | 不含業務邏輯 |
 
 ---
 
@@ -309,12 +387,13 @@ app.listen(process.env.PORT ?? 3001);
 
 | 對象 | 規則 | 範例 |
 |------|------|------|
-| Class | PascalCase | `HoldingController` |
-| Method | camelCase | `getAll`, `findById` |
-| DTO 欄位 | snake_case | `stock_id`, `avg_cost` |
-| Firestore 欄位 | snake_case（與 DTO 一致） | `stock_id` |
-| 檔案（Class） | PascalCase | `HoldingRepository.ts` |
-| 檔案（其他） | camelCase | `errorHandler.ts` |
+| Class | PascalCase | `Holding` |
+| Method / 函式 | camelCase | `findAll`, `fromSnapshot` |
+| 屬性（TypeScript） | camelCase | `stockId`, `avgCost` |
+| JSON 輸出欄位 | camelCase（TypeScript 屬性直接序列化） | `stockId`, `avgCost` |
+| Firestore 欄位 | snake_case（`fromSnapshot` / `toFirestoreData` 手動對應） | `stock_id`, `avg_cost` |
+| 檔案名稱（Class） | PascalCase | `Holding.ts` |
+| 檔案名稱（其他） | camelCase | `holdingsController.ts` |
 
 ---
 
@@ -322,10 +401,38 @@ app.listen(process.env.PORT ?? 3001);
 
 | 功能 | 後端 | 前端 |
 |------|------|------|
-| 資料讀寫 | ✅ Repository | ❌ |
+| 資料讀寫 | ✅ Model | ❌ |
 | 即時股價（Yahoo Finance） | ✅ Cache + 回傳 | ❌ |
 | 庫存計算（均價、未實現損益） | ❌ | ✅ ViewModel |
 | 成本方法切換（保留法/歸還法） | ❌ | ✅ ViewModel |
 | 複利試算 | ❌ | ✅ ViewModel |
-| 年度結算計算 | ❌ | ✅ ViewModel |
 | UI 互動邏輯 | ❌ | ✅ View |
+
+---
+
+## 🚀 開發 & 部署
+
+### 開發環境
+- **執行**：`npm run dev`（ts-node-dev 熱重載）
+- **Firestore 本地模擬**：Firebase Emulator Suite（`firebase emulators:start`）
+- **環境設定**：`.env` 檔案
+
+### GCP Cloud Run 部署
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY dist/ ./dist/
+CMD ["node", "dist/index.js"]
+```
+
+```bash
+# 建置並部署
+npm run build
+gcloud run deploy finance-api \
+  --source . \
+  --platform managed \
+  --region asia-east1 \
+  --allow-unauthenticated
+```
