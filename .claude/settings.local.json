@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:itick.com.tw)",
+      "WebSearch",
+      "WebFetch(domain:itick.org)",
+      "WebFetch(domain:docs.itick.org)"
+    ]
+  }
+}
