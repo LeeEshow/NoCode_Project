@@ -4,7 +4,17 @@
       "WebFetch(domain:itick.com.tw)",
       "WebSearch",
       "WebFetch(domain:itick.org)",
-      "WebFetch(domain:docs.itick.org)"
+      "WebFetch(domain:docs.itick.org)",
+      "Bash(npm --version)",
+      "Bash(npm init *)",
+      "Bash(npm install *)",
+      "Bash(npx ts-node *)",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(curl -s http://localhost:3001/api/v1)",
+      "Bash(npm create *)",
+      "Bash(npx tsc *)",
+      "Bash(firebase --version)",
+      "Bash(node -e ' *)"
     ]
   }
 }
