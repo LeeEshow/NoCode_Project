@@ -2,7 +2,7 @@
 
 ## 🎯 設計定位
 
-本後端採用「**薄 API 層**」設計，與 `Backend-NET.md` 相同概念，語言改為 TypeScript：
+本後端採用「**薄 API 層**」設計，語言改為 TypeScript：
 
 | 層級 | 職責 |
 |------|------|
@@ -62,6 +62,68 @@ HTTP Request
 
 ---
 
+## 🧾 統一註解規範（重要）
+本專案強制使用 JSDoc 註解，目的：
+> 快速理解檔案責任
+> IDE IntelliSense
+> Code Review 清楚判斷邊界
+
+### 1. 檔案層級註解（必寫）
+/**
+ * holdingsController.ts
+ *
+ * 責任：
+ * - 接收 HTTP Request
+ * - 呼叫對應 Model
+ * - 回傳標準 JSON Response
+ *
+ * 禁止：
+ * - 不得直接存取 Firestore
+ * - 不得撰寫業務或財務計算邏輯
+ */
+
+---
+
+### 2. Class 註解
+/**
+ * Holding
+ *
+ * 表示單一股票持倉資料。
+ * - Firestore collection: holdings
+ * - 負責資料結構 + CRUD + 反序列化
+ */
+export class Holding {
+
+---
+
+### 3. 屬性註解（資料契約）
+/** 股票代碼（Firestore document id） */
+  stockId!: string;
+
+  /** 持有股數 */
+  sharesHeld!: number;
+
+  /** 平均成本 */
+  avgCost!: number;
+
+  /** 即時股價（由 MarketController 注入，不存 DB） */
+  currentPrice?: number;
+
+---
+
+### 4. Method / Function 註解（必用 JSDoc）
+/**
+   * 依 stockId 取得單一庫存資料
+   * @param stockId 股票代碼
+   * @returns Holding 或 null
+   */
+  static async findById(stockId: string): Promise<Holding | null> {
+    const doc = await this.col.doc(stockId).get();
+    return doc.exists ? Holding.fromSnapshot(doc) : null;
+  }
+
+---
+
 ## 🧱 各層設計說明
 
 ### 1. `index.ts`（入口點）
@@ -81,9 +143,11 @@ import settingsRouter    from './routes/settings';
 dotenv.config();
 const app = express();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// Routes
 const api = '/api/v1';
 app.use(`${api}/holdings`,     holdingsRouter);
 app.use(`${api}/transactions`, transactionsRouter);
@@ -92,6 +156,7 @@ app.use(`${api}/plan`,         planRouter);
 app.use(`${api}/stocks`,       stocksRouter);
 app.use(`${api}/settings`,     settingsRouter);
 
+// 全域錯誤處理一定最後
 app.use(errorHandler);
 
 const port = process.env.PORT ?? 3001;

@@ -16,7 +16,24 @@
       "Bash(firebase --version)",
       "Bash(node -e ' *)",
       "WebFetch(domain:www.nuget.org)",
-      "WebFetch(domain:docs.cloud.google.com)"
+      "WebFetch(domain:docs.cloud.google.com)",
+      "Bash(firebase projects:list)",
+      "Bash(firebase login *)",
+      "Bash(npx eslint *)",
+      "Bash(npx ts-node-dev *)",
+      "Bash(curl -s http://localhost:3001/api/v1/market/indices)",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const j=JSON.parse\\(d\\); console.log\\('success:', j.success\\); j.data.forEach\\(x=>console.log\\(x.id.padEnd\\(10\\), x.price, x.change\\)\\)\")",
+      "Bash(curl -s \"http://localhost:3001/api/v1/stocks/search?q=台積\")",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const j=JSON.parse\\(d\\); console.log\\('success:', j.success\\); j.data.slice\\(0,3\\).forEach\\(x=>console.log\\(x.stockId, x.name, x.market\\)\\)\")",
+      "Bash(curl -s http://localhost:3001/api/v1/stocks/2330/quote)",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const j=JSON.parse\\(d\\); console.log\\('success:', j.success\\); console.log\\(JSON.stringify\\(j.data, null, 2\\)\\)\")",
+      "Bash(curl -s \"http://localhost:3001/api/v1/stocks/2330/quote\")",
+      "Bash(curl -s \"http://localhost:3001/api/v1/stocks/2330/history?days=5\")",
+      "Bash(node -p \"JSON.stringify\\(JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\).data.slice\\(0,2\\),null,2\\)\")",
+      "Bash(curl -s \"http://localhost:3001/api/v1/stocks/search?q=2330\")",
+      "Bash(curl -s \"http://localhost:3001/api/v1/stocks/2330/profile\")",
+      "Bash(taskkill /F /IM node.exe /T)",
+      "Bash(npx kill-port *)"
     ]
   }
 }
