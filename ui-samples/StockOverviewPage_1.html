@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Style 2 — Dark Mono Terminal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+
+  :root {
+    --bg:        #090909;
+    --surface:   #0D0D0F;
+    --panel:     #111114;
+    --border:    #1E1E22;
+    --border-hi: #2A2A30;
+    --text:      #C9D1D9;
+    --muted:     #8B949E;
+    --dim:       #484F58;
+
+    --up:        #B87A7A;
+    --up-bg:     rgba(184,122,122,0.10);
+    --up-bd:     rgba(184,122,122,0.22);
+    --down:      #7CA88D;
+    --down-bg:   rgba(124,168,141,0.10);
+    --down-bd:   rgba(124,168,141,0.22);
+    --flat:      #6E7681;
+
+    --accent:    #6A8FB5;
+    --accent-bg: rgba(106,143,181,0.10);
+    --accent-bd: rgba(106,143,181,0.26);
+
+    --thead-text: #7A8FA0;
+    --thead-bg:   rgba(106,130,155,0.08);
+    --thead-bd:   rgba(106,130,155,0.16);
+
+    --nav-w: 52px;   /* icon-only sidebar 寬度 */
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 15px;
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar：只保留圖示 ── */
+  aside {
+    width: var(--nav-w);
+    min-width: var(--nav-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 200;
+    padding: 0;
+  }
+
+  /* Logo 區：僅顯示縮寫 */
+  .logo-icon {
+    width: var(--nav-w);
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .logo-icon span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #8B949E;
+    letter-spacing: 0.04em;
+  }
+
+  /* Nav 群組分隔 */
+  .nav-divider {
+    width: 28px;
+    height: 1px;
+    background: var(--border);
+    margin: 6px 0;
+  }
+
+  /* 圖示導覽項目 */
+  .nav-icon-item {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.12s;
+    color: var(--dim);
+    margin: 2px 0;
+    border: 1px solid transparent;
+    position: relative;
+  }
+
+  .nav-icon-item:hover {
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+  }
+
+  .nav-icon-item.active {
+    background: var(--accent-bg);
+    border-color: var(--accent-bd);
+    color: var(--accent);
+  }
+
+  /* Tooltip */
+  .nav-icon-item::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1A1A1E;
+    color: var(--text);
+    font-size: 12px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    white-space: nowrap;
+    padding: 4px 9px;
+    border-radius: 4px;
+    border: 1px solid var(--border-hi);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+    z-index: 300;
+  }
+
+  .nav-icon-item:hover::after { opacity: 1; }
+
+  /* Nav 區塊 */
+  .nav-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+    overflow-y: auto;
+    width: 100%;
+  }
+
+  .nav-footer {
+    width: 100%;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 0;
+  }
+
+  /* ── TOP 懸浮橫幅 ── */
+  .top-banner {
+    position: fixed;
+    top: 0; left: var(--nav-w); right: 0;
+    height: 52px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    z-index: 100; padding: 0 32px;
+  }
+
+  .banner-item {
+    display: flex; flex-direction: column; justify-content: center;
+    padding-right: 36px; margin-right: 36px;
+    border-right: 1px solid var(--border);
+  }
+  .banner-item:last-child { border-right: none; padding-right: 0; margin-right: 0; }
+
+  .banner-date-label { font-size: 10px; color: var(--dim); line-height: 1; margin-bottom: 3px; }
+  .banner-date-value { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); line-height: 1; }
+  .banner-label { font-size: 12px; color: var(--muted); line-height: 1; margin-bottom: 3px; }
+  .banner-value { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 600; line-height: 1; }
+
+  /* ── Main ── */
+  main {
+    flex: 1; overflow-y: auto;
+    padding: 72px 28px 28px;
+    background: var(--bg);
+  }
+  main::-webkit-scrollbar { width: 3px; }
+  main::-webkit-scrollbar-track { background: var(--bg); }
+  main::-webkit-scrollbar-thumb { background: var(--border); }
+
+  /* ── 指數卡片列 ── */
+  .market-row {
+    display: flex; flex-wrap: nowrap; gap: 6px;
+    overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .market-row::-webkit-scrollbar { height: 3px; }
+  .market-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .market-divider {
+    width: 1px; flex-shrink: 0;
+    background: var(--border);
+    align-self: stretch;
+    margin: 0 4px;
+  }
+
+  .market-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 4px; padding: 9px 12px;
+    cursor: pointer; transition: border-color 0.12s;
+    flex: 0 0 114px; min-height: 68px;
+  }
+  .market-card:hover { border-color: var(--border-hi); }
+
+  .futures-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 4px; padding: 9px 12px;
+    cursor: pointer; transition: border-color 0.12s;
+    flex: 0 0 178px; min-height: 68px;
+  }
+  .futures-card:hover { border-color: var(--border-hi); }
+
+  .futures-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 5px;
+  }
+  .futures-session { font-size: 10px; color: var(--dim); font-family: 'IBM Plex Mono', monospace; }
+  .futures-val     { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 500; color: #E6EDF3; }
+  .futures-chg     { font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
+
+  .card-label { font-size: 11px; color: var(--dim); letter-spacing: 0.04em; margin-bottom: 5px; white-space: nowrap; }
+  .card-value { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 500; color: #E6EDF3; white-space: nowrap; }
+  .card-change { font-family: 'IBM Plex Mono', monospace; font-size: 10px; margin-top: 4px; white-space: nowrap; }
+
+  .up   { color: var(--up); }
+  .down { color: var(--down); }
+  .flat { color: var(--flat); }
+
+  /* ── Panel ── */
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
+
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px 12px; border-bottom: 1px solid var(--border);
+  }
+
+  .section-title { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+  .header-actions { display: flex; align-items: center; gap: 6px; }
+
+  /* ── Table ── */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+
+  .data-table thead tr {
+    background: var(--thead-bg);
+    border-top: 1px solid var(--thead-bd);
+    border-bottom: 1px solid var(--thead-bd);
+  }
+
+  .data-table thead th {
+    padding: 10px 18px; text-align: left;
+    font-size: 13px; font-weight: 600;
+    color: var(--thead-text); letter-spacing: 0.02em;
+  }
+  .data-table thead th.right  { text-align: right; }
+  .data-table thead th.center { text-align: center; }
+
+  .data-table tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+  .data-table tbody tr:last-child { border-bottom: none; }
+  .data-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+
+  .data-table tbody td { padding: 13px 18px; color: var(--muted); font-size: 14px; }
+  .data-table tbody td.right  { text-align: right; }
+  .data-table tbody td.center { text-align: center; }
+
+  .stock-code  { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--text); font-size: 14px; }
+  .stock-name  { font-size: 12px; color: var(--dim); margin-top: 2px; }
+
+  /* 即時報價、成本均價、持有張數 — 統一字色字重 */
+  .num-value {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .change-tag { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; }
+
+  /* Sparkline 置中 */
+  .sparkline { width: 80px; height: 26px; display: block; margin: 0 auto; }
+
+  /* ── Buttons（統一風格）── */
+  .btn-ghost {
+    background: transparent; border: 1px solid var(--border-hi); color: var(--muted);
+    padding: 5px 12px; border-radius: 4px; font-size: 13px;
+    cursor: pointer; transition: all 0.12s;
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+  .op-btn {
+    background: transparent; border: 1px solid var(--border-hi); color: var(--dim);
+    width: 26px; height: 26px; border-radius: 3px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; transition: all 0.12s;
+  }
+  .op-btn:hover { border-color: var(--muted); color: var(--text); }
+  .op-btn.add   { border-color: var(--accent-bd); color: var(--accent); }
+  .op-btn.add:hover { background: var(--accent-bg); }
+</style>
+</head>
+<body>
+
+<!-- Sidebar：icon-only -->
+<aside>
+  <div class="logo-icon"><span>ft</span></div>
+
+  <div class="nav-body">
+    <div class="nav-icon-item active" data-tip="台股總覽">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    </div>
+    <div class="nav-icon-item" data-tip="外幣 &amp; 債券">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-icon-item" data-tip="投報計畫">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+    </div>
+    <div class="nav-icon-item" data-tip="績效報告">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+    </div>
+  </div>
+
+  <div class="nav-footer">
+    <div class="nav-icon-item" data-tip="設定">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+    </div>
+  </div>
+</aside>
+
+<!-- TOP 懸浮橫幅 -->
+<div class="top-banner">
+  <div class="banner-item">
+    <div class="banner-date-label">今日</div>
+    <div class="banner-date-value">2026-04-22 &nbsp;週三</div>
+  </div>
+  <div class="banner-item">
+    <div class="banner-label">當天成長率</div>
+    <div class="banner-value up">+3,200 &nbsp;<span style="font-size:13px;font-weight:400;">+0.19%</span></div>
+  </div>
+  <div class="banner-item">
+    <div class="banner-label">未實現損益</div>
+    <div class="banner-value up">+128,430</div>
+  </div>
+  <div class="banner-item">
+    <div class="banner-label">整年報酬率</div>
+    <div class="banner-value up">+8.42%</div>
+  </div>
+</div>
+
+<!-- Main -->
+<main>
+
+  <!-- 指數卡片：台股 | 台指期 | 景氣燈號 || 國際 -->
+  <div class="market-row">
+
+    <div class="market-card">
+      <div class="card-label">台股大盤</div>
+      <div class="card-value">21,456</div>
+      <div class="card-change up">▲ 154 &nbsp;+0.42%</div>
+    </div>
+
+    <div class="futures-card">
+      <div class="card-label" style="margin-bottom:3px;">台指期</div>
+      <div class="futures-row">
+        <span class="futures-session">盤中</span>
+        <div style="text-align:right;">
+          <span class="futures-val">21,520</span>
+          <span class="futures-chg up" style="margin-left:6px;">▲ +0.30%</span>
+        </div>
+      </div>
+      <div class="futures-row" style="margin-top:3px;padding-top:3px;border-top:1px solid var(--border);">
+        <span class="futures-session">夜盤</span>
+        <div style="text-align:right;">
+          <span class="futures-val">21,480</span>
+          <span class="futures-chg down" style="margin-left:6px;">▼ −0.10%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="market-card" style="flex:0 0 120px;">
+      <div class="card-label">景氣燈號</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+        <div style="width:7px;height:7px;background:#B8A06A;border-radius:50%;"></div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;color:#B8A06A;">黃紅燈</span>
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--dim);margin-top:3px;">2026-03 · 35分</div>
+    </div>
+
+    <div class="market-divider"></div>
+
+    <div class="market-card">
+      <div class="card-label">NASDAQ</div>
+      <div class="card-value">17,920</div>
+      <div class="card-change up">▲ 120 &nbsp;+0.70%</div>
+    </div>
+    <div class="market-card">
+      <div class="card-label">S&amp;P 500</div>
+      <div class="card-value">5,220</div>
+      <div class="card-change up">▲ 30 &nbsp;+0.60%</div>
+    </div>
+    <div class="market-card">
+      <div class="card-label">道瓊工業</div>
+      <div class="card-value">38,920</div>
+      <div class="card-change up">▲ 210 &nbsp;+0.50%</div>
+    </div>
+    <div class="market-card">
+      <div class="card-label">費城半導體 SOX</div>
+      <div class="card-value">3,860</div>
+      <div class="card-change up">▲ 80 &nbsp;+2.10%</div>
+    </div>
+
+  </div>
+
+  <!-- 庫存持股 -->
+  <div class="panel">
+    <div class="section-header">
+      <span class="section-title">庫存持股</span>
+      <!-- 統一使用 btn-ghost 樣式，與關注清單一致 -->
+      <div class="header-actions">
+        <button class="btn-ghost">+ 新增持股</button>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>代號 / 名稱</th>
+          <th class="right">即時報價</th>
+          <th class="right">漲跌幅</th>
+          <th class="center">90日走勢</th>
+          <th class="right">成本均價</th>
+          <th class="right">持有(張)</th>
+          <th class="right">損益 %</th>
+          <th class="center">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="stock-code">2330</div><div class="stock-name">台積電</div></td>
+          <td class="right"><span class="num-value">2,025</span></td>
+          <td class="right"><span class="change-tag up">▲ +5 &nbsp;+0.25%</span></td>
+          <td class="center">
+            <svg class="sparkline" viewBox="0 0 80 26" fill="none">
+              <polyline points="0,22 15,18 25,20 35,12 45,14 55,8 65,10 80,5" stroke="#B87A7A" stroke-width="1.5"/>
+              <polyline points="0,22 15,18 25,20 35,12 45,14 55,8 65,10 80,5 80,26 0,26" fill="rgba(184,122,122,0.07)"/>
+            </svg>
+          </td>
+          <td class="right"><span class="num-value">1,886</span></td>
+          <td class="right"><span class="num-value">0.03</span></td>
+          <td class="right"><span class="up" style="font-family:'IBM Plex Mono',monospace;font-weight:600;">+7.37%</span></td>
+          <td class="center">
+            <div style="display:inline-flex;gap:5px;">
+              <button class="op-btn" title="紀錄"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v16a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg></button>
+              <button class="op-btn add" title="新增交易"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><div class="stock-code">0050</div><div class="stock-name">元大台灣50</div></td>
+          <td class="right"><span class="num-value">178.50</span></td>
+          <td class="right"><span class="change-tag up">▲ +1.2 &nbsp;+0.68%</span></td>
+          <td class="center">
+            <svg class="sparkline" viewBox="0 0 80 26" fill="none">
+              <polyline points="0,18 12,15 25,16 38,10 50,12 62,7 72,9 80,6" stroke="#B87A7A" stroke-width="1.5"/>
+              <polyline points="0,18 12,15 25,16 38,10 50,12 62,7 72,9 80,6 80,26 0,26" fill="rgba(184,122,122,0.07)"/>
+            </svg>
+          </td>
+          <td class="right"><span class="num-value">162.30</span></td>
+          <td class="right"><span class="num-value">5.00</span></td>
+          <td class="right"><span class="up" style="font-family:'IBM Plex Mono',monospace;font-weight:600;">+9.36%</span></td>
+          <td class="center">
+            <div style="display:inline-flex;gap:5px;">
+              <button class="op-btn"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v16a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg></button>
+              <button class="op-btn add"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><div class="stock-code">00894</div><div class="stock-name">中信小資高價</div></td>
+          <td class="right"><span class="num-value">40.50</span></td>
+          <td class="right"><span class="change-tag down">▼ −0.3 &nbsp;−0.73%</span></td>
+          <td class="center">
+            <svg class="sparkline" viewBox="0 0 80 26" fill="none">
+              <polyline points="0,8 15,10 28,7 40,15 52,12 65,18 75,16 80,20" stroke="#7CA88D" stroke-width="1.5"/>
+              <polyline points="0,8 15,10 28,7 40,15 52,12 65,18 75,16 80,20 80,26 0,26" fill="rgba(124,168,141,0.07)"/>
+            </svg>
+          </td>
+          <td class="right"><span class="num-value">42.27</span></td>
+          <td class="right"><span class="num-value">1.50</span></td>
+          <td class="right"><span class="down" style="font-family:'IBM Plex Mono',monospace;font-weight:600;">−4.18%</span></td>
+          <td class="center">
+            <div style="display:inline-flex;gap:5px;">
+              <button class="op-btn"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v16a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg></button>
+              <button class="op-btn add"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><div class="stock-code">2881</div><div class="stock-name">富邦金</div></td>
+          <td class="right"><span class="num-value">85.20</span></td>
+          <td class="right"><span class="change-tag flat">— 0 &nbsp;0.00%</span></td>
+          <td class="center">
+            <svg class="sparkline" viewBox="0 0 80 26" fill="none">
+              <polyline points="0,13 20,14 40,12 60,13 80,13" stroke="#6E7681" stroke-width="1.5"/>
+            </svg>
+          </td>
+          <td class="right"><span class="num-value">84.50</span></td>
+          <td class="right"><span class="num-value">2.00</span></td>
+          <td class="right"><span class="flat" style="font-family:'IBM Plex Mono',monospace;font-weight:600;">+0.83%</span></td>
+          <td class="center">
+            <div style="display:inline-flex;gap:5px;">
+              <button class="op-btn"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v16a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg></button>
+              <button class="op-btn add"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 關注清單 -->
+  <div class="panel">
+    <div class="section-header">
+      <span class="section-title">關注清單</span>
+      <div class="header-actions">
+        <button class="btn-ghost">+ 新增</button>
+      </div>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>代號 / 名稱</th>
+          <th class="right">即時報價</th>
+          <th class="right">漲跌幅</th>
+          <th class="center">90日走勢</th>
+          <th class="right">目標價</th>
+          <th class="center">判斷</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="stock-code">2454</div><div class="stock-name">聯發科</div></td>
+          <td class="right"><span class="num-value">1,205</span></td>
+          <td class="right"><span class="change-tag up">▲ +15 &nbsp;+1.26%</span></td>
+          <td class="center">
+            <svg class="sparkline" viewBox="0 0 80 26" fill="none">
+              <polyline points="0,20 15,16 30,14 45,10 60,8 75,5 80,4" stroke="#B87A7A" stroke-width="1.5"/>
+            </svg>
+          </td>
+          <td class="right"><span class="num-value">1,150</span></td>
+          <td class="center">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#7CA88D;background:rgba(124,168,141,0.10);border:1px solid rgba(124,168,141,0.22);padding:2px 10px;border-radius:3px;">買進</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+</body>
+</html>
