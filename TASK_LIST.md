@@ -19,7 +19,7 @@
 
 ### 前端初始化
 - [x] P0-07：建立前端專案（`/frontend`）— Vite + React + TypeScript
-- [x] P0-08：前端 — 安裝套件（`react-bootstrap` / `axios` / `zustand` / `react-router-dom` / `lightweight-charts` / `recharts`）
+- [x] P0-08：前端 — 安裝套件（`react-bootstrap` / `axios` / `zustand` / `react-router-dom` / `echarts` / `echarts-for-react`）
 - [x] P0-09：前端 — 建立資料夾結構（`api/` / `types/` / `models/` / `viewmodels/` / `views/`）
 
 ### 共用設定
@@ -75,6 +75,8 @@
 ## Phase 2：前端 — Layout 與台股總覽頁
 
 ### 基礎骨架
+- [x] P2-00a：`styles/` — 設計 Token（`tokens.css` / `theme.ts` / `global.css`），CSS 變數統一管理，供所有頁面引用
+- [x] P2-00b：`components/DataTable/` — 共用泛型 Table 元件（TypeScript 泛型 props、欄位點擊排序升/降/清除、Header 搜尋展開動畫 + keyword 即時篩選、空狀態、自訂 render slot）
 - [ ] P2-01：`api/axios.ts` — Axios 實例 + 攔截器
 - [ ] P2-02：`types/index.ts` — 所有 DTO 與 Domain 型別定義
 - [ ] P2-03：`App.tsx` — React Router 設定（BrowserRouter + Outlet）
@@ -92,7 +94,7 @@
 - [ ] P2-11：`viewmodels/useHoldingsViewModel.ts` — 庫存狀態管理 + 彙總計算
 - [ ] P2-12：未實現損益摘要列（總損益金額 / 報酬率 / 當日變化）
 - [ ] P2-13：持股 Table 元件（欄位定義、漲跌顏色、操作圖示欄）
-- [ ] P2-14：持股 Table — 90天迷你走勢圖（lightweight-charts SparkLine）
+- [ ] P2-14：持股 Table — 90天迷你走勢圖（ECharts SparkLine，按需引入）
 - [ ] P2-15：持股 Table — inline 展開 K線 + MA5/MA20/MA60 + 成交量
 - [ ] P2-16：持股 Table — inline 展開 股票基礎數據
 
@@ -143,7 +145,7 @@
 - [ ] P3B-02：`viewmodels/useSnapshotViewModel.ts` — 快照狀態管理 + 日期範圍過濾 + MARC 目標線計算
 - [ ] P3B-03：摘要卡片列（累計投入 / 股票現值 / 活存 / 整體報酬率）
 - [ ] P3B-04：控制列（日期範圍選擇器 / 快速選擇按鈕 / 手動觸發快照 / 修正活存）
-- [ ] P3B-05：報酬率走勢圖（Recharts LineChart，實際藍線 + MARC 名目橘虛線 + 實質灰虛線）
+- [ ] P3B-05：報酬率走勢圖（ECharts LineChart，實際藍線 + MARC 名目橘虛線 + 實質灰虛線，Hover 十字準線同步顯示三線數值）
 - [ ] P3B-06：每日快照明細表（含編輯按鈕，可修正活存 / 備註）
 
 ---
@@ -175,10 +177,10 @@
 |-------|--------|------|--------|
 | Phase 0 | 12 | 11 | 1 |
 | Phase 1 | 24 | 24 | 0 |
-| Phase 2 | 24 | 0 | 24 |
+| Phase 2 | 26 | 2 | 24 |
 | Phase 3 | 7 | 0 | 7 |
 | Phase 3A | 8 | 0 | 8 |
 | Phase 3B | 6 | 0 | 6 |
 | Phase 4 | 4 | 0 | 4 |
 | Phase 5 | 7 | 0 | 7 |
-| **合計** | **92** | **35** | **57** |
+| **合計** | **94** | **37** | **57** |

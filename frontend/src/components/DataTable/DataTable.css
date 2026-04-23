@@ -1,0 +1,204 @@
+/* ============================================================
+   DataTable Component Styles
+   依賴 styles/tokens.css（已由 global.css 引入）
+   ============================================================ */
+
+/* ── Panel 外框 ── */
+.dt-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+/* ── Header 列 ── */
+.dt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.dt-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.1px;
+  flex-shrink: 0;
+}
+
+/* ── Header 右側操作區 ── */
+.dt-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+/* ── 搜尋區塊 ── */
+.dt-search {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.dt-search-input {
+  max-width: 0;
+  width: 180px;
+  opacity: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  outline: none;
+  transition:
+    max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity   0.16s ease,
+    padding   0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.12s ease;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dt-search.open .dt-search-input {
+  max-width: 180px;
+  opacity: 1;
+  padding: 4px 10px;
+  border-color: var(--border-hi);
+  margin-right: 6px;
+}
+
+.dt-search.open .dt-search-input:focus {
+  border-color: var(--accent);
+}
+
+.dt-search-input::placeholder {
+  color: var(--dim);
+}
+
+/* 搜尋 / 關閉 按鈕 */
+.dt-search-btn {
+  background: transparent;
+  border: 1px solid var(--border-hi);
+  color: var(--dim);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--trans-fast);
+  padding: 0;
+}
+
+.dt-search-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dt-search.open .dt-search-btn {
+  border-color: var(--accent-bd);
+  color: var(--accent);
+}
+
+/* ── 水平捲動包裝 ── */
+.dt-scroll {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.dt-scroll::-webkit-scrollbar       { height: 3px; }
+.dt-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Table ── */
+.dt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+
+/* ── 表頭 ── */
+.dt-table thead tr {
+  background: var(--thead-bg);
+  border-top: 1px solid var(--thead-bd);
+  border-bottom: 1px solid var(--thead-bd);
+}
+
+.dt-table thead th {
+  padding: 6px 14px;
+  text-align: left;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--thead-text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.dt-table thead th.right  { text-align: right; }
+.dt-table thead th.center { text-align: center; }
+
+.dt-table thead th.sortable {
+  cursor: pointer;
+  transition: color var(--trans-fast);
+}
+
+.dt-table thead th.sortable:hover { color: var(--muted); }
+.dt-table thead th.sorted         { color: var(--accent); }
+
+/* 表頭內容（文字 + 排序圖示） */
+.th-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 排序圖示 */
+.sort-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity var(--trans-fast);
+}
+
+.dt-table thead th.sorted .sort-icon { opacity: 1; }
+.dt-table thead th.sortable:hover .sort-icon { opacity: 0.8; }
+
+/* ── 表身 ── */
+.dt-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.dt-table tbody tr:last-child { border-bottom: none; }
+
+.dt-table tbody tr.clickable { cursor: pointer; }
+.dt-table tbody tr.clickable:hover { background: rgba(255,255,255,0.025); }
+
+.dt-table tbody td {
+  padding: 7px 14px;
+  color: var(--muted);
+  font-size: var(--text-md);
+}
+
+.dt-table tbody td.right  { text-align: right; }
+.dt-table tbody td.center { text-align: center; }
+
+/* ── 空資料 ── */
+.dt-empty {
+  text-align: center;
+  color: var(--dim);
+  font-size: var(--text-md);
+  padding: 32px 0 !important;
+}

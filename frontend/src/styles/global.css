@@ -1,0 +1,163 @@
+/* ============================================================
+   Global Base Styles — FinTrack
+   import tokens.css 後再 import 此檔
+   ============================================================ */
+
+@import './tokens.css';
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ── Body ── */
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar       { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── 漲跌通用 class ── */
+.txt-up   { color: var(--up); }
+.txt-down { color: var(--down); }
+.txt-flat { color: var(--flat); }
+
+/* ── Monospace 數值 ── */
+.mono { font-family: var(--font-mono); }
+
+/* ── Panel 容器 ── */
+.ft-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* ── Section Header ── */
+.ft-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ft-section-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.1px;
+}
+
+/* ── Ghost Button ── */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border-hi);
+  color: var(--muted);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition: border-color var(--trans-fast), color var(--trans-fast);
+}
+.btn-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Icon Button（操作欄） ── */
+.btn-icon {
+  background: transparent;
+  border: 1px solid var(--border-hi);
+  color: var(--dim);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color var(--trans-fast), color var(--trans-fast);
+}
+.btn-icon:hover { border-color: var(--muted); color: var(--text); }
+.btn-icon.accent {
+  border-color: var(--accent-bd);
+  color: var(--accent);
+}
+.btn-icon.accent:hover { background: var(--accent-bg); }
+
+/* ── Data Table ── */
+.ft-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+
+.ft-table thead tr {
+  background: var(--thead-bg);
+  border-top: 1px solid var(--thead-bd);
+  border-bottom: 1px solid var(--thead-bd);
+}
+
+.ft-table thead th {
+  padding: 6px 14px;
+  text-align: left;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--thead-text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ft-table thead th.right  { text-align: right; }
+.ft-table thead th.center { text-align: center; }
+
+.ft-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ft-table tbody tr:last-child { border-bottom: none; }
+.ft-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+
+.ft-table tbody td {
+  padding: 7px 14px;
+  color: var(--muted);
+  font-size: var(--text-md);
+}
+.ft-table tbody td.right  { text-align: right; }
+.ft-table tbody td.center { text-align: center; }
+
+/* ── Stock Code / Name ── */
+.stock-code {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+  font-size: var(--text-md);
+}
+.stock-name {
+  font-size: var(--text-sm);
+  color: var(--label);
+  margin-top: 1px;
+}
+
+/* ── Numeric Value ── */
+.num-value {
+  font-family: var(--font-mono);
+  color: var(--text-value);
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+
+/* ── Change Tag（漲跌幅） ── */
+.change-tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}

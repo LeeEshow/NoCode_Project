@@ -1,0 +1,89 @@
+/**
+ * Design Tokens — TypeScript 版
+ * 用於 Recharts / lightweight-charts / 內聯樣式等無法直接讀取 CSS 變數的場景
+ * 所有值與 tokens.css 保持一致，異動時兩邊同步更新
+ */
+
+export const colors = {
+  /* 背景層 */
+  bg:          '#090909',
+  surface:     '#0D0D0F',
+  panel:       '#1A1A1E',
+
+  /* 邊框 */
+  border:      '#1E1E22',
+  borderHi:    '#2A2A30',
+
+  /* 文字 */
+  text:        '#C9D1D9',
+  textValue:   '#D7DFE6',
+  muted:       '#8B949E',
+  dim:         '#6B7681',
+  label:       '#7A8490',
+
+  /* 漲跌 */
+  up:          '#B87A7A',
+  upBg:        'rgba(184,122,122,0.10)',
+  upBd:        'rgba(184,122,122,0.22)',
+  down:        '#7CA88D',
+  downBg:      'rgba(124,168,141,0.10)',
+  downBd:      'rgba(124,168,141,0.22)',
+  flat:        '#6E7681',
+
+  /* Accent */
+  accent:      '#6A8FB5',
+  accentBg:    'rgba(106,143,181,0.10)',
+  accentBd:    'rgba(106,143,181,0.26)',
+
+  /* Table 表頭 */
+  theadText:   '#7A8FA0',
+  theadBg:     'rgba(106,130,155,0.08)',
+  theadBd:     'rgba(106,130,155,0.16)',
+} as const;
+
+export const fonts = {
+  sans: "'IBM Plex Sans', sans-serif",
+  mono: "'IBM Plex Mono', monospace",
+} as const;
+
+export const fontSizes = {
+  '2xs':  10,
+  xs:     11,
+  sm:     12,
+  md:     13,
+  base:   14,
+  lg:     15,
+  xl:     16,
+  '2xl':  18,
+} as const;
+
+export const radii = {
+  xs: 3,
+  sm: 4,
+  md: 6,
+  lg: 10,
+} as const;
+
+export const nav = {
+  collapsedW: 52,
+  expandedW:  192,
+} as const;
+
+export const topbarH = 52;
+
+/** Recharts / Sparkline 用色快捷包 */
+export const chartColors = {
+  up:   colors.up,
+  down: colors.down,
+  flat: colors.flat,
+  grid: colors.border,
+  axis: colors.dim,
+  tooltip: {
+    bg:     colors.surface,
+    border: colors.borderHi,
+    text:   colors.text,
+  },
+} as const;
+
+const theme = { colors, fonts, fontSizes, radii, nav, topbarH, chartColors };
+export default theme;
