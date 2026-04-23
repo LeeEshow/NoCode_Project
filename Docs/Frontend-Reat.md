@@ -1,4 +1,4 @@
-# 📘 React.js Skill - MVVM 架構設計指南
+# 📘 React.js Skill - MVVM 架構設計原則
 
 ## 🧠 Skill 名稱
 

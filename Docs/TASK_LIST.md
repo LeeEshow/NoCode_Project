@@ -1,7 +1,7 @@
 # 個人理財雲端系統 — 開發任務清單
 
 > 版本：1.0（2026-04-22）
-> 參考文件：REQUIREMENTS.md / BACKEND_PLAN.md / FRONTEND_PLAN.md
+> 參考文件：REQUIREMENTS.md
 
 ---
 
