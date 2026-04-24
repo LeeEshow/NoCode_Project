@@ -34,7 +34,7 @@
 }
 .mir-card:hover { border-color: var(--border-hi); }
 
-/* ── 台指期寬卡（178px） ── */
+/* ── 台指期雙列卡（178px）── */
 .mir-card--futures {
   flex: 0 0 178px;
 }
@@ -68,7 +68,24 @@
   white-space: nowrap;
 }
 
-/* ── 台指期：盤中 / 夜盤 列 ── */
+/* ── 台指期：盤中 / 夜盤 session tag（inline in label）── */
+.mir-futures-session-tag {
+  font-size: var(--text-2xs);
+  color: var(--dim);
+  font-family: var(--font-mono);
+  margin-left: 2px;
+}
+
+/* ── 景氣燈號空狀態 ── */
+.mir-cycle-empty {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  color: var(--dim);
+  margin-top: 4px;
+}
+
+/* ── 台指期：盤中 / 夜盤 列（保留供未來需要）── */
 .mir-futures-row {
   display: flex;
   justify-content: space-between;

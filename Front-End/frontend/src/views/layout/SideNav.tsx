@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import './SideNav.css';
 
 /* ── Icon components ────────────────────────────────────────── */
@@ -32,11 +32,16 @@ const IconSettings = () => (
     <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
   </svg>
 );
-const IconMenuOpen = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <line x1="3" y1="6"  x2="21" y2="6"  />
-    <line x1="3" y1="12" x2="21" y2="12" />
-    <line x1="3" y1="18" x2="21" y2="18" />
+
+/* FIX-06：‹ / › 收折切換圖示 */
+const IconChevronLeft = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+const IconChevronRight = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="9 18 15 12 9 6" />
   </svg>
 );
 
@@ -74,47 +79,56 @@ function NavDivider({ expanded, label }: { expanded: boolean; label?: string }) 
 
 /* ── SideNav ────────────────────────────────────────────────── */
 
-export default function SideNav() {
-  const [expanded, setExpanded] = useState(window.innerWidth >= 1200);
+export interface SideNavProps {
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+export default function SideNav({ expanded, onToggle }: SideNavProps) {
   const location = useLocation();
 
+  /* 視窗寬度改變時自動同步展開狀態 */
   useEffect(() => {
-    const handleResize = () => setExpanded(window.innerWidth >= 1200);
+    const handleResize = () => {
+      const shouldExpand = window.innerWidth >= 1200;
+      if (shouldExpand !== expanded) onToggle();
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [expanded, onToggle]);
 
   /* 窄螢幕點選頁面後自動收合 */
   useEffect(() => {
-    if (window.innerWidth < 1200) setExpanded(false);
+    if (window.innerWidth < 1200 && expanded) onToggle();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   return (
     <nav className={`sidenav${expanded ? ' sidenav--expanded' : ''}`}>
 
-      {/* Logo + 展開切換 */}
+      {/* FIX-06：展開時 Logo 靠左、‹ 靠右；收折時 › 置中 */}
       <div className="sidenav__top">
+        {expanded && <span className="sidenav__logo">FinTrack</span>}
         <button
           className="sidenav__toggle"
-          onClick={() => setExpanded(e => !e)}
+          onClick={onToggle}
           title={expanded ? '收合選單' : '展開選單'}
         >
-          <IconMenuOpen />
+          {expanded ? <IconChevronLeft /> : <IconChevronRight />}
         </button>
-        {expanded && <span className="sidenav__logo">FinTrack</span>}
       </div>
 
       {/* 主要導覽 */}
       <div className="sidenav__body">
         <NavDivider expanded={expanded} />
-        <NavItem to="/"       icon={<IconChart />}    label="台股總覽"  expanded={expanded} />
+        <NavItem to="/"       icon={<IconChart />}    label="台股總覽"    expanded={expanded} />
 
         <NavDivider expanded={expanded} />
         <NavItem to="/assets" icon={<IconCoin />}     label="外幣 & 債券" expanded={expanded} />
 
         <NavDivider expanded={expanded} label={expanded ? '資產規劃' : undefined} />
-        <NavItem to="/plan"   icon={<IconPlan />}     label="投報計畫"  expanded={expanded} />
-        <NavItem to="/report" icon={<IconReport />}   label="績效報告"  expanded={expanded} />
+        <NavItem to="/plan"   icon={<IconPlan />}     label="投報計畫"    expanded={expanded} />
+        <NavItem to="/report" icon={<IconReport />}   label="績效報告"    expanded={expanded} />
 
         <NavDivider expanded={expanded} />
       </div>

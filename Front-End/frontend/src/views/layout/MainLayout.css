@@ -7,14 +7,12 @@
 .main-content {
   flex: 1;
   margin-left: var(--nav-collapsed-w);
-  padding: 20px 24px;
   min-width: 0;
   transition: margin-left var(--trans-nav);
+  /* 移除全域 padding，由各頁面自行管理 */
 }
 
-/* 寬螢幕自動跟著 sidebar 展開偏移 */
-@media (min-width: 1200px) {
-  .main-content {
-    margin-left: var(--nav-expanded-w);
-  }
+/* expanded class 由 MainLayout state 控制，取代媒體查詢 */
+.main-layout--expanded .main-content {
+  margin-left: var(--nav-expanded-w);
 }

@@ -49,9 +49,10 @@ function toHoldingDTO(raw: RawHolding): HoldingDTO {
   const currentPrice   = raw.currentPrice    ?? 0;
   const change         = raw.change          ?? 0;
   const changePct      = raw.changePercent   ?? 0;
-  const currentValue   = currentPrice * shares;
+  const currentValue     = currentPrice * shares;
   const unrealizedProfit = currentValue - totalCost;
-  const returnPct      = totalCost > 0 ? (unrealizedProfit / totalCost) * 100 : 0;
+  /* 損益% 用每股報酬率，避免前端 shares 單位（張 vs 股）與 totalCost 不一致造成誤差 */
+  const returnPct        = costAvg > 0 ? ((currentPrice - costAvg) / costAvg) * 100 : 0;
 
   return {
     stockCode:       raw.stockId,

@@ -22,11 +22,16 @@
 .sidenav__top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 14px 12px;
+  justify-content: center;   /* 收折時 › 置中 */
+  padding: 0 12px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   height: var(--topbar-h);
+}
+
+/* FIX-06：展開時 Logo 靠左、‹ 靠右 */
+.sidenav--expanded .sidenav__top {
+  justify-content: space-between;
 }
 
 .sidenav__toggle {

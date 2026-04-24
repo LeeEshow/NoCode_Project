@@ -147,11 +147,25 @@ body {
   margin-top: 1px;
 }
 
-/* ── Numeric Value ── */
+/* ── Numeric Value（提升選擇器優先度，避免被 td 的 color:var(--muted) 覆蓋）── */
+.ft-table .num-value,
 .num-value {
   font-family: var(--font-mono);
   color: var(--text-value);
   font-size: var(--text-md);
+  font-weight: 500;
+}
+
+/* ── 小數點後小字（DecNum helper 使用）── */
+.dec-small {
+  font-size: 0.86em;
+  color: inherit;
+}
+
+/* ── 深色數值欄（成本均價 / 持有，與 stock-code 同色）── */
+.ft-table .cell-primary {
+  color: var(--text) !important;
+  font-family: var(--font-mono);
   font-weight: 500;
 }
 

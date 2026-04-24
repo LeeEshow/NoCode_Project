@@ -1,0 +1,100 @@
+/* ── PanelHeader：每個頁面頂部橫幅 ── */
+.panel-header {
+  display: flex;
+  align-items: center;
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+/* ── 左側彈性內容區 ── */
+.panel-header__left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ── 左右分隔線 ── */
+.panel-header__sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 20px;
+}
+
+/* ── 右側流動資金區 ── */
+.panel-header__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.panel-header__cash-label {
+  font-size: var(--text-sm);
+  color: var(--dim);
+  white-space: nowrap;
+  font-family: var(--font-sans);
+}
+
+.panel-header__cash-input {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-value);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  padding: 4px 10px;
+  width: 130px;
+  text-align: right;
+  outline: none;
+  transition: border-color var(--trans-fast);
+}
+.panel-header__cash-input:focus {
+  border-color: var(--accent);
+}
+
+/* ── Stat 統計項目（供各頁面內聯使用）── */
+.ph-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 20px;
+  border-right: 1px solid var(--border);
+  height: var(--topbar-h);
+}
+.ph-stat:first-child { padding-left: 0; }
+.ph-stat:last-child  { border-right: none; }
+
+.ph-stat__label {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: 1;
+  margin-bottom: 3px;
+  white-space: nowrap;
+}
+
+.ph-stat__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text-value);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ph-stat__sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: inherit;
+  opacity: 0.75;
+  margin-left: 4px;
+}

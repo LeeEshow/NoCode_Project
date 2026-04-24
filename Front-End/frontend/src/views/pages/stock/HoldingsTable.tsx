@@ -127,7 +127,7 @@ function HoldingRow({
       </td>
       <td className="right">
         <span className={`change-tag ${cls}`}>
-          {arrow} {sign}{fmt(h.change, 2)}&nbsp;{sign}{fmt(h.changePct, 2)}%
+          {arrow}&nbsp;{sign}{fmt(h.change, 2)}&nbsp;&nbsp;{sign}{fmt(h.changePct, 2)}%
         </span>
       </td>
       <td className="center">
@@ -138,12 +138,8 @@ function HoldingRow({
           : <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>—</span>
         }
       </td>
-      <td className="right">
-        <span className="num-value">{fmt(h.costAvg, 2)}</span>
-      </td>
-      <td className="right">
-        <span className="num-value">{fmt(h.shares, 2)}</span>
-      </td>
+      <td className="right cell-primary">{fmt(h.costAvg, 2)}</td>
+      <td className="right cell-primary">{fmt(h.shares, 2)}</td>
       <td className="right">
         <span className={`mono ${h.returnPct === 0 ? 'txt-flat' : (h.returnPct > 0 ? 'txt-up' : 'txt-down')}`}
           style={{ fontWeight: 600 }}>
