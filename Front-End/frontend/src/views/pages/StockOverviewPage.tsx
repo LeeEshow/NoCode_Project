@@ -104,7 +104,7 @@ export default function StockOverviewPage() {
   const weekdayStr = WEEKDAYS[now.getDay()];
 
   /* PanelHeader 財務數值（* 1000 換算張→股）*/
-  const totalCurrentValue  = holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 1000, 0);
+  const totalCurrentValue  = holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 1000 * 0.997, 0);
   const totalDailyAmt      = holdings.items.reduce((s, h) => s + h.change * h.shares * 1000, 0);
   const prevValue          = totalCurrentValue - totalDailyAmt;
   const dailyGrowthRate    = prevValue !== 0 ? (totalDailyAmt / prevValue) * 100 : 0;
