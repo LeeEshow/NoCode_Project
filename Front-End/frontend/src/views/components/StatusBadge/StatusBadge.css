@@ -1,0 +1,16 @@
+.ft-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  line-height: 1.5;
+}
+
+.ft-badge--up     { color: var(--up);     background: var(--up-bg);     border-color: var(--up-bd); }
+.ft-badge--down   { color: var(--down);   background: var(--down-bg);   border-color: var(--down-bd); }
+.ft-badge--flat   { color: var(--flat);   background: transparent;      border-color: var(--border-hi); }
+.ft-badge--accent { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-bd); }
+.ft-badge--muted  { color: var(--muted);  background: transparent;      border-color: var(--border-hi); }

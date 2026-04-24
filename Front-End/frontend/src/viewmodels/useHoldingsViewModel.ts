@@ -1,0 +1,89 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile } from '../models/holdingModel';
+import type { HoldingDTO, KLineDTO, StockProfileDTO } from '../types';
+
+export interface HoldingsSummary {
+  totalUnrealized:  number;
+  totalReturnPct:   number;
+  totalDailyChange: number;
+  totalCost:        number;
+}
+
+interface State {
+  items:        HoldingDTO[];
+  sparklines:   Record<string, number[]>;
+  klines:       Record<string, KLineDTO[]>;
+  profiles:     Record<string, StockProfileDTO>;
+  expandedCode: string | null;
+  summary:      HoldingsSummary;
+  loading:      boolean;
+  error:        string | null;
+}
+
+function computeSummary(items: HoldingDTO[]): HoldingsSummary {
+  const totalUnrealized  = items.reduce((s, h) => s + h.unrealizedProfit, 0);
+  const totalCost        = items.reduce((s, h) => s + h.totalCost, 0);
+  const totalReturnPct   = totalCost > 0 ? (totalUnrealized / totalCost) * 100 : 0;
+  const totalDailyChange = items.reduce((s, h) => s + h.change * h.shares, 0);
+  return { totalUnrealized, totalReturnPct, totalDailyChange, totalCost };
+}
+
+const INIT: State = {
+  items: [], sparklines: {}, klines: {}, profiles: {},
+  expandedCode: null,
+  summary: { totalUnrealized: 0, totalReturnPct: 0, totalDailyChange: 0, totalCost: 0 },
+  loading: true, error: null,
+};
+
+export function useHoldingsViewModel() {
+  const [state, setState] = useState<State>(INIT);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const load = useCallback(async () => {
+    setState(s => ({ ...s, loading: true, error: null }));
+    try {
+      const items = await fetchHoldings();
+      const summary = computeSummary(items);
+      const sparklineEntries = await Promise.all(
+        items.map(async h => {
+          const data = await fetchSparklineData(h.stockCode).catch(() => [] as number[]);
+          return [h.stockCode, data] as [string, number[]];
+        })
+      );
+      setState(s => ({
+        ...s,
+        items,
+        summary,
+        sparklines: Object.fromEntries(sparklineEntries),
+        loading: false,
+      }));
+    } catch (err) {
+      setState(s => ({ ...s, loading: false, error: (err as Error).message }));
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggleExpand = useCallback((code: string) => {
+    setState(s => ({ ...s, expandedCode: s.expandedCode === code ? null : code }));
+  }, []);
+
+  const ensureExpandData = useCallback(async (code: string) => {
+    const { klines, profiles } = stateRef.current;
+    const [kline, profile] = await Promise.all([
+      klines[code]   ? null : fetchKLine(code).catch(() => null),
+      profiles[code] ? null : fetchStockProfile(code).catch(() => null),
+    ]);
+    setState(s => ({
+      ...s,
+      ...(kline   ? { klines:   { ...s.klines,   [code]: kline }   } : {}),
+      ...(profile ? { profiles: { ...s.profiles, [code]: profile } } : {}),
+    }));
+  }, []);
+
+  /* 新增/刪除交易後刷新庫存 */
+  const refreshAfterTx = useCallback(async () => { await load(); }, [load]);
+
+  return { ...state, load, toggleExpand, ensureExpandData, refreshAfterTx };
+}

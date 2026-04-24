@@ -254,13 +254,83 @@ ReportPage
 ```
 ---
 
-## 五、共用元件規範
+## 五、MVVM 架構設計原則
 
-### 5.1 DataTable — 通用資料表格元件
+> 詳細設計規範請參閱 [Docs/Frontend-Reat.md](Docs/Frontend-Reat.md)
+
+### 5.1 MVVM 對應關係
+
+| MVVM | React 對應 |
+|------|-----------|
+| Model | `types/` + `models/` |
+| View | `views/components/` / `views/pages/` |
+| ViewModel | `viewmodels/`（Custom Hook） |
+
+### 5.2 各層職責與禁止事項
+
+| 層 | 職責 | 禁止事項 |
+|----|------|---------|
+| **styles/** | 設計 Token 唯一來源 | 禁止在其他層定義顏色 / 字型變數 |
+| **views/components/** | 共用 UI 元件，與業務邏輯無關 | 不呼叫 API、不持有 ViewModel 狀態 |
+| **Model** | 打 API + DTO → Domain 轉換 | 不管 state、不做跨資料彙總 |
+| **ViewModel** | state 管理、跨資料邏輯 | 不碰 DOM、不寫 JSX |
+| **View** | UI 顯示與互動 | 不呼叫 API、不做商務計算、不重複定義共用元件 |
+| **Types** | DTO + Domain 型別定義 | 不含行為方法 |
+
+### 5.3 強制開發順序
+
+```
+① styles/          【必須最先完成】設計 Token 定義
+  ├── tokens.css   色彩 / 字型 / 字級 / 圓角 / 動畫 / 尺寸
+  ├── global.css   全域 Reset + 共用 class
+  └── theme.ts     TypeScript 版（供 ECharts / 內聯樣式使用）
+         ↓
+② views/components/ 【頁面開發前全部完成】共用元件實作
+  └── 每個元件依賴 styles/，不含頁面業務邏輯
+         ↓
+③ views/layout/    版面骨架（Sidebar / TopBar / MainLayout）
+         ↓
+④ views/pages/     各功能頁面（組裝元件 + ViewModel）
+```
+
+> ⚠️ 禁止直接跳到 ④ 開始開發頁面，否則各頁面將各自定義色碼與樣式，造成視覺不一致、後期修改成本極高。
+
+---
+
+## 六、共用元件規範
+
+### 6.1 元件目錄結構
+
+```
+src/views/components/
+├── DataTable/          ← 通用資料表格（排序 / 搜尋 / 分頁）
+├── Modal/              ← 基底 Modal（header / body / footer / backdrop）
+├── LoadingPanel/       ← 載入狀態（Skeleton / Spinner）
+├── Toast/              ← 全域通知（操作成功 / 失敗回饋）
+├── ConfirmDialog/      ← 二次確認（刪除等破壞性操作）
+├── StatusBadge/        ← 狀態標籤（依 variant 切換顏色）
+├── SummaryCard/        ← 摘要數值卡片（標題 + 主數值 + 副標）
+├── FormInputs/         ← 共用輸入元件（NumberInput / RadioGroup 等）
+└── Charts/             ← ECharts 封裝元件（按需引入）
+```
+
+### 6.2 共用元件設計規則
+
+| 規則 | 說明 |
+|------|------|
+| **樣式只引用 Token** | 所有顏色、字型、圓角必須使用 `var(--xxx)` 或 `theme.ts` 常數，禁止硬碼 |
+| **Props 明確型別** | 每個元件必須匯出 TypeScript interface，供頁面層 import 使用 |
+| **不含業務邏輯** | 元件不直接呼叫 API，所需資料一律由外部（ViewModel）透過 props 傳入 |
+| **index.ts 統一匯出** | 每個元件資料夾必須有 `index.ts`，確保一行 import 可用 |
+| **狀態自理** | 元件自行處理 loading / empty / error 的展示，由 props 控制狀態值 |
+
+---
+
+### 6.3 DataTable — 通用資料表格元件
 
 > 所有頁面的 Table（庫存持股、關注清單、外幣清單、債券清單、快照明細等）**一律使用此元件**，禁止重新定義 table 樣式。
 
-**位置：** `frontend/src/components/DataTable/`
+**位置：** `frontend/src/views/components/DataTable/`
 
 ```
 DataTable/

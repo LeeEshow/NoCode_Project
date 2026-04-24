@@ -1,0 +1,24 @@
+.confirm-msg {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.btn-ghost--danger {
+  border-color: var(--up-bd);
+  color: var(--up);
+}
+.btn-ghost--danger:hover {
+  border-color: var(--up);
+  background: var(--up-bg);
+}
+
+.btn-ghost--accent {
+  border-color: var(--accent-bd);
+  color: var(--accent);
+}
+.btn-ghost--accent:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}

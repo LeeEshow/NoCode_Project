@@ -1,6 +1,7 @@
-# 個人理財雲端系統 — 後端開發任務清單
+# 個人理財雲端系統 — 開發任務清單
 
-> 版本：2.0（2026-04-23）
+> 版本：1.0（2026-04-22）
+> 參考文件：BACKEND_PLAN.md
 
 ---
 
@@ -19,7 +20,7 @@
 ### 前端初始化
 - [x] P0-07：建立前端專案（`/frontend`）— Vite + React + TypeScript
 - [x] P0-08：前端 — 安裝套件（`react-bootstrap` / `axios` / `zustand` / `react-router-dom` / `echarts` / `echarts-for-react`）
-- [x] P0-09：前端 — 建立資料夾結構（`api/` / `types/` / `models/` / `viewmodels/` / `views/`）
+- [x] P0-09：前端 — 建立資料夾結構（`api/` / `types/` / `models/` / `viewmodels/` / `views/layout/` / `views/pages/` / `components/` 各子資料夾）
 
 ### 共用設定
 - [x] P0-10：前後端 ESLint + Prettier 統一設定
@@ -68,3 +69,5 @@
 - [x] P1-20：`POST /snapshots/record` — 自動計算快照（冪等設計，含讀取外幣&債券計算 `forex_value`）
 - [x] P1-21：`GET /snapshots` — 依日期範圍查詢
 - [x] P1-22：`PUT /snapshots/:date` — 修正活存 / 備註
+
+---

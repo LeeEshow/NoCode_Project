@@ -1,0 +1,27 @@
+.sc-card {
+  padding: 14px 16px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sc-label {
+  font-size: var(--text-sm);
+  color: var(--label);
+  font-family: var(--font-sans);
+  letter-spacing: 0.02em;
+}
+
+.sc-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text-value);
+  line-height: 1.2;
+}
+
+.sc-sub {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
