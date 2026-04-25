@@ -12,6 +12,7 @@ export interface WatchlistInput {
 export interface WatchlistDoc extends Required<WatchlistInput> {
   createdAt: Date;
   updatedAt: Date;
+  sortIndex: number;
 }
 
 export interface WatchlistPatch {
@@ -25,8 +26,17 @@ const COL = 'watchlist';
 
 export class Watchlist {
   static async findAll(): Promise<WatchlistDoc[]> {
-    const snap = await db.collection(COL).orderBy('created_at', 'asc').get();
-    return snap.docs.map(d => deserialize(d));
+    const snap = await db.collection(COL).get();
+    const docs = snap.docs.map(d => deserialize(d));
+    return docs.sort((a, b) => a.sortIndex - b.sortIndex);
+  }
+
+  static async reorder(order: string[]): Promise<void> {
+    const batch = db.batch();
+    order.forEach((stockId, index) => {
+      batch.update(db.collection(COL).doc(stockId), { sort_index: index });
+    });
+    await batch.commit();
   }
 
   static async findByStockId(stockId: string): Promise<WatchlistDoc | null> {
@@ -91,5 +101,6 @@ function deserialize(doc: admin.firestore.DocumentSnapshot): WatchlistDoc {
     updatedAt:   d.updated_at instanceof admin.firestore.Timestamp
       ? d.updated_at.toDate()
       : new Date(),
+    sortIndex:   d.sort_index ?? 0,
   };
 }

@@ -5,6 +5,7 @@ const router = Router();
 
 router.get('/',                ctrl.getAll);
 router.get('/:stockId',        ctrl.getById);
+router.put('/reorder',         ctrl.reorder);
 router.post('/recalculate',    ctrl.recalculate);
 
 export default router;

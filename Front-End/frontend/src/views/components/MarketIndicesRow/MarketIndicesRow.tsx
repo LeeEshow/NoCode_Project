@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import type { MarketIndexDTO, ExportIndicatorDTO } from '../../../types';
 import './MarketIndicesRow.css';
 
@@ -115,7 +116,7 @@ function FuturesCard({
         台指期 <span className="mir-futures-session-tag">{label}</span>
       </div>
       <div className="mir-card-value">
-        {active.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <DecNum value={active.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
       </div>
       <div className={`mir-card-change ${cls}`}><FmtChange idx={active} /></div>
     </div>
@@ -171,6 +172,29 @@ export default function MarketIndicesRow({
   exportIndicator,
   loading,
 }: MarketIndicesRowProps) {
+  const rowRef   = useRef<HTMLDivElement>(null);
+  const dragRef  = useRef({ active: false, startX: 0, scrollLeft: 0 });
+  const [dragging, setDragging] = useState(false);
+
+  function onMouseDown(e: React.MouseEvent) {
+    const el = rowRef.current;
+    if (!el) return;
+    dragRef.current = { active: true, startX: e.clientX, scrollLeft: el.scrollLeft };
+    setDragging(true);
+  }
+
+  function onMouseMove(e: React.MouseEvent) {
+    const d = dragRef.current;
+    if (!d.active || !rowRef.current) return;
+    e.preventDefault();
+    rowRef.current.scrollLeft = d.scrollLeft - (e.clientX - d.startX);
+  }
+
+  function onDragEnd() {
+    dragRef.current.active = false;
+    setDragging(false);
+  }
+
   if (loading) {
     return (
       <div className="mir-row">
@@ -179,20 +203,26 @@ export default function MarketIndicesRow({
     );
   }
 
-  const taiex       = indices.find(isTaiex);
-  const futuresDay  = indices.find(isFuturesDay);
+  const taiex        = indices.find(isTaiex);
+  const futuresDay   = indices.find(isFuturesDay);
   const futuresNight = indices.find(isFuturesNight);
 
-  /* FIX-01：國際指數依 S&P 500 → 費城半導體 → 其餘 排序 */
   const intl = indices
     .filter(i => !isTaiex(i) && !isFuturesDay(i) && !isFuturesNight(i) && !DOMESTIC_SYMBOLS.has(i.symbol))
     .sort((a, b) => intlPriority(a) - intlPriority(b));
 
   return (
-    <div className="mir-row">
+    <div
+      ref={rowRef}
+      className="mir-row"
+      style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onDragEnd}
+      onMouseLeave={onDragEnd}
+    >
       {taiex && <StandardCard idx={taiex} />}
       <FuturesCard day={futuresDay} night={futuresNight} />
-      {/* FIX-03：永遠渲染景氣燈號（無資料時顯示 —）*/}
       <BusinessCycleCard indicator={exportIndicator} />
 
       {(taiex || futuresDay || futuresNight) && intl.length > 0 && (

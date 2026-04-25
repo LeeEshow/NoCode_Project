@@ -48,6 +48,17 @@ export const getById = async (req: Request, res: Response, next: NextFunction) =
   } catch (err) { next(err); }
 };
 
+export const reorder = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order) || order.length === 0) {
+      throw new AppError(400, 'order 必須為非空字串陣列');
+    }
+    await Holding.reorder(order.map(String));
+    res.json(ApiResponse.success({ reordered: order.length }));
+  } catch (err) { next(err); }
+};
+
 // P1-10：前端計算完畢後整批寫回 Firestore
 export const recalculate = async (req: Request, res: Response, next: NextFunction) => {
   try {

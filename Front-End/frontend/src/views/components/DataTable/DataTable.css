@@ -121,9 +121,10 @@
 
 /* ── Table ── */
 .dt-table {
-  width: 100%;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: var(--text-md);
+  table-layout: auto;
 }
 
 /* ── 表頭 ── */

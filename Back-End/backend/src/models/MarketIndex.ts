@@ -39,27 +39,30 @@ const FOREX_SYMBOLS: Array<{ code: string; name: string; symbol: string }> = [
 
 // ── 指數代號對照表 ───────────────────────────────────────────────────────────
 
+// 台指期透過 Yahoo Finance TW SSR HTML 爬取，不在此列
 const INDEX_SYMBOLS: Array<{ id: string; name: string; symbol: string }> = [
-  { id: 'twii',    name: '台股大盤',    symbol: '^TWII'  },
-  { id: 'futures', name: '台指期',      symbol: 'IX0126.TW' },
-  { id: 'nasdaq',  name: 'NASDAQ',      symbol: '^IXIC'  },
-  { id: 'sp500',   name: 'S&P 500',     symbol: '^GSPC'  },
-  { id: 'dji',     name: '道瓊工業',    symbol: '^DJI'   },
-  { id: 'sox',     name: '費城半導體',  symbol: '^SOX'   },
+  { id: 'twii',   name: '台股大盤',   symbol: '^TWII' },
+  { id: 'nasdaq', name: 'NASDAQ',     symbol: '^IXIC' },
+  { id: 'sp500',  name: 'S&P 500',    symbol: '^GSPC' },
+  { id: 'dji',    name: '道瓊工業',   symbol: '^DJI'  },
+  { id: 'sox',    name: '費城半導體', symbol: '^SOX'  },
 ];
 
 // ── Model ───────────────────────────────────────────────────────────────────
 
 export class MarketIndex {
-  /** 取得所有市場指數，並行請求；單一失敗不影響其他 */
+  /** 取得所有市場指數；台指期獨立爬取，其餘並行走 Yahoo Finance v8 */
   static async fetchAll(): Promise<IndexCard[]> {
-    const settled = await Promise.allSettled(
-      INDEX_SYMBOLS.map(({ symbol }) =>
-        yfChart(symbol, { interval: '1d', range: '1d' })
-      )
-    );
+    const [settled, futuresCard] = await Promise.all([
+      Promise.allSettled(
+        INDEX_SYMBOLS.map(({ symbol }) =>
+          yfChart(symbol, { interval: '1d', range: '1d' })
+        )
+      ),
+      MarketIndex.fetchTaiwanFutures(),
+    ]);
 
-    return INDEX_SYMBOLS.map(({ id, name }, i) => {
+    const cards = INDEX_SYMBOLS.map(({ id, name }, i) => {
       const r = settled[i];
       if (r.status === 'rejected') {
         return { id, name, price: null, change: null, changePercent: null };
@@ -68,13 +71,71 @@ export class MarketIndex {
       const price = meta.regularMarketPrice ?? null;
       const prev  = meta.chartPreviousClose ?? null;
       const change =
-        price !== null && prev ? +( price - prev).toFixed(2) : null;
+        price !== null && prev ? +(price - prev).toFixed(2) : null;
       const changePercent =
         price !== null && prev
           ? +(((price - prev) / prev) * 100).toFixed(2)
           : null;
       return { id, name, price, change, changePercent };
     });
+
+    // 台指期插入第二位（twii 之後），維持原始順序
+    cards.splice(1, 0, futuresCard);
+    return cards;
+  }
+
+  /**
+   * 爬取 Yahoo Finance 台灣版取得台指期即時報價（SSR HTML）
+   * 來源：https://tw.stock.yahoo.com/future/WTX%26
+   * Node.js 帶 Chrome headers 可繞過 Cloudflare，直接拿到 SSR 渲染的價格
+   */
+  private static async fetchTaiwanFutures(): Promise<IndexCard> {
+    const fallback: IndexCard = { id: 'futures', name: '台指期', price: null, change: null, changePercent: null };
+    try {
+      const res = await axios.get('https://tw.stock.yahoo.com/future/WTX%26', {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-TW,zh;q=0.9',
+          'Accept-Encoding': 'identity',
+        },
+      });
+
+      const html = res.data as string;
+      const sectionIdx = html.indexOf('main-1-FutureHeader-Proxy');
+      if (sectionIdx === -1) {
+        console.error('[MarketIndex] 台指期：找不到 FutureHeader-Proxy 區塊');
+        return fallback;
+      }
+      const section = html.slice(sectionIdx, sectionIdx + 2000);
+
+      // 漲跌方向（class 含 c-trend-down 為跌）
+      const isDown = section.includes('c-trend-down');
+
+      // 價格：Fz(32px) span 內的數字，例如 39,766.00
+      const priceMatch = section.match(/Fz\(32px\)[^>]+?>([\d,]+\.?\d*)</);
+      if (!priceMatch) {
+        console.error('[MarketIndex] 台指期：無法解析價格');
+        return fallback;
+      }
+      const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+
+      // 漲跌幅：(x.xx%) 格式，正負號由方向決定
+      const pctMatch = section.match(/\(([\d.]+)%\)/);
+      const pctAbs = pctMatch ? parseFloat(pctMatch[1]) : null;
+      const changePercent = pctAbs !== null ? (isDown ? -pctAbs : pctAbs) : null;
+
+      // 漲跌值：三角箭頭 span 後的純數字文字
+      const changeMatch = section.match(/style="border-color:[^"]+"><\/span>([\d,]+\.?\d*)</);
+      const changeAbs = changeMatch ? parseFloat(changeMatch[1].replace(/,/g, '')) : null;
+      const change = changeAbs !== null ? (isDown ? -changeAbs : changeAbs) : null;
+
+      return { id: 'futures', name: '台指期', price, change, changePercent };
+    } catch (err) {
+      console.error('[MarketIndex] 台指期爬蟲失敗:', err instanceof Error ? err.message : err);
+      return fallback;
+    }
   }
 
   /** 取得主要幣別對台幣即時匯率，並行請求；單一失敗不影響其他 */

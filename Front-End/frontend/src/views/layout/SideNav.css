@@ -50,7 +50,7 @@
 .sidenav__toggle:hover { color: var(--text); }
 
 .sidenav__logo {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--accent);
@@ -138,10 +138,10 @@
 }
 
 .nav-divider__label {
-  font-size: var(--text-2xs);
-  color: var(--dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  letter-spacing: 0.02em;
   font-family: var(--font-sans);
   white-space: nowrap;
+  padding-top: 4px;
 }

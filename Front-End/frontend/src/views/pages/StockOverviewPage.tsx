@@ -113,7 +113,7 @@ export default function StockOverviewPage() {
       <PanelHeader>
         {/* 今日日期 */}
         <div className="ph-stat" style={{ minWidth: 100 }}>
-          <span className="ph-stat__value" style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', fontWeight: 400, display: 'flex', flexDirection: 'column', lineHeight: 1.6 }}>
+          <span className="ph-stat__value" style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-sans)', fontWeight: 400, display: 'flex', flexDirection: 'column', lineHeight: 1.6 }}>
             <span>{dateStr}</span>
             <span>{timeStr}</span>
           </span>
@@ -215,6 +215,7 @@ export default function StockOverviewPage() {
                   onExpandLoad={holdings.ensureExpandData}
                   onHistory={(code, name) => setHistoryTarget({ code, name })}
                   onAddTx={(code, name) => setAddTxTarget({ code, name })}
+                  onReorder={holdings.reorder}
                 />
               </>
             )
@@ -247,6 +248,7 @@ export default function StockOverviewPage() {
                   sparklines={watchlist.sparklines}
                   onEdit={item => { setWlEditItem(item); setWlModalOpen(true); }}
                   onDelete={handleWlDelete}
+                  onReorder={watchlist.reorder}
                   deleting={watchlist.saving}
                 />
               </>

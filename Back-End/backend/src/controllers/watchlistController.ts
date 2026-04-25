@@ -99,6 +99,27 @@ export const update = async (
 };
 
 /**
+ * PUT /api/v1/watchlist/reorder
+ * 批次更新關注清單排序（order = stockId 陣列，index 即新順序）
+ */
+export const reorder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order) || order.length === 0) {
+      throw new AppError(400, 'order 必須為非空字串陣列');
+    }
+    await Watchlist.reorder(order.map(String));
+    res.json(ApiResponse.success({ reordered: order.length }));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * DELETE /api/v1/watchlist/:stockId
  * 移除關注股票
  */

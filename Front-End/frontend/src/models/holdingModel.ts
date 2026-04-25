@@ -129,3 +129,7 @@ export async function recalculateHoldings(
   }));
   await api.post('/holdings/recalculate', payload);
 }
+
+export async function reorderHoldings(order: string[]): Promise<void> {
+  await api.put('/holdings/reorder', { order });
+}

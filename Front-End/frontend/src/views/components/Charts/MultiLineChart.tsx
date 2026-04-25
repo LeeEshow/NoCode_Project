@@ -35,7 +35,7 @@ export default function MultiLineChart({
   const option = {
     animation: false,
     backgroundColor: colors.panel,
-    textStyle: { color: colors.dim, fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 },
+    textStyle: { color: colors.dim, fontFamily: 'Open Sans, sans-serif', fontSize: 11 },
     grid: { left: 64, right: 16, top: 32, bottom: 48 },
     xAxis: {
       type: 'category',

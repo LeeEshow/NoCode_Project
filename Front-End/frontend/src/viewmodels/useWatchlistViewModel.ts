@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   fetchWatchlist,
   createWatchlistItem,
   updateWatchlistItem,
   deleteWatchlistItem,
+  reorderWatchlist,
 } from '../models/watchlistModel';
 import { fetchSparklineData } from '../models/holdingModel';
 import type { WatchlistItemDTO, CreateWatchlistPayload } from '../types';
@@ -30,6 +31,7 @@ export function useWatchlistViewModel() {
   const [state, setState] = useState<State>({
     items: [], sparklines: {}, loading: true, saving: false, error: null,
   });
+  const [order, setOrder] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setState(s => ({ ...s, loading: true, error: null }));
@@ -88,5 +90,19 @@ export function useWatchlistViewModel() {
     }
   }, []);
 
-  return { ...state, load, addItem, updateItem, removeItem };
+  const sortedItems = useMemo(() => {
+    if (order.length === 0) return state.items;
+    const map = new Map(state.items.map(i => [i.id, i]));
+    const ordered = order.map(id => map.get(id)).filter(Boolean) as WatchlistItemDTO[];
+    const rest = state.items.filter(i => !order.includes(i.id));
+    return [...ordered, ...rest];
+  }, [state.items, order]);
+
+  const reorder = useCallback((newItems: WatchlistItemDTO[]) => {
+    const newOrder = newItems.map(i => i.id);
+    setOrder(newOrder);
+    reorderWatchlist(newOrder).catch(() => { /* 靜默，排序已在本地生效 */ });
+  }, []);
+
+  return { ...state, items: sortedItems, load, addItem, updateItem, removeItem, reorder };
 }

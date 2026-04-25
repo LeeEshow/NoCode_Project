@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile } from '../models/holdingModel';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, reorderHoldings } from '../models/holdingModel';
 import type { HoldingDTO, KLineDTO, StockProfileDTO } from '../types';
 
 export interface HoldingsSummary {
@@ -37,6 +37,7 @@ const INIT: State = {
 
 export function useHoldingsViewModel() {
   const [state, setState] = useState<State>(INIT);
+  const [order, setOrder] = useState<string[]>([]);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -82,8 +83,24 @@ export function useHoldingsViewModel() {
     }));
   }, []);
 
+  /* 依 order 排序 items */
+  const sortedItems = useMemo(() => {
+    if (order.length === 0) return state.items;
+    const map = new Map(state.items.map(h => [h.stockCode, h]));
+    const ordered = order.map(code => map.get(code)).filter(Boolean) as HoldingDTO[];
+    const rest = state.items.filter(h => !order.includes(h.stockCode));
+    return [...ordered, ...rest];
+  }, [state.items, order]);
+
+  /* 拖拉重新排序 */
+  const reorder = useCallback((newItems: HoldingDTO[]) => {
+    const newOrder = newItems.map(h => h.stockCode);
+    setOrder(newOrder);
+    reorderHoldings(newOrder).catch(() => { /* 靜默，排序已在本地生效 */ });
+  }, []);
+
   /* 新增/刪除交易後刷新庫存 */
   const refreshAfterTx = useCallback(async () => { await load(); }, [load]);
 
-  return { ...state, load, toggleExpand, ensureExpandData, refreshAfterTx };
+  return { ...state, items: sortedItems, load, toggleExpand, ensureExpandData, refreshAfterTx, reorder };
 }

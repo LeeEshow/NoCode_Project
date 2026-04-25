@@ -42,8 +42,12 @@ body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: visible;
 }
+
+/* thead 第一列首尾 th 補圓角，避免移除 overflow:hidden 後背景色外露 */
+.ft-panel .ft-table thead th:first-child { border-radius: var(--radius-md) 0 0 0; }
+.ft-panel .ft-table thead th:last-child  { border-radius: 0 var(--radius-md) 0 0; }
 
 /* ── Section Header ── */
 .ft-section-header {
@@ -95,28 +99,48 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Drag Handle ── */
+.drag-handle {
+  color: transparent;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color var(--trans-fast);
+}
+tr:hover .drag-handle { color: var(--dim); }
+
 /* ── Icon Button（操作欄） ── */
 .btn-icon {
   background: transparent;
   border: none;
   color: var(--dim);
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--radius-xs);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   padding: 0;
-  transition: color var(--trans-fast);
+  transition: color var(--trans-fast), background var(--trans-fast);
 }
-.btn-icon:hover { color: var(--text); }
+.btn-icon:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 .btn-icon.accent { color: var(--accent); }
-.btn-icon.accent:hover { background: var(--accent-bg); border-radius: var(--radius-xs); }
+.btn-icon.accent:hover { color: var(--accent); background: var(--accent-bg); }
 
 /* ── Data Table ── */
-.ft-table {
+.ft-table-scroll {
   width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.ft-table-scroll::-webkit-scrollbar       { height: 4px; }
+.ft-table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.ft-table {
+  min-width: 100%;
   border-collapse: collapse;
   font-size: var(--text-md);
   font-family: var(--font-sans);
@@ -160,14 +184,14 @@ body {
 
 /* ── Stock Code / Name ── */
 .stock-code {
-  font-family: var(--font-mono);
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-weight: 700;
   color: var(--text);
   font-size: var(--text-md);
 }
 .stock-name {
   font-size: var(--text-sm);
-  color: var(--label);
+  color: var(--muted);
   margin-top: 1px;
 }
 
@@ -182,7 +206,7 @@ body {
 
 /* ── 小數點後小字（DecNum helper 使用）── */
 .dec-small {
-  font-size: 0.86em;
+  font-size: 0.72em;
   color: inherit;
 }
 

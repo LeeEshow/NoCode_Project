@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Modal from '../../components/Modal';
 import { FormField, TextInput, NumberInput, SelectInput, RadioGroup, TextareaInput } from '../../components/FormInputs';
 import { useTransactionsViewModel, calcCostFromTransactions } from '../../../viewmodels/useTransactionsViewModel';
@@ -36,6 +36,12 @@ export default function AddTransactionModal({
 }: AddTransactionModalProps) {
   const vm = useTransactionsViewModel(stockCode);
   const [form, setForm] = useState<FormState>(defaultForm);
+
+  /* Modal 開啟時載入歷史交易，供均價預覽使用 */
+  useEffect(() => {
+    if (open) vm.load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function field<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm(f => ({ ...f, [k]: v }));
@@ -122,7 +128,7 @@ export default function AddTransactionModal({
             value={form.note}
             onChange={e => field('note', e.target.value)}
             placeholder="選填"
-            style={{ height: 150, resize: 'vertical' }}
+            style={{ resize: 'vertical' }}
           />
         </FormField>
 

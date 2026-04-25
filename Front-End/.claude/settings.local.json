@@ -15,7 +15,12 @@
       "Bash(curl -s -X POST http://localhost:3001/api/v1/snapshots -H 'Content-Type: application/json' -d '{ *)",
       "Bash(curl -s http://localhost:3001/api/v1/plan/config)",
       "Bash(curl -s -X PUT http://localhost:3001/api/v1/plan/config -H 'Content-Type: application/json' -d '{ *)",
-      "Bash(curl -s http://localhost:3001/api/v1/foreign-currencies)"
+      "Bash(curl -s http://localhost:3001/api/v1/foreign-currencies)",
+      "Read(//c/Users/eshow.lee/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/53e65fcf-1bda-4897-b391-d1cd40338bfe/addac6ea-e915-49ea-a3ef-35e088ce2c90/skills/ui-ux-pro-max/**)",
+      "Bash(python scripts/search.py \"dashboard fintech dark modal form edit\" --design-system -p \"TransactionEditModal\")",
+      "Bash(python \"C:\\\\Users\\\\eshow.lee\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\53e65fcf-1bda-4897-b391-d1cd40338bfe\\\\addac6ea-e915-49ea-a3ef-35e088ce2c90\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"dashboard fintech dark modal form edit\" --design-system -p \"TransactionEditModal\")",
+      "Bash(dir \"C:\\\\Users\\\\eshow.lee\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\53e65fcf-1bda-4897-b391-d1cd40338bfe\\\\addac6ea-e915-49ea-a3ef-35e088ce2c90\\\\skills\\\\ui-ux-pro-max\")",
+      "Bash(npm install *)"
     ]
   }
 }

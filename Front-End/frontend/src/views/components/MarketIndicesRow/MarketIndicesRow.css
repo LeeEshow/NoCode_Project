@@ -4,13 +4,10 @@
   flex-wrap: nowrap;
   gap: 6px;
   overflow-x: auto;
-  padding-bottom: 4px;
   margin-bottom: 16px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-width: none;
 }
-.mir-row::-webkit-scrollbar { height: 3px; }
-.mir-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.mir-row::-webkit-scrollbar { display: none; }
 
 /* ── 垂直分隔線 ── */
 .mir-divider {

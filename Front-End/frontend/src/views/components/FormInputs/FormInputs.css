@@ -60,7 +60,8 @@
 
 .fi-textarea {
   resize: vertical;
-  min-height: 72px;
+  min-height: 75px;
+  height: 75px;
 }
 
 /* ── RadioGroup ── */

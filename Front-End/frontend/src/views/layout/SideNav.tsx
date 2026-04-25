@@ -29,8 +29,8 @@ function NavItem({ to, icon, label, expanded }: NavItemProps) {
 function NavDivider({ expanded, label }: { expanded: boolean; label?: string }) {
   return (
     <div className="nav-divider">
+      <div className="nav-divider__line" />
       {expanded && label && <span className="nav-divider__label">{label}</span>}
-      {!label && <div className="nav-divider__line" />}
     </div>
   );
 }
@@ -78,10 +78,7 @@ export default function SideNav({ expanded, onToggle }: SideNavProps) {
 
       {/* 主要導覽 */}
       <div className="sidenav__body">
-        <NavDivider expanded={expanded} />
         <NavItem to="/"       icon={<Icon name="show_chart"  size={20} />} label="台股總覽" expanded={expanded} />
-
-        <NavDivider expanded={expanded} />
         <NavItem to="/assets" icon={<Icon name="account_balance_wallet" size={20} />} label="外幣資產" expanded={expanded} />
 
         <NavDivider expanded={expanded} label={expanded ? '資產規劃' : undefined} />

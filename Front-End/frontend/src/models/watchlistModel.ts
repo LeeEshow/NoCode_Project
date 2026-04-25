@@ -62,3 +62,7 @@ export async function updateWatchlistItem(
 export async function deleteWatchlistItem(id: string): Promise<void> {
   await api.delete(`/watchlist/${id}`);
 }
+
+export async function reorderWatchlist(order: string[]): Promise<void> {
+  await api.put('/watchlist/reorder', { order });
+}

@@ -3,7 +3,7 @@
    單一來源，所有頁面 / 元件皆 import 此檔，禁止在各頁面自行定義顏色 / 字體變數
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
 
@@ -19,7 +19,7 @@
   /* ── 文字色系 ────────────────────────────── */
   --text:        #C9D1D9;   /* 主文字（代碼、section title） */
   --text-value:  #D7DFE6;   /* 數值統一色（指數 / Table num-value 中間值） */
-  --muted:       #8B949E;   /* 次要文字（label、btn） */
+  --muted:       #646c76;   /* 次要文字（label、btn、Table 次要數值欄） */
   --dim:         #6B7681;   /* 輔助文字（nav icon、分隔線文字） */
   --label:       #7A8490;   /* 小標題（card-label、stock-name） */
 
@@ -43,8 +43,8 @@
   --thead-bd:    rgba(106,130,155,0.16);
 
   /* ── 字型 ────────────────────────────────── */
-  --font-sans:   'IBM Plex Sans', sans-serif;
-  --font-mono:   'IBM Plex Mono', monospace;
+  --font-sans:   'Open Sans', sans-serif;
+  --font-mono:   'Open Sans', sans-serif;
 
   /* ── 字級 ────────────────────────────────── */
   --text-2xs:    10px;   /* 極小標註（日期、session） */

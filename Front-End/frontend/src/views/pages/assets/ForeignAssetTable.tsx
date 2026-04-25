@@ -212,7 +212,7 @@ export default function ForeignAssetTable({
                       disabled={saving}
                       onClick={() => onEdit(item)}
                     >
-                      <Icon name="edit" size={16} />
+                      <Icon name="edit" size={21} />
                     </button>
                     <button
                       className="btn-icon"
@@ -220,7 +220,7 @@ export default function ForeignAssetTable({
                       disabled={saving}
                       onClick={() => onDelete(item.id)}
                     >
-                      <Icon name="delete" size={16} />
+                      <Icon name="delete" size={21} />
                     </button>
                   </div>
                 </td>

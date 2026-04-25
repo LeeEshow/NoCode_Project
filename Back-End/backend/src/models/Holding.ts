@@ -18,6 +18,7 @@ export class Holding {
   realizedProfit!: number;
   costMethod!: string;
   updatedAt!: string;
+  sortIndex!: number;
 
   // 即時資料由 Controller 注入，不存 Firestore
   stockName?: string;
@@ -29,7 +30,16 @@ export class Holding {
 
   static async findAll(): Promise<Holding[]> {
     const snap = await this.col.get();
-    return snap.docs.map(doc => Holding.fromSnapshot(doc));
+    const holdings = snap.docs.map(doc => Holding.fromSnapshot(doc));
+    return holdings.sort((a, b) => a.sortIndex - b.sortIndex);
+  }
+
+  static async reorder(order: string[]): Promise<void> {
+    const batch = db.batch();
+    order.forEach((stockId, index) => {
+      batch.update(this.col.doc(stockId), { sort_index: index });
+    });
+    await batch.commit();
   }
 
   static async findById(stockId: string): Promise<Holding | null> {
@@ -84,6 +94,7 @@ export class Holding {
     h.costMethod     = d['cost_method'] ?? 'preserve_method';
     const ua         = d['updated_at'];
     h.updatedAt      = ua instanceof Timestamp ? ua.toDate().toISOString() : new Date().toISOString();
+    h.sortIndex      = d['sort_index'] ?? 0;
     return h;
   }
 }
