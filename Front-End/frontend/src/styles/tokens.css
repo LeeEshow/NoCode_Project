@@ -10,15 +10,15 @@
   /* ── 背景層 ──────────────────────────────── */
   --bg:          #101010;   /* 最底層 body 背景 */
   --surface:     #0a0a0f;   /* Sidebar / TopBar 背景 */
-  --panel:       #25252b;   /* 卡片 / Table Panel 背景 */
+  --panel:       #212126;   /* 卡片 / Table Panel 背景 */
 
   /* ── 邊框 ────────────────────────────────── */
   --border:      #2d2d33df;   /* 一般邊框 */
   --border-hi:   #38383d;   /* hover / 強調邊框 */
 
   /* ── 文字色系 ────────────────────────────── */
-  --text:        #C9D1D9;   /* 主文字（代碼、section title） */
-  --text-value:  #D7DFE6;   /* 數值統一色（指數 / Table num-value 中間值） */
+  --text:        #c1c9d2;   /* 主文字（代碼、section title） */
+  --text-value:  #c1c9d2;   /* 數值統一色（指數 / Table num-value 中間值） */
   --muted:       #646c76;   /* 次要文字（label、btn、Table 次要數值欄） */
   --dim:         #6B7681;   /* 輔助文字（nav icon、分隔線文字） */
   --label:       #7A8490;   /* 小標題（card-label、stock-name） */

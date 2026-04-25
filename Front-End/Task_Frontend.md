@@ -39,6 +39,40 @@
 
 ---
 
+## Phase 8：使用者偏好設定（對應後端 F-02）
+
+> 後端完成 `GET/PUT /api/v1/preferences` 後實作；過渡期以 localStorage 暫存。
+
+### P8-01：建立偏好 Model
+
+- [ ] 新增 `src/types/index.ts` — `UserPreferences` 介面
+  ```ts
+  interface UserPreferences {
+    chart: {
+      showK: boolean; showMA5: boolean; showMA20: boolean;
+      showMA60: boolean; showVolume: boolean;
+    };
+  }
+  ```
+- [ ] 新增 `src/models/preferencesModel.ts`
+  - `fetchPreferences(): Promise<UserPreferences>`
+  - `updatePreferences(patch: Partial<UserPreferences>): Promise<UserPreferences>`
+
+### P8-02：建立偏好 ViewModel
+
+- [ ] 新增 `src/viewmodels/usePreferencesViewModel.ts`
+  - 初始載入時呼叫 `fetchPreferences()`
+  - `setPref(patch)` — 更新 local state，debounce 500ms 後呼叫 `updatePreferences()`
+  - 過渡期：後端未就緒時 fallback 至 localStorage（key: `user_preferences`）
+
+### P8-03：整合 KLineChart
+
+- [ ] `KLineChart.tsx` 的 5 個 toggle state（`visK/MA5/MA20/MA60/Vol`）改從 `usePreferencesViewModel` 讀取
+- [ ] 每次 toggle 時呼叫 `setPref({ chart: { ... } })`
+- [ ] `StockOverviewPage` 透過 props 傳入偏好，或在 KLineChart 內部直接 `usePreferencesViewModel()`
+
+---
+
 ## 跨頁共用待辦
 
 - [ ] 空白狀態（Empty State）：持股/關注清單/快照歷史為空時顯示引導文字

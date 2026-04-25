@@ -24,34 +24,34 @@
 
 ## 待辦
 
-### ~~F-01：庫存持股 & 關注清單排序持久化~~ ✅ 完成（2026-04-25）
+### F-02：使用者偏好設定持久化
 
-**背景：** 前端已實作拖拉排序，目前暫存於 localStorage。需後端記錄 `sortIndex` 以跨裝置同步。
+**背景：** 前端需記錄使用者的操作習慣（如圖表顯示元素、未來其他 UI 狀態），需後端以單份 document 儲存，支援跨裝置同步。
 
-#### Holding（庫存持股）
+#### 資料結構
 
-1. `src/models/Holding.ts`
-   - 新增欄位 `sortIndex: number`（預設 0）
+```ts
+interface UserPreferences {
+  chart: {
+    showK:      boolean;  // K線
+    showMA5:    boolean;  // MA5
+    showMA20:   boolean;  // MA20
+    showMA60:   boolean;  // MA60
+    showVolume: boolean;  // 成交量
+  };
+  // 保留擴充空間，未來可加入其他偏好欄位
+}
+```
 
-2. 新增路由 `PUT /api/v1/holdings/reorder`
-   - Request body：`{ order: string[] }` — stockCode 陣列，index 即新順序
-   - 批次更新各 Holding 的 `sortIndex`
+#### 實作項目
 
-3. `GET /api/v1/holdings` 回傳結果依 `sortIndex` 升冪排序
+1. 新增 Firestore collection `preferences`，文件 ID 固定為 `default`（單使用者）
 
----
+2. 新增路由 `GET /api/v1/preferences`
+   - 回傳當前偏好；若尚無資料，回傳預設值（所有欄位為 `true`）
 
-#### WatchlistItem（關注清單）
+3. 新增路由 `PUT /api/v1/preferences`
+   - Request body：`Partial<UserPreferences>`（支援部分更新，merge 合併）
+   - 回傳更新後的完整偏好物件
 
-1. `src/models/WatchlistItem.ts`（或對應 Firestore model）
-   - 新增欄位 `sortIndex: number`（預設 0）
-
-2. 新增路由 `PUT /api/v1/watchlist/reorder`
-   - Request body：`{ order: string[] }` — id 陣列，index 即新順序
-   - 批次更新各 WatchlistItem 的 `sortIndex`
-
-3. `GET /api/v1/watchlist` 回傳結果依 `sortIndex` 升冪排序
-
----
-
-> 前端 API 呼叫端點已預留，完成後移除 localStorage fallback 即可。
+> 前端過渡期以 localStorage 暫存，後端完成後替換為 API 呼叫。
