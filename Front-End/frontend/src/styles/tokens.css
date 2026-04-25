@@ -3,19 +3,18 @@
    單一來源，所有頁面 / 元件皆 import 此檔，禁止在各頁面自行定義顏色 / 字體變數
    ============================================================ */
 
-/* Google Fonts — 必須在 index.html <head> 或 App.tsx 內引入 */
-/* @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap'); */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
 :root {
 
   /* ── 背景層 ──────────────────────────────── */
-  --bg:          #090909;   /* 最底層 body 背景 */
-  --surface:     #0D0D0F;   /* Sidebar / TopBar 背景 */
-  --panel:       #1A1A1E;   /* 卡片 / Table Panel 背景 */
+  --bg:          #090303;   /* 最底層 body 背景 */
+  --surface:     #0b0b11;   /* Sidebar / TopBar 背景 */
+  --panel:       #25252b;   /* 卡片 / Table Panel 背景 */
 
   /* ── 邊框 ────────────────────────────────── */
-  --border:      #1E1E22;   /* 一般邊框 */
-  --border-hi:   #2A2A30;   /* hover / 強調邊框 */
+  --border:      #2d2d33df;   /* 一般邊框 */
+  --border-hi:   #38383d;   /* hover / 強調邊框 */
 
   /* ── 文字色系 ────────────────────────────── */
   --text:        #C9D1D9;   /* 主文字（代碼、section title） */

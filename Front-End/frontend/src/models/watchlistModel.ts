@@ -3,15 +3,16 @@ import type { ApiResponse, WatchlistItemDTO, CreateWatchlistPayload } from '../t
 
 /* 後端 Watchlist 回傳（含即時報價注入） */
 interface RawWatchlistItem {
-  stockId:       string;
-  targetPrice:   number;
-  note:          string;
-  createdAt:     string | Date;
-  updatedAt:     string | Date;
-  livePrice?:    number | null;
-  change?:       number | null;
+  stockId:        string;
+  stockName?:     string | null;
+  targetPrice:    number;
+  note:           string;
+  createdAt:      string | Date;
+  updatedAt:      string | Date;
+  livePrice?:     number | null;
+  change?:        number | null;
   changePercent?: number | null;
-  judgment?:     string | null;   // '買進' | '觀望'
+  judgment?:      string | null;
 }
 
 function toWatchlistItemDTO(raw: RawWatchlistItem): WatchlistItemDTO {
@@ -21,7 +22,7 @@ function toWatchlistItemDTO(raw: RawWatchlistItem): WatchlistItemDTO {
   return {
     id:           raw.stockId,
     stockCode:    raw.stockId,
-    stockName:    raw.stockId,   // 後端不含名稱
+    stockName:    raw.stockName ?? raw.stockId,
     targetPrice:  raw.targetPrice,
     currentPrice,
     change,

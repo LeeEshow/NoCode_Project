@@ -1,0 +1,47 @@
+/* ── 摘要卡片列 ── */
+.report-summary-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.report-summary-row::-webkit-scrollbar { height: 3px; }
+.report-summary-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.report-stat-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  flex: 1 1 160px;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color var(--trans-fast);
+}
+.report-stat-card:hover { border-color: var(--border-hi); }
+.report-stat-card--accent { border-color: var(--accent-bd); background: rgba(106,143,181,0.04); }
+
+.report-stat-card__label {
+  font-size: var(--text-sm);
+  color: var(--label);
+  letter-spacing: 0.04em;
+}
+
+.report-stat-card__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--text-value);
+  white-space: nowrap;
+}
+
+.report-stat-card__sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--dim);
+}

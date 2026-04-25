@@ -34,11 +34,6 @@
 }
 .mir-card:hover { border-color: var(--border-hi); }
 
-/* ── 台指期雙列卡（178px）── */
-.mir-card--futures {
-  flex: 0 0 178px;
-}
-
 /* ── 景氣燈號卡（120px） ── */
 .mir-card--cycle {
   flex: 0 0 120px;

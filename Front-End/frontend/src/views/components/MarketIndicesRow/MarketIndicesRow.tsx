@@ -70,22 +70,30 @@ function FmtChange({ idx }: { idx: MarketIndexDTO }) {
   );
 }
 
+/* 依台灣時間判斷盤中 / 夜盤（09:00–15:00 盤中，其餘夜盤）*/
+function getTaiwanSession(): 'day' | 'night' {
+  const taiwan = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const totalMin = taiwan.getHours() * 60 + taiwan.getMinutes();
+  return (totalMin >= 540 && totalMin < 900) ? 'day' : 'night';
+}
+
 /* ── 子元件 ── */
 
 function StandardCard({ idx }: { idx: MarketIndexDTO }) {
   const cls = changeClass(idx.isUp, idx.change);
+  const priceStr = idx.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (
     <div className="mir-card">
       <div className="mir-card-label">{idx.name}</div>
       <div className="mir-card-value">
-        <DecNum value={idx.price.toLocaleString()} />
+        <DecNum value={priceStr} />
       </div>
       <div className={`mir-card-change ${cls}`}><FmtChange idx={idx} /></div>
     </div>
   );
 }
 
-/* 台指期：雙列卡片（178px，同時顯示盤中與夜盤）*/
+/* 台指期：單一卡片（114px），依台灣時間顯示盤中或夜盤 */
 function FuturesCard({
   day,
   night,
@@ -95,26 +103,21 @@ function FuturesCard({
 }) {
   if (!day && !night) return null;
 
-  const renderRow = (idx: MarketIndexDTO, label: string) => {
-    const cls   = changeClass(idx.isUp, idx.change);
-    const arrow = changeArrow(idx.isUp, idx.change);
-    const sign  = idx.changePct > 0 ? '+' : '';
-    return (
-      <div className="mir-futures-row" key={label}>
-        <span className="mir-futures-session">{label}</span>
-        <div style={{ textAlign: 'right' }}>
-          <span className="mir-futures-val">{idx.price.toLocaleString()}</span>
-          <span className={`mir-futures-chg ${cls}`}>{arrow} {sign}{idx.changePct.toFixed(2)}%</span>
-        </div>
-      </div>
-    );
-  };
+  const session = getTaiwanSession();
+  const active  = session === 'day' ? day : (night ?? day);
+  const label   = session === 'day' ? '盤中' : '夜盤';
+  if (!active) return null;
 
+  const cls = changeClass(active.isUp, active.change);
   return (
-    <div className="mir-card mir-card--futures">
-      <div className="mir-card-label" style={{ marginBottom: 3 }}>台指期</div>
-      {day   && renderRow(day,   '盤中')}
-      {night && renderRow(night, '夜盤')}
+    <div className="mir-card">
+      <div className="mir-card-label">
+        台指期 <span className="mir-futures-session-tag">{label}</span>
+      </div>
+      <div className="mir-card-value">
+        {active.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </div>
+      <div className={`mir-card-change ${cls}`}><FmtChange idx={active} /></div>
     </div>
   );
 }

@@ -9,6 +9,7 @@
   position: sticky;
   top: 0;
   z-index: 50;
+  overflow: visible;
 }
 
 /* ── 左側彈性內容區 ── */
@@ -17,13 +18,13 @@
   display: flex;
   align-items: center;
   gap: 0;
-  overflow: hidden;
+  overflow: visible;
   min-width: 0;
 }
 
 /* ── 左右分隔線 ── */
 .panel-header__sep {
-  width: 1px;
+  width: 2px;
   height: 28px;
   background: var(--border);
   flex-shrink: 0;
@@ -67,12 +68,24 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 0 20px;
-  border-right: 1px solid var(--border);
+  padding: 0 28px;
   height: var(--topbar-h);
+  position: relative;
 }
 .ph-stat:first-child { padding-left: 0; }
-.ph-stat:last-child  { border-right: none; }
+
+/* 分隔線：28px 短線，垂直置中，與右側 panel-header__sep 同款 */
+.ph-stat::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 28px;
+  background: var(--border);
+}
+.ph-stat:last-child::after { display: none; }
 
 .ph-stat__label {
   font-size: var(--text-sm);
@@ -91,10 +104,29 @@
   white-space: nowrap;
 }
 
+/* FIX-12：百分比 tooltip，hover 主值時顯示 */
+.ph-stat__value { position: relative; }
+
 .ph-stat__sub {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  font-size: var(--text-xl);
+  font-weight: 600;
   color: inherit;
-  opacity: 0.75;
-  margin-left: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--trans-fast);
+  z-index: 60;
+}
+
+.ph-stat__value:hover .ph-stat__sub {
+  opacity: 1;
 }

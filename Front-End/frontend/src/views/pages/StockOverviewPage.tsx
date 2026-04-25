@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -18,6 +18,8 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
 
 import PanelHeader from '../components/PanelHeader';
 import MarketIndicesRow from '../components/MarketIndicesRow';
+import { usePlanStore } from '../../stores/planStore';
+import { useEnsurePlanStore } from '../../viewmodels/useEnsurePlanStore';
 import LoadingPanel from '../components/LoadingPanel';
 import { useMarketViewModel }   from '../../viewmodels/useMarketViewModel';
 import { useHoldingsViewModel } from '../../viewmodels/useHoldingsViewModel';
@@ -41,16 +43,11 @@ function cls(n: number)  { return n > 0 ? 'txt-up' : n < 0 ? 'txt-down' : 'txt-f
 
 function pad2(n: number) { return String(n).padStart(2, '0'); }
 
-const WEEKDAYS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-
-/* 即時時鐘 hook */
-function useClock() {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return now;
+function formatLastUpdated(d: Date | null) {
+  if (!d) return { date: '—', time: '—' };
+  const date = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  return { date, time };
 }
 
 /* DecNum：小數點後小一號字體 */
@@ -98,16 +95,16 @@ export default function StockOverviewPage() {
     if (watchlist.error) toast.error(watchlist.error);
   };
 
-  /* 即時時鐘 */
-  const now = useClock();
-  const dateStr    = `${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`;
-  const weekdayStr = WEEKDAYS[now.getDay()];
+  const { date: dateStr, time: timeStr } = formatLastUpdated(market.lastUpdated);
 
-  /* PanelHeader 財務數值（* 1000 換算張→股）*/
-  const totalCurrentValue  = holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 1000 * 0.997, 0);
-  const totalDailyAmt      = holdings.items.reduce((s, h) => s + h.change * h.shares * 1000, 0);
-  const prevValue          = totalCurrentValue - totalDailyAmt;
-  const dailyGrowthRate    = prevValue !== 0 ? (totalDailyAmt / prevValue) * 100 : 0;
+  /* PanelHeader 財務數值 */
+  const totalCurrentValue    = holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 0.997, 0);
+  const totalDailyAmt        = holdings.items.reduce((s, h) => s + h.change * h.shares, 0);
+  const totalUnrealizedProfit = holdings.items.reduce((s, h) => s + h.unrealizedProfit, 0);
+  const prevValue            = totalCurrentValue - totalDailyAmt;
+  const dailyGrowthRate      = prevValue !== 0 ? (totalDailyAmt / prevValue) * 100 : 0;
+  useEnsurePlanStore();
+  const { currentYearReturnPct, currentYearReturnValue } = usePlanStore();
 
   return (
     <div style={{ minWidth: 0 }}>
@@ -115,40 +112,61 @@ export default function StockOverviewPage() {
       {/* 頂部橫幅 PanelHeader */}
       <PanelHeader>
         {/* 今日日期 */}
-        <div className="ph-stat" style={{ minWidth: 128 }}>
-          <span className="ph-stat__label" style={{ fontSize: 'var(--text-2xs)', color: 'var(--dim)' }}>今日</span>
-          <span className="ph-stat__value" style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', fontWeight: 400 }}>
-            {dateStr}&nbsp;{weekdayStr}
+        <div className="ph-stat" style={{ minWidth: 100 }}>
+          <span className="ph-stat__value" style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', fontWeight: 400, display: 'flex', flexDirection: 'column', lineHeight: 1.6 }}>
+            <span>{dateStr}</span>
+            <span>{timeStr}</span>
           </span>
         </div>
 
-        {/* 當天成長率：金額整數 + 百分比2位小數，正紅負綠零深色 */}
+        {/* 當天成長率：主值為百分比，tooltip 顯示金額 */}
         <div className="ph-stat">
           <span className="ph-stat__label">當天成長率</span>
           <span className="ph-stat__value" style={{
             color: totalDailyAmt > 0 ? 'var(--up)' : totalDailyAmt < 0 ? 'var(--down)' : 'var(--text)',
           }}>
-            {totalDailyAmt > 0 ? '+' : ''}{fmt(totalDailyAmt)}
+            {totalDailyAmt > 0 ? '+' : ''}{fmt(dailyGrowthRate, 2)}%
             <span className="ph-stat__sub">
-              &nbsp;{totalDailyAmt > 0 ? '+' : ''}{fmt(dailyGrowthRate, 2)}%
+              {totalDailyAmt > 0 ? '+' : ''}{fmt(totalDailyAmt)}
             </span>
           </span>
         </div>
 
-        {/* 未實現損益 = Σ(即時報價 × 持有張數 × 1000) */}
+        {/* 股票現值（hover tooltip 顯示未實現損益） */}
         <div className="ph-stat">
-          <span className="ph-stat__label">未實現損益</span>
+          <span className="ph-stat__label">股票現值</span>
           <span className="ph-stat__value" style={{
             color: totalCurrentValue > 0 ? 'var(--up)' : totalCurrentValue < 0 ? 'var(--down)' : 'var(--text)',
           }}>
             {fmt(totalCurrentValue)}
+            <span className="ph-stat__sub" style={{
+              color: totalUnrealizedProfit >= 0 ? 'var(--up)' : 'var(--down)',
+            }}>
+              {totalUnrealizedProfit >= 0 ? '+' : ''}{fmt(totalUnrealizedProfit)}
+            </span>
           </span>
         </div>
 
-        {/* 整年報酬率（來源待補）*/}
+        {/* 整年報酬率 — 連動投報計畫當年度 */}
         <div className="ph-stat">
           <span className="ph-stat__label">整年報酬率</span>
-          <span className="ph-stat__value" style={{ color: 'var(--dim)', fontWeight: 400 }}>—</span>
+          <span className="ph-stat__value" style={{
+            color: currentYearReturnPct == null ? 'var(--dim)'
+              : currentYearReturnPct >= 0 ? 'var(--up)' : 'var(--down)',
+            fontWeight: currentYearReturnPct == null ? 400 : 600,
+          }}>
+            {currentYearReturnPct == null
+              ? '—'
+              : `${currentYearReturnPct >= 0 ? '+' : ''}${(currentYearReturnPct * 100).toFixed(2)}%`
+            }
+            {currentYearReturnValue != null && (
+              <span className="ph-stat__sub" style={{
+                color: currentYearReturnValue >= 0 ? 'var(--up)' : 'var(--down)',
+              }}>
+                {currentYearReturnValue >= 0 ? '+' : ''}{fmt(currentYearReturnValue)}
+              </span>
+            )}
+          </span>
         </div>
       </PanelHeader>
 
@@ -173,8 +191,8 @@ export default function StockOverviewPage() {
             <span className="ft-section-title">庫存持股</span>
             <div style={{ display: 'flex', gap: 6 }}>
               {/* FIX-05：新增持股入口 */}
-              <button className="btn-ghost" onClick={() => setAddHoldingOpen(true)}>＋ 新增持股</button>
-              <button className="btn-ghost" onClick={holdings.load}>重新整理</button>
+              <button className="btn-ghost" onClick={() => { holdings.load(); market.reload(); watchlist.load(); }}>重新整理</button>
+              <button className="btn-ghost" onClick={() => setAddHoldingOpen(true)}>＋ 新增</button>
             </div>
           </div>
 
@@ -226,6 +244,7 @@ export default function StockOverviewPage() {
                 )}
                 <WatchlistTable
                   items={watchlist.items}
+                  sparklines={watchlist.sparklines}
                   onEdit={item => { setWlEditItem(item); setWlModalOpen(true); }}
                   onDelete={handleWlDelete}
                   deleting={watchlist.saving}

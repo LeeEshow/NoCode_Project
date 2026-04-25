@@ -1,0 +1,144 @@
+/* ── 外幣表格行內輸入 ── */
+.assets-inline-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-value);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 500;
+  padding: 2px 4px;
+  width: 100%;
+  max-width: 120px;
+  transition: border-color var(--trans-fast);
+  outline: none;
+}
+.assets-inline-input:hover,
+.assets-inline-input:focus {
+  border-color: var(--border-hi);
+}
+.assets-inline-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── 匯率雙列 ── */
+.assets-rate-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.assets-rate-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.assets-rate-row input[type="radio"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.assets-rate-label {
+  font-size: var(--text-sm);
+  color: var(--dim);
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.assets-rate-row.active .assets-rate-label {
+  color: var(--muted);
+}
+
+.assets-rate-value {
+  font-size: var(--text-sm);
+  color: var(--text-value);
+}
+
+.assets-rate-input {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-value);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: 1px 4px;
+  width: 80px;
+  outline: none;
+  transition: border-color var(--trans-fast);
+}
+.assets-rate-input:focus { border-color: var(--accent); }
+.assets-rate-input:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── 類型徽章 ── */
+.fa-type-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--badge-color, var(--accent));
+  border: 1px solid var(--badge-color, var(--accent));
+  white-space: nowrap;
+}
+
+/* ── 類型選擇 Radio（Modal） ── */
+.fa-type-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  transition: border-color var(--trans-fast), color var(--trans-fast);
+  user-select: none;
+}
+.fa-type-radio input[type="radio"] { display: none; }
+.fa-type-radio.active {
+  border-color: var(--accent-bd);
+  color: var(--accent);
+}
+.fa-type-radio:hover { border-color: var(--border-hi); color: var(--text-body); }
+
+/* ── dim 文字 ── */
+.fa-dim { color: var(--dim); }
+
+/* ── 合計列 ── */
+.assets-total-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--thead-bg);
+}
+
+.assets-total-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assets-total-label {
+  font-size: var(--text-sm);
+  color: var(--dim);
+}
+
+.assets-total-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-value);
+}

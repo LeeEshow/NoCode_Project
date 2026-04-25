@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -la \"D:\\\\\\\\Project\\\\\\\\NoCode_Project\\\\\\\\Front-End\\\\\\\\\")"
+      "Bash(ls -la \"D:\\\\\\\\Project\\\\\\\\NoCode_Project\\\\\\\\Front-End\\\\\\\\\")",
+      "Bash(npx tsc *)",
+      "Bash(xargs grep *)",
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(npm run *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__browser_batch",
+      "mcp__Claude_in_Chrome__computer",
+      "Bash(curl -s http://localhost:3001/api/v1/snapshots)",
+      "Bash(curl -s -X POST http://localhost:3001/api/v1/snapshots -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(curl -s http://localhost:3001/api/v1/plan/config)",
+      "Bash(curl -s -X PUT http://localhost:3001/api/v1/plan/config -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(curl -s http://localhost:3001/api/v1/foreign-currencies)"
     ]
   }
 }

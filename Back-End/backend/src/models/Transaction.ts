@@ -26,10 +26,11 @@ export class Transaction {
 
   static async findAll(stockId?: string): Promise<Transaction[]> {
     const baseQuery = stockId
-      ? this.col.where('stock_id', '==', stockId).orderBy('date', 'asc')
-      : this.col.orderBy('date', 'asc');
+      ? this.col.where('stock_id', '==', stockId)
+      : this.col;
     const snap = await baseQuery.get();
-    return snap.docs.map(doc => Transaction.fromSnapshot(doc));
+    const items = snap.docs.map(doc => Transaction.fromSnapshot(doc));
+    return items.sort((a, b) => a.date.localeCompare(b.date));
   }
 
   static async findById(id: string): Promise<Transaction | null> {

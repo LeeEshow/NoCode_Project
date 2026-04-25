@@ -14,6 +14,7 @@ export const getAll = async (_req: Request, res: Response, next: NextFunction) =
         if (h.sharesHeld <= 0) return h;
         try {
           const quote = await Stock.getQuote(h.stockId);
+          h.stockName      = quote.name;
           h.currentPrice   = quote.price;
           h.change         = quote.change;
           h.changePercent  = quote.changePercent;
@@ -36,6 +37,7 @@ export const getById = async (req: Request, res: Response, next: NextFunction) =
     if (h.sharesHeld > 0) {
       try {
         const quote     = await Stock.getQuote(h.stockId);
+        h.stockName     = quote.name;
         h.currentPrice  = quote.price;
         h.change        = quote.change;
         h.changePercent = quote.changePercent;

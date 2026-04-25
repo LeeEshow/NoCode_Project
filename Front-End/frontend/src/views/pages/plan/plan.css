@@ -1,0 +1,299 @@
+/* ── 參數卡片列（同 mir-row 風格）── */
+.plan-param-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.plan-param-row::-webkit-scrollbar { height: 3px; }
+.plan-param-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── 參數卡片 ── */
+.plan-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 10px 14px;
+  flex: 0 0 auto;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color var(--trans-fast);
+}
+.plan-card:hover { border-color: var(--border-hi); }
+
+.plan-card__label {
+  font-size: var(--text-sm);
+  color: var(--label);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.plan-card__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  color: var(--text-value);
+}
+
+.plan-card__sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--dim);
+}
+
+/* inline 數字輸入（卡片內） */
+.plan-card-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-hi);
+  color: var(--text-value);
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  width: 100%;
+  outline: none;
+  padding: 0 0 2px;
+  transition: border-color var(--trans-fast);
+}
+.plan-card-input:focus { border-color: var(--accent); }
+
+/* 滑桿 */
+.plan-slider {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 2px 0;
+}
+
+/* 三段切換按鈕（通膨情境） */
+.plan-toggle-group {
+  display: flex;
+  gap: 3px;
+}
+
+.plan-toggle-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-xs);
+  padding: 3px 0;
+  cursor: pointer;
+  transition: border-color var(--trans-fast), color var(--trans-fast), background var(--trans-fast);
+  font-family: var(--font-sans);
+}
+.plan-toggle-btn.active {
+  border-color: var(--accent-bd);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.plan-toggle-btn:hover:not(.active) { border-color: var(--border-hi); color: var(--text); }
+
+/* k_risk 下拉 */
+.plan-select {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-hi);
+  color: var(--text-value);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  width: 100%;
+  outline: none;
+  cursor: pointer;
+  padding: 0 0 2px;
+}
+.plan-select option { background: var(--panel); color: var(--text); }
+
+/* 年份切換 */
+.plan-year-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plan-year-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: var(--radius-xs);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color var(--trans-fast), color var(--trans-fast);
+}
+.plan-year-btn:hover { border-color: var(--accent-bd); color: var(--accent); }
+
+/* ── Tab 列 ── */
+.plan-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plan-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--dim);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  padding: 8px 16px;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color var(--trans-fast), border-color var(--trans-fast);
+}
+.plan-tab:hover { color: var(--muted); }
+.plan-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.plan-tab:disabled { color: var(--dim); cursor: not-allowed; opacity: 0.5; }
+
+/* ── 統一試算 Table ── */
+.plan-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.plan-table-wrap::-webkit-scrollbar { height: 4px; }
+.plan-table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.plan-table {
+  width: auto;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+/* 雙層表頭：群組列 */
+.plan-table .plan-th-group {
+  padding: 5px 14px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--thead-text);
+  background: var(--thead-bg);
+  text-align: center;
+  border-bottom: 1px solid var(--thead-bd);
+}
+.plan-table .plan-th-group.exec {
+  background: rgba(106, 143, 181, 0.06);
+  border-left: 2px solid var(--accent-bd);
+}
+
+/* 欄位標題列 */
+.plan-table thead th {
+  padding: 5px 12px;
+  text-align: right;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--thead-text);
+  background: var(--thead-bg);
+  border-bottom: 1px solid var(--thead-bd);
+  letter-spacing: 0.03em;
+  user-select: none;
+}
+.plan-table thead th:first-child { text-align: center; }
+.plan-table thead th.exec-col { background: rgba(106, 143, 181, 0.06); }
+.plan-table thead th.exec-first { border-left: 2px solid var(--accent-bd); }
+
+/* 資料列 */
+.plan-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.plan-table tbody tr:last-child { border-bottom: none; }
+.plan-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+.plan-table tbody td {
+  padding: 6px 12px;
+  text-align: right;
+  color: var(--muted);
+  font-size: var(--text-md);
+}
+.plan-table tbody td:first-child { text-align: center; font-family: var(--font-mono); color: var(--dim); }
+.plan-table tbody td.exec-col { background: rgba(106, 143, 181, 0.03); }
+.plan-table tbody td.exec-first { border-left: 2px solid var(--accent-bd); }
+
+/* 里程碑高亮 */
+.plan-table tbody tr.milestone {
+  background: rgba(106, 143, 181, 0.06);
+}
+.plan-table tbody tr.milestone td:first-child { color: var(--accent); font-weight: 700; }
+
+/* 當年度列 */
+.plan-table tbody tr.current-year {
+  background: rgba(124, 168, 141, 0.05);
+}
+
+/* 未來空值 */
+.plan-table tbody td.future-cell { color: var(--dim); opacity: 0.35; }
+
+/* 數值欄 */
+.plan-table .pv { font-family: var(--font-mono); color: var(--text-value); font-weight: 500; }
+.plan-table .pv-dim { font-family: var(--font-mono); color: var(--dim); font-size: var(--text-sm); }
+
+/* 報酬率雙行 */
+.plan-return-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.plan-return-abs  { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 600; }
+.plan-return-pct  { font-family: var(--font-mono); font-size: var(--text-sm); }
+
+/* inline 再投入輸入 */
+.plan-reinvest-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-hi);
+  color: var(--text-value);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 500;
+  text-align: right;
+  width: 90px;
+  outline: none;
+  padding: 0 0 1px;
+}
+.plan-reinvest-input:focus { border-color: var(--accent); }
+
+/* 計畫側 toggle 按鈕 */
+.plan-toggle-icon-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  transition: color var(--trans-fast);
+}
+.plan-toggle-icon-btn:hover { color: var(--accent); }
+
+/* 計畫投入 inline 輸入 */
+.plan-invest-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  color: var(--text-value);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 500;
+  text-align: right;
+  width: 90px;
+  outline: none;
+  padding: 0 0 1px;
+}
+.plan-invest-input:focus { border-color: var(--accent-bd); border-style: solid; }
+.plan-invest-input:disabled { opacity: 0.4; cursor: not-allowed; border: none; }

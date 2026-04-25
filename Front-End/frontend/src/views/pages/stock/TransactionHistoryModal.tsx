@@ -50,7 +50,12 @@ function InlineEditRow({
       <td><input value={price}  onChange={e => setPrice(e.target.value)}  type="number" min="0" style={inputStyle} /></td>
       <td><input value={fee}    onChange={e => setFee(e.target.value)}    type="number" min="0" style={inputStyle} /></td>
       <td colSpan={2}>
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="備註" style={inputStyle} />
+        <textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="備註"
+          style={{ ...inputStyle, height: 150, resize: 'vertical' }}
+        />
       </td>
       <td>
         <div style={{ display: 'flex', gap: 4 }}>

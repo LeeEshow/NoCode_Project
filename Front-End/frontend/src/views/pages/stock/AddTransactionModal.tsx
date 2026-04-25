@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Modal from '../../components/Modal';
-import { FormField, TextInput, NumberInput, SelectInput, RadioGroup } from '../../components/FormInputs';
+import { FormField, TextInput, NumberInput, SelectInput, RadioGroup, TextareaInput } from '../../components/FormInputs';
 import { useTransactionsViewModel, calcCostFromTransactions } from '../../../viewmodels/useTransactionsViewModel';
 import { toast } from '../../components/Toast/toastStore';
 import type { TransactionType } from '../../../types';
@@ -10,17 +10,16 @@ function fmt(n: number, d = 2) {
 }
 
 interface FormState {
-  type:   TransactionType;
-  shares: string;
-  price:  string;
-  fee:    string;
-  date:   string;
-  note:   string;
+  type:        TransactionType;
+  shares:      string;
+  totalAmount: string;
+  date:        string;
+  note:        string;
 }
 
 function defaultForm(): FormState {
   return {
-    type: 'buy', shares: '', price: '', fee: '20', date: new Date().toISOString().slice(0, 10), note: '',
+    type: 'buy', shares: '', totalAmount: '', date: new Date().toISOString().slice(0, 10), note: '',
   };
 }
 
@@ -42,20 +41,18 @@ export default function AddTransactionModal({
     setForm(f => ({ ...f, [k]: v }));
   }
 
-  /* 即時估算 */
-  const shares = Number(form.shares) || 0;
-  const price  = Number(form.price)  || 0;
-  const fee    = Number(form.fee)    || 0;
-  const estAmount = shares * price + (form.type === 'buy' ? fee : -fee);
+  const shares      = Number(form.shares)      || 0;
+  const totalAmount = Number(form.totalAmount) || 0;
+  const pricePerShare = shares > 0 ? totalAmount / shares : 0;
 
   /* 提交後計算新成本並寫回 */
   const handleSubmit = async () => {
-    if (!shares || !price || !form.date) {
-      toast.error('請填寫必填欄位（股數、成交價、日期）');
+    if (!shares || !totalAmount || !form.date) {
+      toast.error('請填寫必填欄位（股數、交易金額、日期）');
       return;
     }
     await vm.addTx(
-      { stockCode, stockName, type: form.type, shares, price, fee, date: form.date, note: form.note || undefined },
+      { stockCode, stockName, type: form.type, shares, price: pricePerShare, fee: 0, date: form.date, note: form.note || undefined },
       () => {
         toast.success('交易已新增，持倉成本已更新');
         setForm(defaultForm());
@@ -66,12 +63,11 @@ export default function AddTransactionModal({
     if (vm.error) toast.error(vm.error);
   };
 
-  /* 即時預覽新均價（用已載入的 tx list + 本次） */
+  /* 即時預覽新均價 */
   const previewCost = (() => {
-    if (!shares || !price) return null;
-    const fakeTx = { id: '__preview', stockCode, stockName, type: form.type, shares, price, fee, date: form.date, note: form.note };
-    const calc = calcCostFromTransactions([...vm.items, fakeTx]);
-    return calc;
+    if (!shares || !totalAmount) return null;
+    const fakeTx = { id: '__preview', stockCode, stockName, type: form.type, shares, price: pricePerShare, fee: 0, date: form.date, note: form.note };
+    return calcCostFromTransactions([...vm.items, fakeTx]);
   })();
 
   return (
@@ -104,38 +100,34 @@ export default function AddTransactionModal({
           />
         </FormField>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <FormField label="交易日期" required>
-            <TextInput
-              type="date"
-              value={form.date}
-              onChange={e => field('date', e.target.value)}
-            />
-          </FormField>
-          <FormField label="手續費（元）">
-            <NumberInput value={form.fee} onChange={v => field('fee', v)} min={0} />
-          </FormField>
-        </div>
+        <FormField label="交易日期" required>
+          <TextInput
+            type="date"
+            value={form.date}
+            onChange={e => field('date', e.target.value)}
+          />
+        </FormField>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <FormField label="股數" required>
-            <NumberInput value={form.shares} onChange={v => field('shares', v)} min={1} step={1} placeholder="0" />
+          <FormField label="交易總金額（含手續費）" required>
+            <NumberInput value={form.totalAmount} onChange={v => field('totalAmount', v)} min={0} step={1} placeholder="0" />
           </FormField>
-          <FormField label="成交價（元）" required>
-            <NumberInput value={form.price} onChange={v => field('price', v)} min={0} step={0.01} placeholder="0.00" />
+          <FormField label="股數（股）" required>
+            <NumberInput value={form.shares} onChange={v => field('shares', v)} min={1} step={1} placeholder="0" />
           </FormField>
         </div>
 
         <FormField label="備註">
-          <TextInput
+          <TextareaInput
             value={form.note}
             onChange={e => field('note', e.target.value)}
             placeholder="選填"
+            style={{ height: 150, resize: 'vertical' }}
           />
         </FormField>
 
         {/* 即時試算摘要 */}
-        {shares > 0 && price > 0 && (
+        {shares > 0 && totalAmount > 0 && (
           <div style={{
             padding: '10px 12px',
             background: 'var(--bg)',
@@ -144,10 +136,8 @@ export default function AddTransactionModal({
             fontSize: 'var(--text-sm)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ color: 'var(--dim)' }}>本次{form.type === 'buy' ? '買入' : '賣出'}金額</span>
-              <span className="mono" style={{ color: 'var(--text-value)' }}>
-                {form.type === 'buy' ? '+' : '−'}{fmt(Math.abs(estAmount))}
-              </span>
+              <span style={{ color: 'var(--dim)' }}>每股成本（元）</span>
+              <span className="mono" style={{ color: 'var(--text-value)' }}>{fmt(pricePerShare)}</span>
             </div>
             {previewCost && (
               <>

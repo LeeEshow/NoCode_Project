@@ -30,7 +30,23 @@ const COL = 'daily_snapshots';
 // ── Model ───────────────────────────────────────────────────────────────────
 
 export class DailySnapshot {
-  /** 依日期範圍查詢，降序排列 */
+  /**
+   * 取得所有快照（依日期降序）
+   * 傳入 year 時限縮至該年度（YYYY-01-01 ~ YYYY-12-31）
+   */
+  static async findAll(year?: number): Promise<DailySnapshotDoc[]> {
+    const from = year ? `${year}-01-01` : '2000-01-01';
+    const to   = year ? `${year}-12-31` : '9999-12-31';
+    const snap = await db
+      .collection(COL)
+      .where('date', '>=', from)
+      .where('date', '<=', to)
+      .orderBy('date', 'desc')
+      .get();
+    return snap.docs.map(d => deserialize(d));
+  }
+
+  /** 依日期範圍查詢，降序排列（保留供舊端點使用） */
   static async findByRange(from: string, to: string): Promise<DailySnapshotDoc[]> {
     const snap = await db
       .collection(COL)

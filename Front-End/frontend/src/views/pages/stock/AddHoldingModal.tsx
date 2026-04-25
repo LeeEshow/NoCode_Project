@@ -10,20 +10,20 @@ import { toast } from '../../components/Toast/toastStore';
 import type { StockSearchResultDTO } from '../../../types';
 
 interface FormState {
-  stockCode: string;
-  stockName: string;
-  price:     string;
-  shares:    string;
-  date:      string;
+  stockCode:   string;
+  stockName:   string;
+  totalAmount: string;
+  shares:      string;
+  date:        string;
 }
 
 function defaultForm(): FormState {
   return {
-    stockCode: '',
-    stockName: '',
-    price:     '',
-    shares:    '',
-    date:      new Date().toISOString().slice(0, 10),
+    stockCode:   '',
+    stockName:   '',
+    totalAmount: '',
+    shares:      '',
+    date:        new Date().toISOString().slice(0, 10),
   };
 }
 
@@ -70,7 +70,7 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
 
   const valid =
     form.stockCode.trim() &&
-    Number(form.price) > 0 &&
+    Number(form.totalAmount) > 0 &&
     Number(form.shares) > 0 &&
     !!form.date;
 
@@ -80,12 +80,15 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
     try {
       const stockCode = form.stockCode.trim();
       const stockName = form.stockName.trim() || stockCode;
+      const shares      = Number(form.shares);
+      const totalAmount = Number(form.totalAmount);
+      const pricePerShare = totalAmount / shares;
       await createTransaction({
         stockCode,
         stockName,
         type:   'buy',
-        shares: Number(form.shares),
-        price:  Number(form.price),
+        shares,
+        price:  pricePerShare,
         fee:    0,
         date:   form.date,
       });
@@ -172,13 +175,13 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
         </FormField>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <FormField label="買入均價（元）" required>
+          <FormField label="購入總金額（含手續費）" required>
             <NumberInput
-              value={form.price}
-              onChange={v => field('price', v)}
+              value={form.totalAmount}
+              onChange={v => field('totalAmount', v)}
               min={0}
-              step={0.01}
-              placeholder="0.00"
+              step={1}
+              placeholder="0"
             />
           </FormField>
           <FormField label="股數（股）" required>
@@ -192,7 +195,7 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
           </FormField>
         </div>
 
-        {Number(form.shares) > 0 && Number(form.price) > 0 && (
+        {Number(form.shares) > 0 && Number(form.totalAmount) > 0 && (
           <div style={{
             padding: '9px 12px',
             background: 'var(--bg)',
@@ -201,9 +204,9 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
             fontSize: 'var(--text-sm)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--dim)' }}>買入總金額（不含手續費）</span>
+              <span style={{ color: 'var(--dim)' }}>每股成本（元）</span>
               <span className="mono" style={{ color: 'var(--text-value)' }}>
-                {(Number(form.shares) * Number(form.price)).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}
+                {(Number(form.totalAmount) / Number(form.shares)).toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           </div>

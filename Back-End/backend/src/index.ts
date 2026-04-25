@@ -10,6 +10,7 @@ import stocksRouter            from './routes/stocks';
 import settingsRouter          from './routes/settings';
 import foreignCurrenciesRouter from './routes/foreignCurrencies';
 import bondsRouter             from './routes/bonds';
+import foreignAssetsRouter     from './routes/foreignAssets';
 import snapshotsRouter         from './routes/snapshots';
 import watchlistRouter         from './routes/watchlist';
 
@@ -28,6 +29,7 @@ app.use(`${api}/stocks`,              stocksRouter);
 app.use(`${api}/settings`,            settingsRouter);
 app.use(`${api}/foreign-currencies`,  foreignCurrenciesRouter);
 app.use(`${api}/bonds`,               bondsRouter);
+app.use(`${api}/foreign-assets`,      foreignAssetsRouter);
 app.use(`${api}/snapshots`,           snapshotsRouter);
 app.use(`${api}/watchlist`,           watchlistRouter);
 

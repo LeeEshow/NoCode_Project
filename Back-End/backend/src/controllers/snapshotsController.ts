@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { DailySnapshot } from '../models/DailySnapshot';
+import { DailySnapshot, DailySnapshotInput } from '../models/DailySnapshot';
 import { Holding } from '../models/Holding';
 import { Stock } from '../models/Stock';
 import { ForeignCurrency } from '../models/ForeignCurrency';
@@ -101,8 +101,71 @@ export const record = async (
 };
 
 /**
+ * GET /api/v1/snapshots
+ * 取得所有快照（依日期降序）；支援 ?year=2025 篩選
+ */
+export const getAll = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const yearParam = req.query['year'];
+    const year = yearParam ? parseInt(String(yearParam), 10) : undefined;
+    if (yearParam && (isNaN(year!) || year! < 2000 || year! > 2100)) {
+      throw new AppError(400, 'year 參數格式錯誤（例：?year=2025）');
+    }
+    const data = await DailySnapshot.findAll(year);
+    res.json(ApiResponse.success(data));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/v1/snapshots
+ * 新增快照（前端計算完畢後送入，date 為文件 ID，重複則覆蓋）
+ */
+export const create = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const body = req.body as Partial<DailySnapshotInput>;
+
+    if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
+      throw new AppError(400, 'date 為必填欄位，格式 YYYY-MM-DD');
+    }
+    const required: (keyof DailySnapshotInput)[] = [
+      'totalInvested', 'stockValue', 'cashBalance',
+      'forexValue', 'unrealizedProfit', 'realizedProfit', 'returnRate',
+    ];
+    for (const key of required) {
+      if (body[key] == null) throw new AppError(400, `缺少必填欄位：${String(key)}`);
+    }
+
+    const data = await DailySnapshot.record({
+      date:             body.date,
+      totalInvested:    Number(body.totalInvested),
+      stockValue:       Number(body.stockValue),
+      cashBalance:      Number(body.cashBalance),
+      forexValue:       Number(body.forexValue),
+      unrealizedProfit: Number(body.unrealizedProfit),
+      realizedProfit:   Number(body.realizedProfit),
+      totalReturn:      Number(body.totalReturn ?? 0),
+      returnRate:       Number(body.returnRate),
+      note:             String(body.note ?? ''),
+    });
+    res.status(201).json(ApiResponse.success(data));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * GET /api/v1/snapshots?from=YYYY-MM-DD&to=YYYY-MM-DD
- * 依日期範圍查詢（降序）
+ * @deprecated 請改用 GET /api/v1/snapshots?year=
  */
 export const getByRange = async (
   req: Request,

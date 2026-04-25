@@ -4,6 +4,7 @@ import type { ApiResponse, HoldingDTO, KLineDTO, StockProfileDTO, StockSearchRes
 /* ── 後端原始型別 ── */
 interface RawHolding {
   stockId:        string;
+  stockName?:     string;
   sharesHeld:     number;
   avgCost:        number;
   totalCost:      number;
@@ -56,7 +57,7 @@ function toHoldingDTO(raw: RawHolding): HoldingDTO {
 
   return {
     stockCode:       raw.stockId,
-    stockName:       raw.stockId,   // 後端 holdings 不含名稱，以代號顯示
+    stockName:       raw.stockName ?? raw.stockId,
     shares,
     costAvg,
     totalCost,

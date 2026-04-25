@@ -158,13 +158,53 @@ export interface CreateWatchlistPayload {
   note?:       string;
 }
 
-/* ── 外幣 ──────────────────────────────────────────────────── */
+/* ── 外幣資產（統一） ───────────────────────────────────────── */
+
+export type ForeignAssetType = '活存' | '定存' | '債券';
+
+export interface ForeignAssetDTO {
+  id:            string;
+  type:          ForeignAssetType;
+  name:          string;
+  currency:      string;
+  amount:        number;
+  interestRate:  number;
+  maturityDate:  string | null;
+  useManualRate: boolean;
+  manualRate:    number;
+  liveRate:      number | null;
+  updatedAt:     string;
+}
+
+export interface CreateForeignAssetPayload {
+  type:          ForeignAssetType;
+  name:          string;
+  currency:      string;
+  amount:        number;
+  interestRate:  number;
+  maturityDate:  string | null;
+  useManualRate: boolean;
+  manualRate:    number;
+}
+
+/* ── 外幣（舊，保留相容） ──────────────────────────────────── */
 
 export type CurrencyCode = 'USD' | 'JPY' | 'EUR' | 'CNY' | 'HKD' | 'GBP' | 'AUD' | 'SGD';
 
 export interface ForeignCurrencyDTO {
-  currency: CurrencyCode;
-  amount:   number;
+  currencyCode:  CurrencyCode;
+  amount:        number;
+  useManualRate: boolean;
+  manualRate:    number;
+  liveRate:      number | null;
+  twdValue:      number;
+  updatedAt:     string;
+}
+
+export interface UpdateForeignCurrencyPayload {
+  amount:        number;
+  useManualRate: boolean;
+  manualRate:    number;
 }
 
 export interface ForexRatesDTO {
@@ -177,16 +217,17 @@ export interface ForexRatesDTO {
 export interface BondDTO {
   id:           string;
   name:         string;
-  couponRate:   number;
+  couponRate:   number;   // raw decimal：0.045 = 4.5%
   maturityDate: string;
   currency:     string;
   faceValue:    number;
   note?:        string;
+  twdEstimate:  number;
 }
 
 export interface CreateBondPayload {
   name:         string;
-  couponRate:   number;
+  couponRate:   number;   // raw decimal
   maturityDate: string;
   currency:     string;
   faceValue:    number;
@@ -196,28 +237,42 @@ export interface CreateBondPayload {
 /* ── 投報計畫 ───────────────────────────────────────────────── */
 
 export type InflationScenario = 'low' | 'base' | 'high';
+
+/* 景氣係數：red=0.85 yellow-red=0.95 green=1.00 yellow-blue=1.05 blue=1.10 */
 export type KRiskLevel = 'red' | 'yellow-red' | 'green' | 'yellow-blue' | 'blue';
 
-export interface InvestmentPlanDTO {
-  annualInvest:      number;
-  rBase:             number;
-  inflationScenario: InflationScenario;
-  kRisk:             KRiskLevel;
-  startYear:         number;
-  planYears:         number;
+export interface PlanConfigDTO {
+  annualInvest:        number;
+  rBase:               number;           // raw decimal，0.08 = 8%
+  inflation:           InflationScenario;
+  kRisk:               number;           // numeric（0.85 / 0.95 / 1.00 / 1.05 / 1.10）
+  startYear:           number;
+  overrides:           Record<string, number>; // { "1": 150000 } yearIndex→ 計畫投入
+  currentYearReinvest: number;
 }
 
-/* MARC 複利試算表單列（前端計算產出）*/
-export interface MARCRow {
-  year:           number;
-  calendarYear:   number;
-  capitalInvested: number;
-  interest:       number;
-  totalNominal:   number;
-  totalReal:      number;
-  rNominal:       number;
-  rReal:          number;
-  isMilestone:    boolean;
+/* 統一試算 Table 每行（純前端計算產出）*/
+export interface PlanRow {
+  yearIndex:    number;
+  calendarYear: number;
+  isMilestone:  boolean;       // 10/15/20/30 年
+
+  /* 計畫側 */
+  planCapital:       number;
+  planInvest:        number;
+  expectedProfit:    number;   // (planCapital + planInvest) × rNominal
+  expectedTotal:     number;
+  expectedTotalReal: number;   // 購買力折現
+
+  /* 執行側 */
+  status:      'past' | 'current' | 'future';
+  execCapital: number | null;
+  reinvest:    number | null;
+  stockValue:  number | null;
+  forexValue:  number | null;
+  cashBalance: number | null;
+  returnValue: number | null;  // 總資產 − (execCapital + reinvest)
+  returnPct:   number | null;  // 總資產 / (execCapital + reinvest) − 1
 }
 
 /* ── 年度結算 ───────────────────────────────────────────────── */

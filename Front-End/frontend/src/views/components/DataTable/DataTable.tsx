@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import Icon from '../Icon';
 import './DataTable.css';
 
 /* ── Types ──────────────────────────────────────────────── */
@@ -56,21 +57,9 @@ function filterRows<T extends object>(data: T[], term: string, keys?: Array<keyo
 /* ── Sort Icon ───────────────────────────────────────────── */
 
 function SortIcon({ state }: { state: 'none' | 'asc' | 'desc' }) {
-  if (state === 'asc') return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M12 19V5M5 12l7-7 7 7" />
-    </svg>
-  );
-  if (state === 'desc') return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M12 5v14M5 12l7 7 7-7" />
-    </svg>
-  );
-  return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M8 9l4-4 4 4M16 15l-4 4-4-4" />
-    </svg>
-  );
+  if (state === 'asc')  return <Icon name="arrow_upward"   size={16} />;
+  if (state === 'desc') return <Icon name="arrow_downward" size={16} />;
+  return <Icon name="unfold_more" size={16} />;
 }
 
 /* ── Component ───────────────────────────────────────────── */
@@ -161,18 +150,10 @@ function DataTable<T extends object>({
               onClick={handleSearchBtnClick}
               title={searchOpen ? '關閉搜尋' : '搜尋'}
             >
-              {searchOpen ? (
-                /* X icon */
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              ) : (
-                /* Magnifying glass icon */
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="M21 21l-4.35-4.35" />
-                </svg>
-              )}
+              {searchOpen
+                ? <Icon name="close"  size={18} />
+                : <Icon name="search" size={18} />
+              }
             </button>
           </div>
         </div>

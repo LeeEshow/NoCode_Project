@@ -78,13 +78,13 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 14px;
-  color: var(--dim);
+  padding: 8px 14px;
+  color: #484F58;
   text-decoration: none;
   border-radius: 0;
   transition: background var(--trans-fast), color var(--trans-fast);
   white-space: nowrap;
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   font-family: var(--font-sans);
   position: relative;
 }

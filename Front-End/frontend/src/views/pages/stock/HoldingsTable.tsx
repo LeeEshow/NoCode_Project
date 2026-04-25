@@ -2,6 +2,7 @@ import { useEffect, Fragment } from 'react';
 import SparkLine from '../../components/Charts/SparkLine';
 import KLineChart from '../../components/Charts/KLineChart';
 import LoadingPanel from '../../components/LoadingPanel';
+import Icon from '../../components/Icon';
 import type { HoldingDTO, KLineDTO, StockProfileDTO } from '../../../types';
 
 function fmt(n: number, decimals = 0) {
@@ -120,14 +121,14 @@ function HoldingRow({
     >
       <td>
         <div className="stock-code">{h.stockCode}</div>
-        <div className="stock-name">{h.stockName}</div>
+        <div className="stock-name">{h.stockName.length > 12 ? h.stockName.slice(0, 12) + '...' : h.stockName}</div>
       </td>
       <td className="right">
         <span className="num-value">{fmt(h.currentPrice, 2)}</span>
       </td>
       <td className="right">
         <span className={`change-tag ${cls}`}>
-          {arrow}&nbsp;{sign}{fmt(h.change, 2)}&nbsp;&nbsp;{sign}{fmt(h.changePct, 2)}%
+          {arrow}&nbsp;{fmt(Math.abs(h.change), 2)}&nbsp;&nbsp;{sign}{fmt(h.changePct, 2)}%
         </span>
       </td>
       <td className="center">
@@ -138,8 +139,8 @@ function HoldingRow({
           : <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>—</span>
         }
       </td>
-      <td className="right cell-primary">{fmt(h.costAvg, 2)}</td>
-      <td className="right cell-primary">{fmt(h.shares, 2)}</td>
+      <td className="right num-value">{fmt(h.costAvg, 2)}</td>
+      <td className="right num-value">{fmt(h.shares, 0)}</td>
       <td className="right">
         <span className={`mono ${h.returnPct === 0 ? 'txt-flat' : (h.returnPct > 0 ? 'txt-up' : 'txt-down')}`}
           style={{ fontWeight: 600 }}>
@@ -149,14 +150,10 @@ function HoldingRow({
       <td className="center">
         <div style={{ display: 'inline-flex', gap: 5 }}>
           <OpBtn title="交易紀錄" onClick={() => onHistory(h.stockCode, h.stockName)}>
-            <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v16a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/>
-            </svg>
+            <Icon name="history" size={16} />
           </OpBtn>
           <OpBtn title="新增交易" accent onClick={() => onAddTx(h.stockCode, h.stockName)}>
-            <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
+            <Icon name="add" size={16} />
           </OpBtn>
         </div>
       </td>
@@ -197,7 +194,7 @@ export default function HoldingsTable({
           <th className="right">漲跌幅</th>
           <th className="center">90日走勢</th>
           <th className="right">成本均價</th>
-          <th className="right">持有（張）</th>
+          <th className="right">持有（股）</th>
           <th className="right">損益 %</th>
           <th className="center">操作</th>
         </tr>

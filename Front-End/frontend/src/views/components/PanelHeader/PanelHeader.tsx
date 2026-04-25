@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSnapshotStore } from '../../../stores/snapshotStore';
 import './PanelHeader.css';
 
 interface PanelHeaderProps {
@@ -6,7 +7,25 @@ interface PanelHeaderProps {
 }
 
 export default function PanelHeader({ children }: PanelHeaderProps) {
-  const [cash, setCash] = useState('');
+  const { cashBalance, loaded, load, update } = useSnapshotStore();
+  const [draft, setDraft] = useState('');
+
+  useEffect(() => { load(); }, [load]);
+  const fmtNum = (n: number) => n > 0 ? n.toLocaleString('zh-TW', { maximumFractionDigits: 0 }) : '';
+
+  useEffect(() => {
+    if (loaded) setDraft(fmtNum(cashBalance));
+  }, [cashBalance, loaded]);
+
+  const commit = () => {
+    const v = parseFloat(draft.replace(/,/g, ''));
+    if (!isNaN(v) && v >= 0) {
+      update(v);
+      setDraft(fmtNum(v));
+    } else {
+      setDraft(fmtNum(cashBalance));
+    }
+  };
 
   return (
     <div className="panel-header">
@@ -18,8 +37,10 @@ export default function PanelHeader({ children }: PanelHeaderProps) {
           className="panel-header__cash-input"
           type="text"
           inputMode="decimal"
-          value={cash}
-          onChange={e => setCash(e.target.value)}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => e.key === 'Enter' && commit()}
           placeholder="0"
         />
       </div>

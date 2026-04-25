@@ -19,7 +19,8 @@ export class Holding {
   costMethod!: string;
   updatedAt!: string;
 
-  // 即時股價由 Controller 注入，不存 Firestore
+  // 即時資料由 Controller 注入，不存 Firestore
+  stockName?: string;
   currentPrice?: number;
   change?: number;
   changePercent?: number;

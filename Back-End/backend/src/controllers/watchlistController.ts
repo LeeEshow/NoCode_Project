@@ -26,11 +26,12 @@ export const getAll = async (
       const livePrice     = r.status === 'fulfilled' ? r.value.price         : null;
       const change        = r.status === 'fulfilled' ? r.value.change        : null;
       const changePercent = r.status === 'fulfilled' ? r.value.changePercent : null;
+      const stockName     = r.status === 'fulfilled' ? r.value.name          : null;
       const judgment      = livePrice !== null
         ? (livePrice <= item.targetPrice ? '買進' : '觀望')
         : null;
 
-      return { ...item, livePrice, change, changePercent, judgment };
+      return { ...item, livePrice, change, changePercent, stockName, judgment };
     });
 
     res.json(ApiResponse.success(data));

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import Icon from '../Icon';
 import './Modal.css';
 
 export interface ModalProps {
@@ -37,9 +38,7 @@ export default function Modal({ open, onClose, title, size = 'md', footer, child
           <div className="ft-modal__header">
             <span className="ft-modal__title">{title}</span>
             <button className="ft-modal__close" onClick={onClose} aria-label="關閉">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
+              <Icon name="close" size={18} />
             </button>
           </div>
         )}

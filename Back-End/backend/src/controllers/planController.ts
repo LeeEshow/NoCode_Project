@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { InvestmentPlan } from '../models/InvestmentPlan';
 import { YearlyRecord } from '../models/YearlyRecord';
+import { PlanConfig, PlanConfigInput } from '../models/PlanConfig';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
 
@@ -95,6 +96,50 @@ export const updateYearlyRecord = async (req: Request, res: Response, next: Next
 
     const data = await YearlyRecord.update(assetType, year, req.body);
     if (!data) throw new AppError(404, '年度結算不存在');
+    res.json(ApiResponse.success(data));
+  } catch (err) { next(err); }
+};
+
+// ── 投報計畫設定（plan_config，單筆文件）────────────────────────────────────
+
+/** GET /api/v1/plan/config */
+export const getPlanConfig = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const data = await PlanConfig.find();
+    res.json(ApiResponse.success(data));
+  } catch (err) { next(err); }
+};
+
+/** PUT /api/v1/plan/config */
+export const updatePlanConfig = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const body = req.body as Partial<PlanConfigInput>;
+
+    if (body.annualInvest == null)        throw new AppError(400, '缺少必填欄位：annualInvest');
+    if (body.rBase        == null)        throw new AppError(400, '缺少必填欄位：rBase');
+    if (!['low', 'base', 'high'].includes(body.inflation ?? '')) {
+      throw new AppError(400, 'inflation 必須為 low | base | high');
+    }
+    if (body.kRisk        == null)        throw new AppError(400, '缺少必填欄位：kRisk');
+    if (body.startYear    == null)        throw new AppError(400, '缺少必填欄位：startYear');
+
+    const data = await PlanConfig.upsert({
+      annualInvest:        Number(body.annualInvest),
+      rBase:               Number(body.rBase),
+      inflation:           body.inflation as 'low' | 'base' | 'high',
+      kRisk:               Number(body.kRisk),
+      startYear:           Number(body.startYear),
+      overrides:           (body.overrides ?? {}) as Record<string, number>,
+      currentYearReinvest: Number(body.currentYearReinvest ?? 0),
+    });
     res.json(ApiResponse.success(data));
   } catch (err) { next(err); }
 };

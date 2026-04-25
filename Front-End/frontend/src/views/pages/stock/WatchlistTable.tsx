@@ -1,5 +1,6 @@
 import SparkLine from '../../components/Charts/SparkLine';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import Icon from '../../components/Icon';
 import { useState } from 'react';
 import type { WatchlistItemDTO } from '../../../types';
 
@@ -23,13 +24,14 @@ function SignalTag({ signal }: { signal: 'buy' | 'wait' }) {
 }
 
 export interface WatchlistTableProps {
-  items:     WatchlistItemDTO[];
-  onEdit:    (item: WatchlistItemDTO) => void;
-  onDelete:  (id: string) => void;
-  deleting:  boolean;
+  items:      WatchlistItemDTO[];
+  sparklines: Record<string, number[]>;
+  onEdit:     (item: WatchlistItemDTO) => void;
+  onDelete:   (id: string) => void;
+  deleting:   boolean;
 }
 
-export default function WatchlistTable({ items, onEdit, onDelete, deleting }: WatchlistTableProps) {
+export default function WatchlistTable({ items, sparklines, onEdit, onDelete, deleting }: WatchlistTableProps) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   return (
@@ -56,22 +58,26 @@ export default function WatchlistTable({ items, onEdit, onDelete, deleting }: Wa
               <tr key={item.id}>
                 <td>
                   <div className="stock-code">{item.stockCode}</div>
-                  <div className="stock-name">{item.stockName}</div>
+                  <div className="stock-name">{item.stockName.length > 12 ? item.stockName.slice(0, 12) + '...' : item.stockName}</div>
                 </td>
                 <td className="right">
                   <span className="num-value">{fmt(item.currentPrice)}</span>
                 </td>
                 <td className="right">
                   <span className={`change-tag ${cls}`}>
-                    {arrow} {sign}{fmt(item.change)}&nbsp;{sign}{fmt(item.changePct)}%
+                    {arrow} {fmt(Math.abs(item.change))}&nbsp;{sign}{fmt(item.changePct)}%
                   </span>
                 </td>
                 <td className="center">
-                  {/* 關注清單暫無 sparkline，以靜態—代替 */}
-                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>—</span>
+                  {(sparklines[item.stockCode]?.length ?? 0) > 1
+                    ? <div style={{ width: 72, height: 24, display: 'inline-block' }}>
+                        <SparkLine data={sparklines[item.stockCode]} height={24} />
+                      </div>
+                    : <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>—</span>
+                  }
                 </td>
                 <td className="right">
-                  <span className="num-value">{fmt(item.targetPrice)}</span>
+                  <span className="mono" style={{ color: 'var(--muted)' }}>{fmt(item.targetPrice)}</span>
                 </td>
                 <td className="center">
                   <SignalTag signal={item.signal} />
@@ -83,19 +89,15 @@ export default function WatchlistTable({ items, onEdit, onDelete, deleting }: Wa
                       title="編輯"
                       onClick={e => { e.stopPropagation(); onEdit(item); }}
                     >
-                      <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                        <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                      </svg>
+                      <Icon name="edit" size={16} />
                     </button>
                     <button
                       className="btn-icon"
                       title="移除"
-                      style={{ color: 'var(--up)', borderColor: 'var(--up-bd)' }}
+                      style={{ color: 'var(--up)' }}
                       onClick={e => { e.stopPropagation(); setConfirmId(item.id); }}
                     >
-                      <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                      </svg>
+                      <Icon name="delete" size={16} />
                     </button>
                   </div>
                 </td>
