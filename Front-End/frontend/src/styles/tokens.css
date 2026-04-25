@@ -17,8 +17,8 @@
   --border-hi:   #38383d;   /* hover / 強調邊框 */
 
   /* ── 文字色系 ────────────────────────────── */
-  --text:        #c1c9d2;   /* 主文字（代碼、section title） */
-  --text-value:  #c1c9d2;   /* 數值統一色（指數 / Table num-value 中間值） */
+  --text:        #ced6df;   /* 主文字（代碼、section title） */
+  --text-value:  #ced6df;   /* 數值統一色（指數 / Table num-value 中間值） */
   --muted:       #646c76;   /* 次要文字（label、btn、Table 次要數值欄） */
   --dim:         #6B7681;   /* 輔助文字（nav icon、分隔線文字） */
   --label:       #7A8490;   /* 小標題（card-label、stock-name） */
