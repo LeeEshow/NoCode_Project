@@ -210,6 +210,7 @@ export default function StockOverviewPage() {
                   sparklines={holdings.sparklines}
                   klines={holdings.klines}
                   profiles={holdings.profiles}
+                  chips={holdings.chips}
                   expandedCode={holdings.expandedCode}
                   onToggle={holdings.toggleExpand}
                   onExpandLoad={holdings.ensureExpandData}

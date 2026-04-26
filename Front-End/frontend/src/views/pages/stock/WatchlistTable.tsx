@@ -64,10 +64,16 @@ function WatchlistRow({ item, sparklines, onEdit, onConfirm }: {
           <span {...attributes} {...listeners} className="drag-handle">
             <Icon name="drag_indicator" size={18} />
           </span>
-          <div>
+          <a
+            href={`https://www.wantgoo.com/stock/etf/${item.stockCode}/dividend-policy/ex-dividend`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="stock-link"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="stock-code">{item.stockCode}</div>
             <div className="stock-name">{item.stockName.length > 12 ? item.stockName.slice(0, 12) + '...' : item.stockName}</div>
-          </div>
+          </a>
         </div>
       </td>
       <td className="right"><span className="num-value">{fmt(item.currentPrice)}</span></td>

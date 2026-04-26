@@ -13,6 +13,7 @@ import bondsRouter             from './routes/bonds';
 import foreignAssetsRouter     from './routes/foreignAssets';
 import snapshotsRouter         from './routes/snapshots';
 import watchlistRouter         from './routes/watchlist';
+import preferencesRouter       from './routes/preferences';
 
 dotenv.config();
 const app = express();
@@ -32,6 +33,7 @@ app.use(`${api}/bonds`,               bondsRouter);
 app.use(`${api}/foreign-assets`,      foreignAssetsRouter);
 app.use(`${api}/snapshots`,           snapshotsRouter);
 app.use(`${api}/watchlist`,           watchlistRouter);
+app.use(`${api}/preferences`,         preferencesRouter);
 
 app.use(errorHandler);
 

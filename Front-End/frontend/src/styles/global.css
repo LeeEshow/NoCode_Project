@@ -182,6 +182,14 @@ tr:hover .drag-handle { color: var(--dim); }
 .ft-table tbody td.right  { text-align: right; }
 .ft-table tbody td.center { text-align: center; }
 
+/* ── Stock Link ── */
+.stock-link {
+  text-decoration: none;
+  display: block;
+  transition: opacity var(--trans-fast);
+}
+.stock-link:hover { opacity: 0.75; }
+
 /* ── Stock Code / Name ── */
 .stock-code {
   font-family: var(--font-sans);

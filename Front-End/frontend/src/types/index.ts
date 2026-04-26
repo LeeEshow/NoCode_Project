@@ -72,14 +72,25 @@ export interface KLineDTO {
 /* ── 股票基礎數據 ──────────────────────────────────────────── */
 
 export interface StockProfileDTO {
-  code:        string;
-  name:        string;
-  industry?:   string;
-  eps?:        number;
-  pe?:         number;
-  pb?:         number;
+  code:          string;
+  name:          string;
+  industry?:     string;
+  eps?:          number;
+  pe?:           number;
+  pb?:           number;
   dividendYield?: number;
-  marketCap?:  number;
+  marketCap?:    number;
+  revenue?:      number;
+  grossMargin?:  number;
+  roe?:          number;
+  roa?:          number;
+}
+
+export interface ChipDTO {
+  date:    string;
+  foreign: number;
+  trust:   number;
+  dealer:  number;
 }
 
 /* ── 交易紀錄 ───────────────────────────────────────────────── */
@@ -329,3 +340,25 @@ export interface SettingsDTO {
   defaultCurrency?: string;
   startYear?:       number;
 }
+
+/* ── 使用者偏好設定 ──────────────────────────────────────────── */
+
+export type ExpandTab = 'kline' | 'chip';
+
+export interface ChartPreferences {
+  showK:      boolean;
+  showMA5:    boolean;
+  showMA20:   boolean;
+  showMA60:   boolean;
+  showVolume: boolean;
+}
+
+export interface UserPreferences {
+  chart:     ChartPreferences;
+  expandTab: ExpandTab;
+}
+
+export const DEFAULT_PREFERENCES: UserPreferences = {
+  chart:     { showK: true, showMA5: true, showMA20: true, showMA60: true, showVolume: true },
+  expandTab: 'kline' as ExpandTab,
+};

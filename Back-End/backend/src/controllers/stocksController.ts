@@ -58,6 +58,25 @@ export const getHistory = async (
   }
 };
 
+/** GET /api/v1/stocks/:id/chip */
+export const getChip = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const id = String(req.params['id']);
+    const data = await getOrSet(
+      `stock:chip:${id}`,
+      () => Stock.getChip(id),
+      300 // TTL 5min
+    );
+    res.json(ApiResponse.success(data));
+  } catch (err) {
+    next(err);
+  }
+};
+
 /** GET /api/v1/stocks/:id/profile */
 export const getProfile = async (
   req: Request,

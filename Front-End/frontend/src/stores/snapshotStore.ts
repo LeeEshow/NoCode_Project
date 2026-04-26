@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { fetchSnapshot, updateSnapshot, createSnapshot } from '../models/snapshotModel';
+import { fetchSnapshot, fetchSnapshots, updateSnapshot, createSnapshot } from '../models/snapshotModel';
+import { toast } from '../views/components/Toast/toastStore';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -19,7 +20,18 @@ export const useSnapshotStore = create<SnapshotState>((set) => ({
       const snap = await fetchSnapshot(today());
       set({ cashBalance: snap.cashBalance, loaded: true });
     } catch {
-      set({ loaded: true });
+      /* 今日尚無快照 → 用今年最近一筆的 cashBalance 作 fallback */
+      toast.error(`查無 ${today()} 的快照紀錄，流動資金顯示上次記錄值`);
+      try {
+        const year = new Date().getFullYear();
+        const snaps = await fetchSnapshots(year);
+        const latest = snaps
+          .filter(s => s.date < today())
+          .sort((a, b) => b.date.localeCompare(a.date))[0];
+        set({ cashBalance: latest?.cashBalance ?? 0, loaded: true });
+      } catch {
+        set({ loaded: true });
+      }
     }
   },
 

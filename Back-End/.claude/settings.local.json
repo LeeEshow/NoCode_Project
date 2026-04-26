@@ -80,7 +80,8 @@
       "Bash(curl -sv \"https://openapi.taifex.com.tw/swagger/v1/swagger.json\")",
       "Bash(curl -s \"https://openapi.taifex.com.tw/v1/DailyForeignExchangeRates\")",
       "Bash(curl -s \"https://openapi.taifex.com.tw/v1/FutPrevDayMarketInfo\")",
-      "Bash(curl -s https://openapi.taifex.com.tw/v1/__TRACKED_VAR__)"
+      "Bash(curl -s https://openapi.taifex.com.tw/v1/__TRACKED_VAR__)",
+      "Read(//c/Users/eshow.lee/**)"
     ]
   }
 }

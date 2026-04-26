@@ -139,7 +139,10 @@ function BusinessCycleCard({ indicator }: { indicator: ExportIndicatorDTO | null
     <div className="mir-card mir-card--cycle">
       <div className="mir-card-label">景氣燈號</div>
       <div className="mir-cycle-row">
-        <div className="mir-cycle-dot" style={{ background: color }} />
+        <div className="mir-cycle-dot" style={{
+          background: `radial-gradient(circle at 38% 38%, #fff8 0%, ${color} 55%, ${color}88 100%)`,
+          boxShadow: `0 0 4px 1px ${color}55, 0 0 1px 0px ${color}`,
+        }} />
         <span className="mir-cycle-label" style={{ color }}>{indicator.label}</span>
       </div>
       <div className="mir-cycle-meta">

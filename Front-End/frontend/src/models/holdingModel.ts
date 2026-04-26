@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import type { ApiResponse, HoldingDTO, KLineDTO, StockProfileDTO, StockSearchResultDTO } from '../types';
+import type { ApiResponse, HoldingDTO, KLineDTO, StockProfileDTO, StockSearchResultDTO, ChipDTO } from '../types';
 
 /* ── 後端原始型別 ── */
 interface RawHolding {
@@ -108,7 +108,16 @@ export async function fetchStockProfile(stockId: string): Promise<StockProfileDT
     pe:            r.peRatio         ?? undefined,
     dividendYield: r.dividendYield   ?? undefined,
     marketCap:     r.marketCap       ?? undefined,
+    revenue:       (r as any).revenue      ?? undefined,
+    grossMargin:   (r as any).grossMargin  ?? undefined,
+    roe:           (r as any).roe          ?? undefined,
+    roa:           (r as any).roa          ?? undefined,
   };
+}
+
+export async function fetchChipData(stockId: string): Promise<ChipDTO[]> {
+  const res = await api.get<ApiResponse<ChipDTO[]>>(`/stocks/${stockId}/chip`);
+  return res.data.data;
 }
 
 export async function searchStocks(q: string): Promise<StockSearchResultDTO[]> {

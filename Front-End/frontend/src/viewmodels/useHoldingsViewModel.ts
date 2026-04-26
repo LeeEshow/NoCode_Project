@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, reorderHoldings } from '../models/holdingModel';
-import type { HoldingDTO, KLineDTO, StockProfileDTO } from '../types';
+import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData, reorderHoldings } from '../models/holdingModel';
+import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO } from '../types';
 
 export interface HoldingsSummary {
   totalUnrealized:  number;
@@ -14,6 +14,7 @@ interface State {
   sparklines:   Record<string, number[]>;
   klines:       Record<string, KLineDTO[]>;
   profiles:     Record<string, StockProfileDTO>;
+  chips:        Record<string, ChipDTO[]>;
   expandedCode: string | null;
   summary:      HoldingsSummary;
   loading:      boolean;
@@ -29,7 +30,7 @@ function computeSummary(items: HoldingDTO[]): HoldingsSummary {
 }
 
 const INIT: State = {
-  items: [], sparklines: {}, klines: {}, profiles: {},
+  items: [], sparklines: {}, klines: {}, profiles: {}, chips: {},
   expandedCode: null,
   summary: { totalUnrealized: 0, totalReturnPct: 0, totalDailyChange: 0, totalCost: 0 },
   loading: true, error: null,
@@ -71,15 +72,17 @@ export function useHoldingsViewModel() {
   }, []);
 
   const ensureExpandData = useCallback(async (code: string) => {
-    const { klines, profiles } = stateRef.current;
-    const [kline, profile] = await Promise.all([
+    const { klines, profiles, chips } = stateRef.current;
+    const [kline, profile, chip] = await Promise.all([
       klines[code]   ? null : fetchKLine(code).catch(() => null),
       profiles[code] ? null : fetchStockProfile(code).catch(() => null),
+      chips[code]    ? null : fetchChipData(code).catch(() => null),
     ]);
     setState(s => ({
       ...s,
       ...(kline   ? { klines:   { ...s.klines,   [code]: kline }   } : {}),
       ...(profile ? { profiles: { ...s.profiles, [code]: profile } } : {}),
+      ...(chip    ? { chips:    { ...s.chips,    [code]: chip }    } : {}),
     }));
   }, []);
 
@@ -102,5 +105,5 @@ export function useHoldingsViewModel() {
   /* 新增/刪除交易後刷新庫存 */
   const refreshAfterTx = useCallback(async () => { await load(); }, [load]);
 
-  return { ...state, items: sortedItems, load, toggleExpand, ensureExpandData, refreshAfterTx, reorder };
+  return { ...state, items: sortedItems, load, toggleExpand, ensureExpandData, refreshAfterTx, reorder, chips: state.chips };
 }

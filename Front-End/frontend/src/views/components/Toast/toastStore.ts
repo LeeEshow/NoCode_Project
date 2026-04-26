@@ -19,7 +19,7 @@ export const useToastStore = create<ToastStore>((set) => ({
   push(message, variant = 'info') {
     const id = crypto.randomUUID();
     set(s => ({ toasts: [...s.toasts, { id, message, variant }] }));
-    setTimeout(() => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), 3500);
+    setTimeout(() => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), 5000);
   },
   remove(id) {
     set(s => ({ toasts: s.toasts.filter(t => t.id !== id) }));

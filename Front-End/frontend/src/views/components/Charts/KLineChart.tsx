@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts/core';
 import { CandlestickChart, BarChart, LineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, DataZoomComponent, LegendComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { colors } from '../../../styles';
+import { usePreferencesViewModel } from '../../../viewmodels/usePreferencesViewModel';
 
 echarts.use([CandlestickChart, BarChart, LineChart, GridComponent, TooltipComponent, DataZoomComponent, LegendComponent, CanvasRenderer]);
 
@@ -60,11 +60,14 @@ function ToggleBtn({
 }
 
 export default function KLineChart({ data, height = 360, showVolume = true, showMA = true }: KLineChartProps) {
-  const [visK,   setVisK]   = useState(true);
-  const [visMA5,  setVisMA5]  = useState(true);
-  const [visMA20, setVisMA20] = useState(true);
-  const [visMA60, setVisMA60] = useState(true);
-  const [visVol,  setVisVol]  = useState(true);
+  const { prefs, setChartPref } = usePreferencesViewModel();
+  const { showK: visK, showMA5: visMA5, showMA20: visMA20, showMA60: visMA60, showVolume: visVol } = prefs.chart;
+
+  const setVisK   = (v: boolean) => setChartPref({ showK: v });
+  const setVisMA5  = (v: boolean) => setChartPref({ showMA5: v });
+  const setVisMA20 = (v: boolean) => setChartPref({ showMA20: v });
+  const setVisMA60 = (v: boolean) => setChartPref({ showMA60: v });
+  const setVisVol  = (v: boolean) => setChartPref({ showVolume: v });
 
   const dates  = data.map(d => d.time);
   const candle = data.map(d => [d.open, d.close, d.low, d.high]);
@@ -179,14 +182,14 @@ export default function KLineChart({ data, height = 360, showVolume = true, show
     <div>
       {/* 控制列 */}
       <div style={{ display: 'flex', gap: 6, padding: '6px 16px 4px', flexWrap: 'wrap' }}>
-        <ToggleBtn label="K線"  color={colors.up}    active={visK}    onClick={() => setVisK(v => !v)} />
+        <ToggleBtn label="K線"  color={colors.up}    active={visK}    onClick={() => setVisK(!visK)} />
         {showMA && <>
-          <ToggleBtn label="MA5"  color="#E8A838" active={visMA5}  onClick={() => setVisMA5(v => !v)} />
-          <ToggleBtn label="MA20" color="#5B8FF9" active={visMA20} onClick={() => setVisMA20(v => !v)} />
-          <ToggleBtn label="MA60" color="#9B8FF9" active={visMA60} onClick={() => setVisMA60(v => !v)} />
+          <ToggleBtn label="MA5"  color="#E8A838" active={visMA5}  onClick={() => setVisMA5(!visMA5)} />
+          <ToggleBtn label="MA20" color="#5B8FF9" active={visMA20} onClick={() => setVisMA20(!visMA20)} />
+          <ToggleBtn label="MA60" color="#9B8FF9" active={visMA60} onClick={() => setVisMA60(!visMA60)} />
         </>}
         {showVolume && (
-          <ToggleBtn label="成交量" color={colors.dim} active={visVol} onClick={() => setVisVol(v => !v)} />
+          <ToggleBtn label="成交量" color={colors.dim} active={visVol} onClick={() => setVisVol(!visVol)} />
         )}
       </div>
 
