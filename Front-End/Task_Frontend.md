@@ -9,27 +9,6 @@
 
 ---
 
-## Phase 9：持股展開區 Tab 化（已完成 2026-04-25）
-
-> 展開區改用 Tab 切換（K線 / 籌碼 & 基本面），Tab 列靠左垂直排列。
-
-- [x] P9-01：`ExpandTab` 型別 + `ChipDTO` + `preferencesModel` `setExpandTab`
-- [x] P9-02：`useHoldingsViewModel` 加入 `chips` 狀態與 `ensureExpandData` 擴充（同時 fetch K線/基本面/籌碼）
-- [x] P9-03：`HoldingsTable` `ExpandRow` 改為 Tab 架構（左側垂直 TabBar、固定高度 340px 防跳動、法人圖表 + 基本面左右排版）
-
-### 待排查問題（P9-BUG）
-
-- [ ] **P9-BUG-01**：法人日期顯示異常（X 軸仍出現非日期字串）— 確認後端 `T86` 爬蟲 `row[0]` 格式是否包含非 `民國年/月/日` 的資料列（如標題行），需後端過濾或前端比對後跳過
-- [ ] **P9-BUG-02**：法人圖表顏色未按法人區分（外資/投信/自營商應各自固定顏色，目前依正負值變色）— 前端改為每個 series 固定一種顏色，正負以透明度或深淺區別
-- [ ] **P9-BUG-03**：基本面資料為空 — 確認後端 `GET /stocks/:id/profile` 回傳的 `revenue / grossMargin / roe / roa` 欄位是否有資料；若 Yahoo Finance 無此資料則需標記欄位來源限制
-- [ ] **P9-BUG-04**：展開空間預設 Tab 應為 K 線 — 確認 `DEFAULT_PREFERENCES.expandTab = 'kline'` 且 `usePreferencesViewModel` 初始化時 localStorage 未覆蓋為其他值
-- [ ] **P9-BUG-05**：K 線 Tooltip 數值異常（如 open=117 但圖表顯示 2100+ 區間）— 排查方向：
-  1. 前端 `KLineChart.tsx:138` tooltip formatter 的 `[o, c, l, h]` 對應 ECharts `[open, close, low, high]`，確認 label 正確
-  2. 截圖顯示 `lowest: 2185 > highest: 2105`（不合理），懷疑後端某日資料 open 欄位回傳異常值（split-adjusted 舊價、null fallback 為非零值、或 Yahoo Finance 欄位錯位）
-  3. 確認後端 `Stock.getHistory()` 回傳的 `quotes.open?.[i]` 是否有特定日期出現與其他欄位不同 magnitude 的值；必要時加 `filter(p => p.open > 0)` 保護
-
----
-
 ## Phase 5：績效報告（`/report`）
 
 ### P5-01：快照歷史表格強化

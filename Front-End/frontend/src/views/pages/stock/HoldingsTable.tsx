@@ -1,4 +1,4 @@
-import { useEffect, Fragment } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -17,7 +17,6 @@ import SparkLine from '../../components/Charts/SparkLine';
 import KLineChart from '../../components/Charts/KLineChart';
 import LoadingPanel from '../../components/LoadingPanel';
 import Icon from '../../components/Icon';
-import { usePreferencesViewModel } from '../../../viewmodels/usePreferencesViewModel';
 import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO, ExpandTab } from '../../../types';
 
 echarts.use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
@@ -234,8 +233,7 @@ function ExpandRow({
   chips:         ChipDTO[]       | undefined;
   loadingExpand: boolean;
 }) {
-  const { prefs, setExpandTab } = usePreferencesViewModel();
-  const activeTab = prefs.expandTab;
+  const [activeTab, setActiveTab] = useState<ExpandTab>('kline');
   const hasData = kline || profile || chips;
 
   return (
@@ -246,8 +244,8 @@ function ExpandRow({
           : hasData
             ? (
               <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                <TabBar active={activeTab} onChange={setExpandTab} />
-                <div style={{ flex: 1, minWidth: 0, padding: '8px 16px 12px', height: 340, overflow: 'hidden' }}>
+                <TabBar active={activeTab} onChange={setActiveTab} />
+                <div style={{ flex: 1, minWidth: 0, padding: '8px 16px 12px', height: 400, overflow: 'hidden' }}>
                   {activeTab === 'kline' && (kline
                     ? <KLineSection data={kline} />
                     : <EmptyMsg text={`無法載入 ${code} 的 K 線資料`} />

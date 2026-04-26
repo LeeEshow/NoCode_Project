@@ -351,6 +351,7 @@ export interface ChartPreferences {
   showMA20:   boolean;
   showMA60:   boolean;
   showVolume: boolean;
+  zoomLock:   boolean;
 }
 
 export interface UserPreferences {
@@ -359,6 +360,6 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-  chart:     { showK: true, showMA5: true, showMA20: true, showMA60: true, showVolume: true },
+  chart:     { showK: true, showMA5: true, showMA20: true, showMA60: true, showVolume: true, zoomLock: false },
   expandTab: 'kline' as ExpandTab,
 };

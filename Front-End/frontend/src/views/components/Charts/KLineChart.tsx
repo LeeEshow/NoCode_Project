@@ -5,6 +5,7 @@ import { GridComponent, TooltipComponent, DataZoomComponent, LegendComponent } f
 import { CanvasRenderer } from 'echarts/renderers';
 import { colors } from '../../../styles';
 import { usePreferencesViewModel } from '../../../viewmodels/usePreferencesViewModel';
+import Icon from '../Icon';
 
 echarts.use([CandlestickChart, BarChart, LineChart, GridComponent, TooltipComponent, DataZoomComponent, LegendComponent, CanvasRenderer]);
 
@@ -59,11 +60,17 @@ function ToggleBtn({
   );
 }
 
+const MA_COLORS = {
+  ma5:  '#E8A838',
+  ma20: '#5B8FF9',
+  ma60: '#9B8FF9',
+} as const;
+
 export default function KLineChart({ data, height = 360, showVolume = true, showMA = true }: KLineChartProps) {
   const { prefs, setChartPref } = usePreferencesViewModel();
-  const { showK: visK, showMA5: visMA5, showMA20: visMA20, showMA60: visMA60, showVolume: visVol } = prefs.chart;
+  const { showK: visK, showMA5: visMA5, showMA20: visMA20, showMA60: visMA60, showVolume: visVol, zoomLock: visZoomLock } = prefs.chart;
 
-  const setVisK   = (v: boolean) => setChartPref({ showK: v });
+  const setVisK    = (v: boolean) => setChartPref({ showK: v });
   const setVisMA5  = (v: boolean) => setChartPref({ showMA5: v });
   const setVisMA20 = (v: boolean) => setChartPref({ showMA20: v });
   const setVisMA60 = (v: boolean) => setChartPref({ showMA60: v });
@@ -122,6 +129,7 @@ export default function KLineChart({ data, height = 360, showVolume = true, show
     ],
     tooltip: {
       trigger: 'axis',
+      appendTo: () => document.body,
       axisPointer: { type: 'cross', crossStyle: { color: colors.dim } },
       backgroundColor: colors.surface,
       borderColor: colors.borderHi,
@@ -149,7 +157,7 @@ export default function KLineChart({ data, height = 360, showVolume = true, show
       },
     },
     dataZoom: [
-      { type: 'inside', xAxisIndex: showVolumePanel ? [0, 1] : [0], start: 50, end: 100 },
+      { type: 'inside', xAxisIndex: showVolumePanel ? [0, 1] : [0], start: 50, end: 100, disabled: visZoomLock },
       { type: 'slider',  xAxisIndex: showVolumePanel ? [0, 1] : [0], start: 50, end: 100,
         bottom: 4, height: 22,
         fillerColor: colors.accentBg, borderColor: colors.border,
@@ -167,9 +175,9 @@ export default function KLineChart({ data, height = 360, showVolume = true, show
           borderColor: colors.up, borderColor0: colors.down,
         },
       }] : []),
-      ...(showMA && visMA5  ? [{ name: 'MA5',  type: 'line', data: ma5,  xAxisIndex: 0, yAxisIndex: 0, smooth: false, symbol: 'none', lineStyle: { color: '#E8A838', width: 1 }, z: 3 }] : []),
-      ...(showMA && visMA20 ? [{ name: 'MA20', type: 'line', data: ma20, xAxisIndex: 0, yAxisIndex: 0, smooth: false, symbol: 'none', lineStyle: { color: '#5B8FF9', width: 1 }, z: 3 }] : []),
-      ...(showMA && visMA60 ? [{ name: 'MA60', type: 'line', data: ma60, xAxisIndex: 0, yAxisIndex: 0, smooth: false, symbol: 'none', lineStyle: { color: '#9B8FF9', width: 1 }, z: 3 }] : []),
+      ...(showMA && visMA5  ? [{ name: 'MA5',  type: 'line', color: MA_COLORS.ma5,  data: ma5,  xAxisIndex: 0, yAxisIndex: 0, smooth: false, symbol: 'none', lineStyle: { color: MA_COLORS.ma5,  width: 1 }, z: 3 }] : []),
+      ...(showMA && visMA20 ? [{ name: 'MA20', type: 'line', color: MA_COLORS.ma20, data: ma20, xAxisIndex: 0, yAxisIndex: 0, smooth: false, symbol: 'none', lineStyle: { color: MA_COLORS.ma20, width: 1 }, z: 3 }] : []),
+      ...(showMA && visMA60 ? [{ name: 'MA60', type: 'line', color: MA_COLORS.ma60, data: ma60, xAxisIndex: 0, yAxisIndex: 0, smooth: false, symbol: 'none', lineStyle: { color: MA_COLORS.ma60, width: 1 }, z: 3 }] : []),
       ...(showVolumePanel ? [{
         name: '成交量', type: 'bar',
         xAxisIndex: 1, yAxisIndex: 1,
@@ -181,16 +189,33 @@ export default function KLineChart({ data, height = 360, showVolume = true, show
   return (
     <div>
       {/* 控制列 */}
-      <div style={{ display: 'flex', gap: 6, padding: '6px 16px 4px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 16px 4px', flexWrap: 'wrap' }}>
         <ToggleBtn label="K線"  color={colors.up}    active={visK}    onClick={() => setVisK(!visK)} />
         {showMA && <>
-          <ToggleBtn label="MA5"  color="#E8A838" active={visMA5}  onClick={() => setVisMA5(!visMA5)} />
-          <ToggleBtn label="MA20" color="#5B8FF9" active={visMA20} onClick={() => setVisMA20(!visMA20)} />
-          <ToggleBtn label="MA60" color="#9B8FF9" active={visMA60} onClick={() => setVisMA60(!visMA60)} />
+          <ToggleBtn label="MA5"  color={MA_COLORS.ma5}  active={visMA5}  onClick={() => setVisMA5(!visMA5)} />
+          <ToggleBtn label="MA20" color={MA_COLORS.ma20} active={visMA20} onClick={() => setVisMA20(!visMA20)} />
+          <ToggleBtn label="MA60" color={MA_COLORS.ma60} active={visMA60} onClick={() => setVisMA60(!visMA60)} />
         </>}
         {showVolume && (
           <ToggleBtn label="成交量" color={colors.dim} active={visVol} onClick={() => setVisVol(!visVol)} />
         )}
+        <button
+          onClick={() => setChartPref({ zoomLock: !visZoomLock })}
+          title={visZoomLock ? '已鎖定滾輪縮放，點擊解鎖' : '點擊鎖定滾輪縮放'}
+          style={{
+            marginLeft: 'auto',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 26,
+            background: visZoomLock ? 'var(--accent-bg)' : 'transparent',
+            border: `1px solid ${visZoomLock ? 'var(--accent)' : 'var(--border)'}`,
+            borderRadius: 'var(--radius-xs)',
+            color: visZoomLock ? 'var(--accent)' : 'var(--dim)',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          <Icon name={visZoomLock ? 'lock' : 'lock_open'} size={14} />
+        </button>
       </div>
 
       <ReactECharts

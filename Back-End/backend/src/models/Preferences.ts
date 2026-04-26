@@ -7,6 +7,7 @@ export interface ChartPreferences {
   showMA20:   boolean;
   showMA60:   boolean;
   showVolume: boolean;
+  zoomLock:   boolean;
 }
 
 export interface UserPreferences {

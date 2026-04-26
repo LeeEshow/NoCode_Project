@@ -5,11 +5,19 @@ import { DEFAULT_PREFERENCES } from '../types';
 
 const LS_KEY = 'user_preferences';
 
+function mergeWithDefaults(raw: Partial<UserPreferences>): UserPreferences {
+  return {
+    ...DEFAULT_PREFERENCES,
+    ...raw,
+    chart: { ...DEFAULT_PREFERENCES.chart, ...(raw.chart ?? {}) },
+  };
+}
+
 function loadFromStorage(): UserPreferences {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return DEFAULT_PREFERENCES;
-    return { ...DEFAULT_PREFERENCES, ...JSON.parse(raw) };
+    return mergeWithDefaults(JSON.parse(raw));
   } catch {
     return DEFAULT_PREFERENCES;
   }
@@ -27,8 +35,9 @@ export function usePreferencesViewModel() {
   useEffect(() => {
     fetchPreferences()
       .then(data => {
-        setPrefs(data);
-        saveToStorage(data);
+        const merged = mergeWithDefaults(data);
+        setPrefs(merged);
+        saveToStorage(merged);
       })
       .catch(() => { /* 後端未就緒時靜默，保留 localStorage 值 */ })
       .finally(() => setLoaded(true));
