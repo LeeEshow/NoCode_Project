@@ -82,7 +82,8 @@
       "Bash(curl -s \"https://openapi.taifex.com.tw/v1/FutPrevDayMarketInfo\")",
       "Bash(curl -s https://openapi.taifex.com.tw/v1/__TRACKED_VAR__)",
       "Read(//c/Users/eshow.lee/**)",
-      "Bash(dir \"D:\\\\Project\\\\NoCode_Project\\\\Back-End\")"
+      "Bash(dir \"D:\\\\Project\\\\NoCode_Project\\\\Back-End\")",
+      "WebFetch(domain:sinotrade.github.io)"
     ]
   }
 }

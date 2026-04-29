@@ -143,7 +143,10 @@ export default function KLineChart({ data, height = 360, showVolume = true, show
         let html = '';
         for (const p of params as { seriesName: string; value: unknown; color: string }[]) {
           if (p.seriesName === 'K線' && Array.isArray(p.value)) {
-            const [o, c, l, h] = p.value as number[];
+            // ECharts trigger:'axis' 對 candlestick 的 p.value 會在首位插入 category index
+            // 實際格式：[categoryIndex, open, close, low, high]（5 個元素）
+            const vals = p.value as number[];
+            const [o, c, l, h] = vals.length >= 5 ? vals.slice(1) : vals;
             html += `<div style="font-weight:600;margin-bottom:4px">K線</div>`;
             html += row('open',    f(o));
             html += row('close',   f(c));
