@@ -4,3 +4,4 @@
 [E 2026-04-29 09:39:38,689 D:\Project\NoCode_Project\.venv\Lib\site-packages\shioaji\utils.py:49:raise_resp_error] {'status': {'status_code': 400}, 'response': {'token': '', 'accounts': [], 'detail': "Token doesn't have production permission.", 'ip_address': '134.231.162.123', 'person_id': 'F127816062', 'client_name': '', 'contract_download': False, 'web_token': '', 'solace_props': None}}
 [E 2026-04-29 09:49:23,753 D:\Project\NoCode_Project\.venv\Lib\site-packages\shioaji\shioaji.py:436:place_order] {'status': {'status_code': 401}, 'response': {'detail': "Token doesn't have permission"}}
 [E 2026-04-29 09:53:41,419 D:\Project\NoCode_Project\.venv\Lib\site-packages\shioaji\shioaji.py:436:place_order] {'status': {'status_code': 401}, 'response': {'detail': "Token doesn't have permission"}}
+[E 2026-04-29 14:18:45,822 D:\Project\NoCode_Project\.venv\Lib\site-packages\shioaji\shioaji.py:243:_setup_solace] RequestException URLError(TimeoutError('timed out'))

@@ -44,12 +44,12 @@
 
 | ID | 說明 |
 |----|------|
-| M-01 | 專案目錄重整：新增 `routers/`、`models/`、`global/` 子目錄，拆分現有 `main.py` |
-| M-02 | 統一回應格式：實作 `ApiResponse.success(data)` / `ApiResponse.error(msg)`，對齊 `{ success, data/error }` |
-| M-03 | 全域錯誤處理：實作 `AppError(status_code, message)` + FastAPI Exception Handler，對齊現有 errorHandler |
-| M-04 | TTL 快取工具：以 `cachetools.TTLCache` 實作 `get_or_set(key, factory, ttl)` wrapper |
-| M-05 | `/api/v1/stocks` 路由群：search、quote、history、profile、chip（Shioaji + Yahoo Finance + TWSE T86） |
-| M-06 | `/api/v1/market` 路由群：indices、forex-rates、export-indicator（Shioaji + Yahoo Finance + NDC） |
+| ✅ M-01 | 專案目錄重整：新增 `routers/`、`models/`、`lib/` 子目錄（`global` 為 Python 關鍵字，改用 `lib/`），拆分 `main.py` |
+| ✅ M-02 | 統一回應格式：`lib/api_response.py` — `success(data)` / `error(msg)`，對齊 `{ success, data/error }` |
+| ✅ M-03 | 全域錯誤處理：`@app.exception_handler(HTTPException)` + 500 fallback，對齊現有 errorHandler |
+| ✅ M-04 | TTL 快取工具：`lib/cache.py` — 簡單 dict+monotonic 實作 `get_or_set` / `get_or_set_async` |
+| ✅ M-05 | `/api/v1/stocks` 路由群：search、quote、history、profile、chip（Shioaji + Yahoo Finance + TWSE T86） |
+| ✅ M-06 | `/api/v1/market` 路由群：indices、forex-rates、export-indicator（Shioaji + Yahoo Finance + NDC） |
 
 ---
 
@@ -57,17 +57,17 @@
 
 | ID | 說明 |
 |----|------|
-| M-07 | Firestore 初始化：`google-cloud-firestore` 單例，支援 `GOOGLE_APPLICATION_CREDENTIALS` 與 Workload Identity |
-| M-08 | `Settings` Model + `/api/v1/settings`（GET/PUT，`cost_method` 欄位） |
-| M-09 | `Holdings` Model + `/api/v1/holdings`（GET all/by id、PUT reorder、POST recalculate、batchUpsert） |
-| M-10 | `Transaction` Model + `/api/v1/transactions`（CRUD，支援 `?stock_id=` 篩選） |
-| M-11 | `Watchlist` Model + `/api/v1/watchlist`（GET/POST/PUT/DELETE，含即時報價注入與排序） |
-| M-12 | `Preferences` Model + `/api/v1/preferences`（GET/PUT，Partial merge，`zoomLock` 預設 false） |
-| M-13 | `ForeignAsset` Model + `/api/v1/foreign-assets`（GET/POST/PUT/DELETE，含即時匯率注入） |
-| M-14 | `DailySnapshot` Model + `/api/v1/snapshots`（GET/POST/PUT，`record` 冪等寫入） |
-| M-15 | `PlanConfig` + `YearlyRecord` Model + `/api/v1/plan`（config GET/PUT、yearly-records CRUD） |
-| M-16 | 匯率工具：`get_live_rate_map()` — 即時匯率 Map，供 foreign-assets 與 snapshots 使用 |
-| M-17 | @deprecated 路由保留：`/api/v1/bonds`、`/api/v1/foreign-currencies`（向後相容空殼，回傳現有資料） |
+| ✅ M-07 | Firestore 初始化：`lib/firebase.py` 單例，`GOOGLE_APPLICATION_CREDENTIALS` 環境變數注入 |
+| ✅ M-08 | `Settings` Model + `/api/v1/settings`（GET/PUT，`cost_method` 欄位） |
+| ✅ M-09 | `Holdings` Model + `/api/v1/holdings`（GET all/by id、PUT reorder、POST recalculate、batchUpsert） |
+| ✅ M-10 | `Transaction` Model + `/api/v1/transactions`（CRUD，支援 `?stock_id=` 篩選） |
+| ✅ M-11 | `Watchlist` Model + `/api/v1/watchlist`（GET/POST/PUT/DELETE，含即時報價注入與排序） |
+| ✅ M-12 | `Preferences` Model + `/api/v1/preferences`（GET/PUT，Partial merge，`zoomLock` 預設 false） |
+| ✅ M-13 | `ForeignAsset` Model + `/api/v1/foreign-assets`（GET/POST/PUT/DELETE，含即時匯率注入） |
+| ✅ M-14 | `DailySnapshot` Model + `/api/v1/snapshots`（GET/POST/PUT，`record` 冪等寫入，後端自動計算改用 ForeignAsset） |
+| ✅ M-15 | `PlanConfig` + `YearlyRecord` Model + `/api/v1/plan`（config GET/PUT、yearly-records CRUD，保留舊 InvestmentPlan） |
+| ✅ M-16 | 匯率工具：`lib/rate_helper.py` — `get_live_rate_map()`，供 foreign-assets 與 snapshots 使用 |
+| ✅ M-17 | @deprecated 路由保留：`/api/v1/bonds`、`/api/v1/foreign-currencies`（向後相容，完整 CRUD 功能） |
 
 ---
 
