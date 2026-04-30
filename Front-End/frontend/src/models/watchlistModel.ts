@@ -51,8 +51,7 @@ export async function updateWatchlistItem(
   id: string,
   payload: Partial<CreateWatchlistPayload>,
 ): Promise<WatchlistItemDTO> {
-  /* 後端 PATCH /watchlist/:stockId，id 即 stockId */
-  const res = await api.patch<ApiResponse<RawWatchlistItem>>(`/watchlist/${id}`, {
+  const res = await api.put<ApiResponse<RawWatchlistItem>>(`/watchlist/${id}`, {
     targetPrice: payload.targetPrice,
     note:        payload.note,
   });

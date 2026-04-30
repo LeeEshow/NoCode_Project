@@ -121,7 +121,7 @@ function WatchlistRow({ item, sparklines, isExpanded, onToggle, onEdit, onConfir
           <button className="btn-icon" title="編輯" onClick={e => { e.stopPropagation(); onEdit(item); }}>
             <Icon name="edit" size={21} />
           </button>
-          <button className="btn-icon" title="移除" style={{ color: 'var(--up)' }} onClick={e => { e.stopPropagation(); onConfirm(item.id); }}>
+          <button className="btn-icon" title="移除" onClick={e => { e.stopPropagation(); onConfirm(item.id); }}>
             <Icon name="delete" size={21} />
           </button>
         </div>

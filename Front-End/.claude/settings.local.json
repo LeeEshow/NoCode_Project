@@ -20,7 +20,8 @@
       "Bash(python scripts/search.py \"dashboard fintech dark modal form edit\" --design-system -p \"TransactionEditModal\")",
       "Bash(python \"C:\\\\Users\\\\eshow.lee\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\53e65fcf-1bda-4897-b391-d1cd40338bfe\\\\addac6ea-e915-49ea-a3ef-35e088ce2c90\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"dashboard fintech dark modal form edit\" --design-system -p \"TransactionEditModal\")",
       "Bash(dir \"C:\\\\Users\\\\eshow.lee\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\53e65fcf-1bda-4897-b391-d1cd40338bfe\\\\addac6ea-e915-49ea-a3ef-35e088ce2c90\\\\skills\\\\ui-ux-pro-max\")",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "PowerShell([System.IO.File]::ReadAllText\\(\"E:\\\\Code\\\\NoCode_Project\\\\Back-End\\\\backend\\\\src\\\\controllers\\\\watchlistController.ts\"\\))"
     ]
   }
 }
