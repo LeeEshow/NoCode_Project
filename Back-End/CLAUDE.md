@@ -2,112 +2,73 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Common Commands
+## Repository Layout
+
+```
+Back-End/
+├── backend/          # Node.js Express API（主後端，port 3001）
+├── Shioaji_API/      # Python FastAPI 微服務（永豐金即時報價，port 8000）
+└── Task_Backend.md   # 開發任務清單與進度
+```
+
+---
+
+## Node.js Backend (`backend/`)
+
+### Common Commands
 
 ```bash
-# 開發模式（熱重載）
-npm run dev
-
-# 編譯 TypeScript
-npm run build
-
-# 正式模式（需先 build）
-npm start
-
-# 程式碼檢查
+npm run dev     # 開發模式（ts-node + 熱重載）
+npm run build   # 編譯 TypeScript → dist/
+npm start       # 正式模式（需先 build）
 npm run lint
-
-# 格式化
 npm run format
 ```
 
-## Architecture Overview
-
-個人理財系統後端，使用 **Express 5 + TypeScript + Firebase Firestore**，提供台股相關資產管理 API。
-
-### Layered Pattern
+### Architecture
 
 ```
 Routes (src/routes/)
   → Controllers (src/controllers/)
-    → Models (src/models/)
-      → Firestore (via src/global/firebase.ts)
+    → Models (src/models/)         ← Firestore CRUD + 外部 API 呼叫
+      → src/global/               ← 共用工具
 ```
 
-### API 結構
-
-所有路由前綴 `/api/v1`：
-
-| 路由 | 功能 |
-|------|------|
-| `/holdings` | 持股組合（GET all/by id、PUT reorder、POST recalculate） |
-| `/transactions` | 交易紀錄（CRUD，支援 `?stock_id=` 篩選） |
-| `/stocks` | 搜尋、即時報價、歷史 K 線、基本面、三大法人籌碼 |
-| `/market` | 大盤指數、匯率（8 幣別）、台灣景氣燈號 |
-| `/plan` | 投資計畫（新版 `/plan/config`）與年度結算 `/plan/yearly-records` |
-| `/settings` | 成本計算方式（`preserve_method` FIFO / `return_method` 加權平均） |
-| `/foreign-assets` | 外幣資產（活存/定存/債券，取代已棄用的舊路由） |
-| `/snapshots` | 每日快照（含後端自動計算 `/snapshots/record`） |
-| `/watchlist` | 自選股（含目標價、買進/觀望判斷、排序） |
-| `/preferences` | 使用者偏好設定（圖表顯示控制） |
-| `/bonds` | **@deprecated**，已由 `/foreign-assets` 取代 |
-| `/foreign-currencies` | **@deprecated**，已由 `/foreign-assets` 取代 |
-
-### Response Format
-
-所有回應統一由 `src/global/apiResponse.ts` 處理：
+所有路由前綴 `/api/v1`，回應格式統一：
 - 成功：`{ success: true, data: ... }`
-- 失敗：`{ success: false, error: "訊息" }`
+- 失敗：`{ success: false, error: "訊息" }`（透過 `AppError` + `errorHandler.ts`）
 
-錯誤一律 `throw new AppError(statusCode, message)` 再由 `next(err)` 傳至 `src/middleware/errorHandler.ts`，未知錯誤回傳 500。
+### Global Utilities (`src/global/`)
 
-### Firebase / Firestore
+| 檔案 | 用途 |
+|------|------|
+| `firebase.ts` | Firestore 單例初始化 |
+| `cache.ts` | `getOrSet<T>(key, factory, ttl)` NodeCache wrapper；另匯出 `nodeCache` 實例供直接讀取快取 |
+| `yahooFinance.ts` | `yfChart()` v8 / `yfQuoteSummary()` v10 封裝 |
+| `rateHelper.ts` | `getLiveRateMap()` 即時匯率 Map（currency → 台幣） |
+| `shioajiClient.ts` | 呼叫 Python 微服務的 axios client（base URL `SHIOAJI_API_URL` 或預設 `http://localhost:8000`） |
+| `marketHours.ts` | `isMarketOpen()` 純函式：週一–五 09:00–13:30 台灣時間 |
+| `circuitBreaker.ts` | Circuit Breaker 狀態機（CLOSED → OPEN 失敗 3 次，冷卻 60s → HALF_OPEN） |
+| `apiSwitch.ts` | `apiSwitch.call(primary, fallback)` + `apiSwitch.status()`：盤中走 Shioaji，其餘走 Yahoo |
 
-- 初始化於 `src/global/firebase.ts`，使用 `GOOGLE_APPLICATION_CREDENTIALS` 環境變數（單例）
-- Collection 與 Model 一對一，document 欄位使用 **snake_case**，Model 層負責與 camelCase 互轉
-- Firestore Timestamp 在 Model 層轉為 ISO string 再回傳
-- `holdings` 支援 `batchUpsert()` 批次寫入（前端計算完整批回寫）
-- `daily_snapshots` 的 `record()` 使用 merge，冪等設計，同日重複呼叫只更新
+### Data Source Switching Logic
 
-### Firestore Collections 對應
+```
+apiSwitch.call(primary, fallback)
+  ├─ 盤外              → fallback（Yahoo Finance）
+  ├─ 盤中 + CB OPEN    → fallback（冷卻期）
+  ├─ 盤中 + CB HALF_OPEN → primary 試跑，成功 CLOSED / 失敗 fallback
+  └─ 盤中 + CB CLOSED  → primary（Shioaji 微服務）
+```
 
-| Collection | Document ID | Model |
-|------------|-------------|-------|
-| `holdings` | `stock_id` | `Holding` |
-| `transactions` | auto | `Transaction` |
-| `settings` | `main` | `Settings` |
-| `plan_config` | `main` | `PlanConfig`（新版） |
-| `investment_plans` | `asset_type` | `InvestmentPlan`（舊版） |
-| `yearly_records` | `{assetType}_{year}` | `YearlyRecord` |
-| `daily_snapshots` | `YYYY-MM-DD` | `DailySnapshot` |
-| `watchlist` | `stock_id` | `Watchlist` |
-| `foreign_assets` | auto | `ForeignAsset` |
-| `preferences` | `default` | `Preferences` |
-| `foreign_currencies` | 幣別代碼 | `ForeignCurrency`（deprecated） |
-| `bonds` | auto | `Bond`（deprecated） |
+受 `apiSwitch` 控制的端點：`getIndices`、`getQuote`、`getHistory`。
 
-### 外部資料來源
+### Key Design Decisions
 
-- **Yahoo Finance v8 Chart API** — 即時報價、歷史 K 線（`src/global/yahooFinance.ts`）
-- **Yahoo Finance v10 Quote Summary API** — 本益比、殖利率、市值、營收等基本面
-- **TWSE T86 API** — 三大法人買賣超（近 20 交易日籌碼）
-- **TWSE / TPEX 清單 API** — 股票搜尋（上市掛 `.TW`、上櫃掛 `.TWO`）
-- **NDC 景氣燈號 API** — 台灣景氣對策信號
-
-### Caching
-
-`src/global/cache.ts` 提供泛型 `getOrSet<T>(key, factory, ttlSeconds, shouldCache?)` wrapper（基於 NodeCache）：
-- 股票報價：60s TTL
-- 公司基本資料、籌碼、匯率：300s TTL
-- 股票清單（搜尋用）：3600s TTL
-
-`src/global/rateHelper.ts` 提供 `getLiveRateMap()` 取得即時匯率 Map（currency code → 台幣），供外幣資產與快照計算使用。
-
-### 關鍵設計決策
-
-- 對外部 API（報價、籌碼）使用 `Promise.allSettled` 靜默失敗，不影響整體回應
-- `stock_id` 為台灣股票代碼（如 `2330`），Yahoo Finance symbol 由 `Stock.resolveSymbol()` 動態加後綴（`.TW` 或 `.TWO`）
-- `foreign-assets` 的 `type` 欄位為 `'活存' | '定存' | '債券'`，`maturityDate` 活存時為 `null`
+- `Contracts.Futures` / `Contracts.Stocks` 迭代出的是 **StreamMultiContract 群組**，需先取 `.TXF` / `.TSE` / `.OTC` 再迭代個別合約（直接用 `["TXFC0"]` 在 1.3.x 回傳 None）
+- Model 層欄位用 **snake_case**（Firestore）← Model → **camelCase**（API 回應）
+- `daily_snapshots` 的 `record()` 是冪等設計（merge），同日多次呼叫安全
+- 外部 API 以 `Promise.allSettled` 靜默失敗，不中斷整體回應
 
 ### Environment Variables
 
@@ -115,6 +76,69 @@ Routes (src/routes/)
 FIRESTORE_PROJECT_ID=nocode-finance
 GOOGLE_APPLICATION_CREDENTIALS=./serviceAccountKey.json
 PORT=3001
+SHIOAJI_API_URL=http://localhost:8000   # 可選，預設值即 8000
 ```
 
-需有 `serviceAccountKey.json`（Firebase service account）才能連接 Firestore。
+---
+
+## Python Microservice (`Shioaji_API/`)
+
+### Startup
+
+```bash
+cd Back-End/Shioaji_API
+pip install -r requirements.txt        # 首次安裝
+uvicorn main:app --port 8000           # 啟動（根目錄的 main.py 會加入 sys.path）
+```
+
+`.env` 需設定：
+
+```env
+SJ_API_KEY=your_api_key
+SJ_SECRET_KEY=your_secret_key
+```
+
+### Architecture
+
+```
+Shioaji_API/
+├── main.py                  # 根入口（sys.path 修正 + re-export app）
+└── src/shioaji_api/
+    ├── main.py              # FastAPI app + lifespan（登入/登出）
+    ├── core/
+    │   ├── config.py        # pydantic-settings 讀取 .env
+    │   └── manager.py       # ShioajiManager singleton
+    ├── routers/             # 各端點
+    └── schemas/market.py    # Pydantic response models
+```
+
+### ShioajiManager（`core/manager.py`）
+
+單例，負責：
+- 登入（`asyncio.to_thread` 包裹同步呼叫）
+- WebSocket tick 訂閱與記憶體快取（`_quote_cache`、`_futures_cache`）
+- 斷線自動重連（event_code 4 → 重新訂閱）
+- `_get_nearest_txf()` / `get_taiex_contract()`：動態找近月 TXF 合約與 TSE001 合約
+
+### Endpoints
+
+| 端點 | 說明 |
+|------|------|
+| `GET /health` | 連線狀態、快取數量 |
+| `GET /quote/{stock_id}` | 個股即時報價（tick 快取 → snapshot fallback） |
+| `GET /index/taiex` | 加權指數（tick 快取 → snapshot fallback） |
+| `GET /index/futures` | 台指期近月（tick 快取 → snapshot fallback） |
+| `GET /stocks` | 全台股清單（TSE + OTC，記憶體快取） |
+| `GET /kline/{stock_id}` | K 線（`?interval=1D\|1m&days=N`，1D 為後端聚合日線） |
+
+### Shioaji Contract Access Pattern
+
+```python
+# ✅ 正確：先取群組再迭代
+for c in api.Contracts.Stocks.TSE: ...
+for c in api.Contracts.Futures.TXF: ...
+
+# ❌ 錯誤：直接 key 存取在 1.3.x 回傳 None
+api.Contracts.Futures["TXFC0"]   # → None
+api.Contracts.Indexs["TSE001"]   # → None
+```

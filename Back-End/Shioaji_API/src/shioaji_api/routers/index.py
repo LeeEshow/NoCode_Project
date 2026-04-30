@@ -20,7 +20,9 @@ async def get_taiex():
 
     # Fallback：snapshot
     try:
-        contract = manager.api.Contracts.Indexs["TSE001"]
+        contract = manager.get_taiex_contract()
+        if contract is None:
+            raise ValueError("找不到 TSE001 加權指數合約")
         snaps = await manager.get_snapshot([contract])
     except Exception as e:
         raise HTTPException(503, detail=f"TAIEX data unavailable: {e}")
@@ -53,9 +55,11 @@ async def get_futures():
     if cached:
         return IndexResponse(**cached)
 
-    # Fallback：snapshot
+    # Fallback：snapshot（動態找近月合約）
     try:
-        contract = manager.api.Contracts.Futures["TXFC0"]
+        contract = manager.get_nearest_txf_contract()
+        if contract is None:
+            raise ValueError("找不到有效的 TXF 近月合約")
         snaps = await manager.get_snapshot([contract])
     except Exception as e:
         raise HTTPException(503, detail=f"Futures data unavailable: {e}")

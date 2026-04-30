@@ -19,11 +19,13 @@ async def get_stocks():
         return StocksResponse(data=_cache, total=len(_cache))
 
     try:
-        stocks = [
-            StockItem(code=c.code, name=c.name, exchange=c.exchange)
-            for c in manager.api.Contracts.Stocks
-            if c.exchange in ("TSE", "OTC")
-        ]
+        stocks = []
+        for c in manager.api.Contracts.Stocks.TSE:
+            if hasattr(c, "code") and hasattr(c, "name"):
+                stocks.append(StockItem(code=c.code, name=c.name, exchange="TSE"))
+        for c in manager.api.Contracts.Stocks.OTC:
+            if hasattr(c, "code") and hasattr(c, "name"):
+                stocks.append(StockItem(code=c.code, name=c.name, exchange="OTC"))
     except Exception as e:
         raise HTTPException(503, detail=f"Failed to fetch stock list: {e}")
 

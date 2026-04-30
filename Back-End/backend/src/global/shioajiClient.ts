@@ -4,7 +4,7 @@ import type { StockQuote, StockHistoryPoint, StockSearchResult } from '../models
 import type { IndexCard } from '../models/MarketIndex';
 
 const client = axios.create({
-  baseURL: process.env['SHIOAJI_API_URL'] ?? 'http://localhost:8001',
+  baseURL: process.env['SHIOAJI_API_URL'] ?? 'http://localhost:8000',
   timeout: 5000,
 });
 

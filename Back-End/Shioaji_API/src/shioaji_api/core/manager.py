@@ -18,6 +18,7 @@ class ShioajiManager:
         self._quote_cache: dict[str, dict] = {}
         self._futures_cache: dict[str, dict] = {}
         self._subscribed_stocks: set[str] = set()
+        self._txf_reference: Optional[float] = None  # 台指期前日結算價，供漲跌計算用
 
     @property
     def api(self) -> sj.Shioaji:
@@ -66,13 +67,19 @@ class ShioajiManager:
 
         @self._api.on_tick_fop_v1()
         def on_fop_tick(exchange: Exchange, tick: TickFOPv1) -> None:
+            price = float(tick.close)
+            ref   = self._txf_reference
+            change     = round(price - ref, 0) if ref else None
+            change_pct = round((price - ref) / ref * 100, 2) if ref else None
             self._futures_cache[tick.code] = {
                 "code": tick.code,
-                "price": float(tick.close),
+                "price": price,
                 "open": float(tick.open),
                 "high": float(tick.high),
                 "low": float(tick.low),
                 "volume": tick.total_volume,
+                "change": change,
+                "change_percent": change_pct,
                 "timestamp": tick.datetime.isoformat(),
                 "source": "tick",
             }
@@ -88,12 +95,37 @@ class ShioajiManager:
                 logger.info("Shioaji reconnected, resubscribing...")
                 asyncio.create_task(self._resubscribe_all())
 
-    def _subscribe_startup_contracts(self) -> None:
-        # TXF 近月期貨（盤中最即時的台指期資料）
+    def _get_nearest_txf(self):
+        """動態找最近交割的 TXF 期貨合約"""
         try:
-            contract = self._api.Contracts.Futures["TXFC0"]
+            # Contracts.Futures 是群組層，需先取 .TXF 再迭代個別合約
+            txf_group = self._api.Contracts.Futures.TXF
+            candidates = [
+                c for c in txf_group
+                if hasattr(c, "code") and not c.code.startswith("TXFR")
+            ]
+            if not candidates:
+                logger.warning("TXF 合約清單為空")
+                return None
+            def delivery_key(c):
+                d = getattr(c, "delivery_date", None)
+                return str(d) if d else ""
+            candidates.sort(key=delivery_key)
+            logger.info(f"TXF near-month: {candidates[0].code}, delivery: {candidates[0].delivery_date}")
+            return candidates[0]
+        except Exception as e:
+            logger.warning(f"_get_nearest_txf error: {e}")
+            return None
+
+    def _subscribe_startup_contracts(self) -> None:
+        # TXF 近月期貨（動態找最近交割合約，同時儲存前日結算價供漲跌計算）
+        try:
+            contract = self._get_nearest_txf()
+            if contract is None:
+                raise ValueError("找不到有效的 TXF 近月合約")
+            self._txf_reference = float(contract.reference)
             self._api.quote.subscribe(contract, quote_type=sj.constant.QuoteType.Tick)
-            logger.info(f"Subscribed TXF futures: {contract.code}")
+            logger.info(f"Subscribed TXF futures: {contract.code}, reference: {self._txf_reference}")
         except Exception as e:
             logger.warning(f"TXF futures subscribe failed: {e}")
 
@@ -132,10 +164,33 @@ class ShioajiManager:
         return self._quote_cache.get("001")
 
     def get_cached_futures(self) -> Optional[dict]:
-        # 找最新的 TXF 合約快取
         for code, data in self._futures_cache.items():
             if "TXF" in code:
                 return data
+        return None
+
+    def get_nearest_txf_contract(self):
+        """供 router 取得 TXF 近月合約物件（用於 snapshot）"""
+        return self._get_nearest_txf()
+
+    def get_taiex_contract(self):
+        """取得加權指數合約（TSE 001）"""
+        try:
+            # 先嘗試直接存取
+            c = self._api.Contracts.Indexs.TSE["001"]
+            if c is not None:
+                logger.info(f"TAIEX contract: {c.code}")
+                return c
+        except Exception:
+            pass
+        try:
+            # 改為迭代 TSE 群組
+            for c in self._api.Contracts.Indexs.TSE:
+                if hasattr(c, "code") and c.code == "001":
+                    logger.info("TAIEX contract found via iteration")
+                    return c
+        except Exception as e:
+            logger.warning(f"get_taiex_contract error: {e}")
         return None
 
     async def get_snapshot(self, contracts: list) -> list:
