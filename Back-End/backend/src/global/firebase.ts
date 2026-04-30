@@ -1,9 +1,14 @@
 import * as admin from 'firebase-admin';
 
 if (!admin.apps.length) {
+  const credJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  const credential = credJson
+    ? admin.credential.cert(JSON.parse(credJson) as admin.ServiceAccount)
+    : admin.credential.applicationDefault();
+
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    projectId:  process.env.FIRESTORE_PROJECT_ID,
+    credential,
+    projectId: process.env.FIRESTORE_PROJECT_ID,
   });
 }
 

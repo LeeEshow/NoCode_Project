@@ -1,0 +1,38 @@
+name: Deploy Node.js Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Back-End/backend/**'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: Back-End/backend
+        run: npm install
+
+      - name: Build TypeScript
+        working-directory: Back-End/backend
+        run: npm run build
+
+      - name: Remove dev dependencies
+        working-directory: Back-End/backend
+        run: npm prune --production
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: finance-backend
+          publish-profile: ${{ secrets.AZURE_BACKEND_PUBLISH_PROFILE }}
+          package: Back-End/backend
