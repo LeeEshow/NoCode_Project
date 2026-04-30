@@ -53,7 +53,7 @@ export default function AddTransactionModal({
 
   /* 提交後計算新成本並寫回 */
   const handleSubmit = async () => {
-    if (!shares || !totalAmount || !form.date) {
+    if (!shares || form.totalAmount === '' || !form.date) {
       toast.error('請填寫必填欄位（股數、交易金額、日期）');
       return;
     }
@@ -71,7 +71,7 @@ export default function AddTransactionModal({
 
   /* 即時預覽新均價 */
   const previewCost = (() => {
-    if (!shares || !totalAmount) return null;
+    if (!shares || form.totalAmount === '') return null;
     const fakeTx = { id: '__preview', stockCode, stockName, type: form.type, shares, price: pricePerShare, fee: 0, date: form.date, note: form.note };
     return calcCostFromTransactions([...vm.items, fakeTx]);
   })();
@@ -133,7 +133,7 @@ export default function AddTransactionModal({
         </FormField>
 
         {/* 即時試算摘要 */}
-        {shares > 0 && totalAmount > 0 && (
+        {shares > 0 && form.totalAmount !== '' && (
           <div style={{
             padding: '10px 12px',
             background: 'var(--bg)',

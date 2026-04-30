@@ -142,3 +142,16 @@ export async function recalculateHoldings(
 export async function reorderHoldings(order: string[]): Promise<void> {
   await api.put('/holdings/reorder', { order });
 }
+
+export interface HoldingPriceDTO {
+  stockCode:        string;
+  currentPrice:     number;
+  change:           number;
+  changePct:        number;
+  unrealizedProfit: number;
+}
+
+export async function fetchHoldingPrices(): Promise<HoldingPriceDTO[]> {
+  const res = await api.get<ApiResponse<HoldingPriceDTO[]>>('/holdings/prices');
+  return res.data.data;
+}

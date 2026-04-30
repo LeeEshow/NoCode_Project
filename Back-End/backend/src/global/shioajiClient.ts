@@ -77,6 +77,17 @@ export async function sjGetTwIndices(): Promise<{ twii: IndexCard; futures: Inde
   };
 }
 
+/** GET /stocks → 全台股清單（TSE + OTC） */
+export async function sjGetAllStocks(): Promise<
+  Array<{ code: string; name: string; exchange: string }>
+> {
+  const { data } = await client.get<{
+    data: Array<{ code: string; name: string; exchange: string }>;
+    total: number;
+  }>('/stocks');
+  return data.data;
+}
+
 /** GET /health → 健康狀態 */
 export async function sjHealth(): Promise<{ status: string; connected: boolean }> {
   const { data } = await client.get('/health');

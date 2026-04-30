@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData, reorderHoldings } from '../models/holdingModel';
+import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData, reorderHoldings, fetchHoldingPrices } from '../models/holdingModel';
 import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO } from '../types';
 
 export interface HoldingsSummary {
@@ -102,8 +102,35 @@ export function useHoldingsViewModel() {
     reorderHoldings(newOrder).catch(() => { /* 靜默，排序已在本地生效 */ });
   }, []);
 
+  /* 靜默更新價格（盤中輪詢用，不觸發 loading，不重載 sparklines） */
+  const refreshPrices = useCallback(async () => {
+    try {
+      const prices = await fetchHoldingPrices();
+      const priceMap = new Map(prices.map(p => [p.stockCode, p]));
+      setState(s => {
+        const items = s.items.map(h => {
+          const p = priceMap.get(h.stockCode);
+          if (!p) return h;
+          const currentValue = p.currentPrice * h.shares;
+          const returnPct    = h.costAvg > 0 ? ((p.currentPrice - h.costAvg) / h.costAvg) * 100 : 0;
+          return {
+            ...h,
+            currentPrice:     p.currentPrice,
+            change:           p.change,
+            changePct:        p.changePct,
+            unrealizedProfit: p.unrealizedProfit,
+            currentValue,
+            returnPct,
+            isUp: p.changePct > 0,
+          };
+        });
+        return { ...s, items, summary: computeSummary(items) };
+      });
+    } catch { /* 靜默，輪詢失敗不影響 UI */ }
+  }, []);
+
   /* 新增/刪除交易後刷新庫存 */
   const refreshAfterTx = useCallback(async () => { await load(); }, [load]);
 
-  return { ...state, items: sortedItems, load, toggleExpand, ensureExpandData, refreshAfterTx, reorder, chips: state.chips };
+  return { ...state, items: sortedItems, load, refreshPrices, toggleExpand, ensureExpandData, refreshAfterTx, reorder, chips: state.chips };
 }

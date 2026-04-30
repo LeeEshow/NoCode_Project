@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { DailySnapshot, DailySnapshotInput } from '../models/DailySnapshot';
+import { DailySnapshot, DailySnapshotInput, SnapshotHolding } from '../models/DailySnapshot';
 import { Holding } from '../models/Holding';
 import { Stock } from '../models/Stock';
 import { ForeignCurrency } from '../models/ForeignCurrency';
@@ -48,10 +48,11 @@ export const record = async (
       holdings.map(h => Stock.getQuote(h.stockId))
     );
 
-    // 計算 stock_value / total_invested / realized_profit
-    let stockValue     = 0;
-    let totalInvested  = 0;
-    let realizedProfit = 0;
+    // 計算 stock_value / total_invested / realized_profit，同步組裝 snapshot holdings
+    let stockValue      = 0;
+    let totalInvested   = 0;
+    let realizedProfit  = 0;
+    const snapshotHoldings: SnapshotHolding[] = [];
 
     holdings.forEach((h, i) => {
       totalInvested  += h.totalCost;
@@ -59,6 +60,21 @@ export const record = async (
       const r = priceResults[i];
       if (r.status === 'fulfilled') {
         stockValue += h.sharesHeld * 1000 * r.value.price; // sharesHeld 為張數，×1000 轉為股
+      }
+
+      // 只記錄有持股的標的（SS-02）
+      if (h.sharesHeld > 0) {
+        const currentPrice = r.status === 'fulfilled' ? r.value.price : 0;
+        const sv           = Math.round(h.sharesHeld * 1000 * currentPrice);
+        snapshotHoldings.push({
+          stockCode:        h.stockId,
+          stockName:        r.status === 'fulfilled' ? (r.value.name ?? h.stockId) : h.stockId,
+          sharesHeld:       h.sharesHeld,
+          costAvg:          h.avgCost,
+          currentPrice,
+          stockValue:       sv,
+          unrealizedProfit: Math.round(sv - h.totalCost),
+        });
       }
     });
 
@@ -92,6 +108,7 @@ export const record = async (
       totalReturn:      Math.round(totalReturn),
       returnRate,
       note:             '',
+      holdings:         snapshotHoldings,
     });
 
     res.json(ApiResponse.success(data));
@@ -156,6 +173,7 @@ export const create = async (
       totalReturn:      Number(body.totalReturn ?? 0),
       returnRate:       Number(body.returnRate),
       note:             String(body.note ?? ''),
+      holdings:         Array.isArray(body.holdings) ? body.holdings : [],
     });
     res.status(201).json(ApiResponse.success(data));
   } catch (err) {

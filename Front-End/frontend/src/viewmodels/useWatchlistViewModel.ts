@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   fetchWatchlist,
   createWatchlistItem,
@@ -6,15 +6,19 @@ import {
   deleteWatchlistItem,
   reorderWatchlist,
 } from '../models/watchlistModel';
-import { fetchSparklineData } from '../models/holdingModel';
-import type { WatchlistItemDTO, CreateWatchlistPayload } from '../types';
+import { fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData } from '../models/holdingModel';
+import type { WatchlistItemDTO, CreateWatchlistPayload, KLineDTO, StockProfileDTO, ChipDTO } from '../types';
 
 interface State {
-  items:      WatchlistItemDTO[];
-  sparklines: Record<string, number[]>;
-  loading:    boolean;
-  saving:     boolean;
-  error:      string | null;
+  items:        WatchlistItemDTO[];
+  sparklines:   Record<string, number[]>;
+  klines:       Record<string, KLineDTO[]>;
+  profiles:     Record<string, StockProfileDTO>;
+  chips:        Record<string, ChipDTO[]>;
+  expandedCode: string | null;
+  loading:      boolean;
+  saving:       boolean;
+  error:        string | null;
 }
 
 async function loadSparklines(items: WatchlistItemDTO[]): Promise<Record<string, number[]>> {
@@ -29,9 +33,12 @@ async function loadSparklines(items: WatchlistItemDTO[]): Promise<Record<string,
 
 export function useWatchlistViewModel() {
   const [state, setState] = useState<State>({
-    items: [], sparklines: {}, loading: true, saving: false, error: null,
+    items: [], sparklines: {}, klines: {}, profiles: {}, chips: {},
+    expandedCode: null, loading: true, saving: false, error: null,
   });
   const [order, setOrder] = useState<string[]>([]);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const load = useCallback(async () => {
     setState(s => ({ ...s, loading: true, error: null }));
@@ -45,6 +52,25 @@ export function useWatchlistViewModel() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const toggleExpand = useCallback((code: string) => {
+    setState(s => ({ ...s, expandedCode: s.expandedCode === code ? null : code }));
+  }, []);
+
+  const ensureExpandData = useCallback(async (code: string) => {
+    const { klines, profiles, chips } = stateRef.current;
+    const [kline, profile, chip] = await Promise.all([
+      klines[code]   ? null : fetchKLine(code).catch(() => null),
+      profiles[code] ? null : fetchStockProfile(code).catch(() => null),
+      chips[code]    ? null : fetchChipData(code).catch(() => null),
+    ]);
+    setState(s => ({
+      ...s,
+      ...(kline   ? { klines:   { ...s.klines,   [code]: kline }   } : {}),
+      ...(profile ? { profiles: { ...s.profiles, [code]: profile } } : {}),
+      ...(chip    ? { chips:    { ...s.chips,    [code]: chip }    } : {}),
+    }));
+  }, []);
 
   const addItem = useCallback(async (
     payload: CreateWatchlistPayload,
@@ -104,5 +130,5 @@ export function useWatchlistViewModel() {
     reorderWatchlist(newOrder).catch(() => { /* 靜默，排序已在本地生效 */ });
   }, []);
 
-  return { ...state, items: sortedItems, load, addItem, updateItem, removeItem, reorder };
+  return { ...state, items: sortedItems, load, toggleExpand, ensureExpandData, addItem, updateItem, removeItem, reorder };
 }

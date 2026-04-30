@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { isTradingHours } from '../../utils/tradingHours';
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -94,6 +95,21 @@ export default function StockOverviewPage() {
     await watchlist.removeItem(id, () => toast.success('已從關注清單移除'));
     if (watchlist.error) toast.error(watchlist.error);
   };
+
+  /* 5 秒輪詢（僅盤中） */
+  const holdingsRef = useRef(holdings);
+  const marketRef   = useRef(market);
+  holdingsRef.current = holdings;
+  marketRef.current   = market;
+
+  useEffect(() => {
+    if (!isTradingHours()) return;
+    const id = setInterval(() => {
+      holdingsRef.current.refreshPrices();
+      marketRef.current.silentReload();
+    }, 5000);
+    return () => clearInterval(id);
+  }, []);
 
   const { date: dateStr, time: timeStr } = formatLastUpdated(market.lastUpdated);
 
@@ -191,7 +207,7 @@ export default function StockOverviewPage() {
             <span className="ft-section-title">庫存持股</span>
             <div style={{ display: 'flex', gap: 6 }}>
               {/* FIX-05：新增持股入口 */}
-              <button className="btn-ghost" onClick={() => { holdings.load(); market.reload(); watchlist.load(); }}>重新整理</button>
+              <button className="btn-ghost" onClick={() => { holdings.refreshPrices(); market.silentReload(); }}>重新整理</button>
               <button className="btn-ghost" onClick={() => setAddHoldingOpen(true)}>＋ 新增</button>
             </div>
           </div>
@@ -247,6 +263,12 @@ export default function StockOverviewPage() {
                 <WatchlistTable
                   items={watchlist.items}
                   sparklines={watchlist.sparklines}
+                  klines={watchlist.klines}
+                  profiles={watchlist.profiles}
+                  chips={watchlist.chips}
+                  expandedCode={watchlist.expandedCode}
+                  onToggle={watchlist.toggleExpand}
+                  onExpandLoad={watchlist.ensureExpandData}
                   onEdit={item => { setWlEditItem(item); setWlModalOpen(true); }}
                   onDelete={handleWlDelete}
                   onReorder={watchlist.reorder}

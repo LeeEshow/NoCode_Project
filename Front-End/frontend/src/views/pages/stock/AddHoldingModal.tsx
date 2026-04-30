@@ -70,7 +70,7 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
 
   const valid =
     form.stockCode.trim() &&
-    Number(form.totalAmount) > 0 &&
+    form.totalAmount !== '' && Number(form.totalAmount) >= 0 &&
     Number(form.shares) > 0 &&
     !!form.date;
 
@@ -195,7 +195,7 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
           </FormField>
         </div>
 
-        {Number(form.shares) > 0 && Number(form.totalAmount) > 0 && (
+        {Number(form.shares) > 0 && form.totalAmount !== '' && (
           <div style={{
             padding: '9px 12px',
             background: 'var(--bg)',

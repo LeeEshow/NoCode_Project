@@ -21,3 +21,8 @@ export async function updateSnapshot(date: string, payload: UpdateSnapshotPayloa
   const res = await api.put<ApiResponse<DailySnapshotDTO>>(`/snapshots/${date}`, payload);
   return res.data.data;
 }
+
+export async function triggerSnapshotRecord(): Promise<DailySnapshotDTO> {
+  const res = await api.post<ApiResponse<DailySnapshotDTO>>('/snapshots/record');
+  return res.data.data;
+}

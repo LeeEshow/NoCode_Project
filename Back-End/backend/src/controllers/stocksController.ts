@@ -1,10 +1,57 @@
 import { Request, Response, NextFunction } from 'express';
 import { Stock } from '../models/Stock';
+import { StockList } from '../models/StockList';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
-import { getOrSet } from '../global/cache';
+import { getOrSet, nodeCache } from '../global/cache';
 import { apiSwitch } from '../global/apiSwitch';
-import { sjGetStockQuote, sjGetStockHistory } from '../global/shioajiClient';
+import { sjGetStockQuote, sjGetStockHistory, sjGetAllStocks } from '../global/shioajiClient';
+
+/**
+ * POST /api/v1/stocks/list/refresh
+ * 從 Shioaji 同步全股清單 → 寫入 Firestore，並清除搜尋快取
+ */
+export const listRefresh = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const raw   = await sjGetAllStocks();
+    const items = raw
+      .filter(s =>
+        /^\d{4}$/.test(s.code) ||   // 一般上市/上櫃股票（4 位純數字）
+        /^00/.test(s.code)           // ETF（0050、00878、006208、00631L 等）
+      )
+      .map(s => ({
+        code:   s.code,
+        name:   s.name,
+        market: (s.exchange === 'OTC' ? 'OTC' : 'TSE') as 'TSE' | 'OTC',
+      }));
+    const result = await StockList.upsertAll(items);
+    nodeCache.del('stocks:all-list'); // 清快取，下次搜尋從 DB 重新載入
+    res.json(ApiResponse.success(result));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/v1/stocks/list/meta
+ * 查詢 DB 中全股清單的 meta 資訊（不打 Shioaji）
+ */
+export const listMeta = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const data = await StockList.getMeta();
+    res.json(ApiResponse.success(data));
+  } catch (err) {
+    next(err);
+  }
+};
 
 /** GET /api/v1/stocks/search?q={keyword} */
 export const search = async (

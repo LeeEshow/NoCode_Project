@@ -3,6 +3,46 @@ import { Holding, HoldingInput } from '../models/Holding';
 import { Stock } from '../models/Stock';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
+import { apiSwitch } from '../global/apiSwitch';
+import { sjGetStockQuote } from '../global/shioajiClient';
+
+/**
+ * GET /api/v1/holdings/prices
+ * 輕量即時價格端點（供前端 5 秒輪詢使用）
+ * 只回傳有持股的股票即時價格與未實現損益，不重查持股成本結構
+ */
+export const getPrices = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const holdings = await Holding.findAll();
+    const active   = holdings.filter(h => h.sharesHeld > 0);
+
+    const priceResults = await Promise.allSettled(
+      active.map(h =>
+        apiSwitch.call(
+          () => sjGetStockQuote(h.stockId),
+          () => Stock.getQuote(h.stockId),
+        )
+      )
+    );
+
+    const data = active
+      .map((h, i) => {
+        const r = priceResults[i];
+        if (r.status === 'rejected') return null;
+        const q = r.value;
+        return {
+          stockCode:        h.stockId,
+          currentPrice:     q.price,
+          change:           q.change,
+          changePct:        q.changePercent,
+          unrealizedProfit: Math.round(q.price * h.sharesHeld * 1000 - h.totalCost),
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    res.json(ApiResponse.success(data));
+  } catch (err) { next(err); }
+};
 
 export const getAll = async (_req: Request, res: Response, next: NextFunction) => {
   try {

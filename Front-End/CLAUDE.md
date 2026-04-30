@@ -33,6 +33,7 @@ src/
 ├── models/                   # 純 API 呼叫函式（無狀態）
 ├── viewmodels/               # React hooks，封裝 state + CRUD，供 View 使用
 ├── stores/                   # Zustand 跨頁全域 store（見下方說明）
+├── utils/                    # 純函式工具（不含 React，不持有狀態）
 └── views/
     ├── layout/               # MainLayout、SideNav（展開/收折）、TopBar
     ├── pages/                # 各頁面元件及其子元件、CSS
@@ -42,6 +43,10 @@ src/
 - **Model**：只負責 `fetch/create/update/delete`，直接回傳 DTO，不持有狀態。
 - **ViewModel**：`useState` + `useCallback`，暴露 `loading / saving / error` 及 CRUD 方法。每個頁面自行 instantiate 所需的 viewmodel，不跨頁共用。
 - **View**：不直接呼叫 API，所有副作用透過 ViewModel。
+
+### Axios 錯誤處理
+
+`api/axios.ts` 的 response interceptor 會將所有 HTTP 錯誤統一轉換為 `new Error(string)`，因此在 Model / ViewModel 的 catch 區塊中，`err` 一定是 `Error` 實例，可直接使用 `(err as Error).message`。
 
 ### Zustand Stores（跨頁全域狀態）
 
@@ -53,6 +58,8 @@ ViewModels 是頁面內 local state；跨頁需要共用的狀態放在 `stores/
 | `snapshotStore` | 流動資金 `cashBalance`，今日快照優先，無則 fallback 最近一筆；PanelHeader 輸入框直接操作此 store |
 
 `useEnsurePlanStore`（viewmodels）：負責確保 `planStore` 只被初始化一次，在 `StockOverviewPage` 掛載時呼叫。
+
+**重要**：`PanelHeader` 元件在每次掛載時都會自動呼叫 `snapshotStore.load()`，因此所有包含 `PanelHeader` 的頁面皆可直接讀取 `cashBalance`，不需另外觸發載入。
 
 ### 使用者偏好（`usePreferencesViewModel`）
 
@@ -72,6 +79,20 @@ ViewModels 是頁面內 local state；跨頁需要共用的狀態放在 `stores/
 
 所有頁面包在 `MainLayout`（含 SideNav + TopBar）內。全域通知透過 `<ToastContainer />`（zustand store）。
 
+### 輪詢與 stale closure
+
+在 `setInterval` 內呼叫 ViewModel 方法時，用 `useRef` 持有最新 instance，避免 stale closure：
+
+```ts
+const vmRef = useRef(vm);
+vmRef.current = vm;
+
+useEffect(() => {
+  const id = setInterval(() => vmRef.current.refreshPrices(), 5000);
+  return () => clearInterval(id);
+}, []); // 空 deps，不重建 interval
+```
+
 ---
 
 ## 設計系統
@@ -83,6 +104,8 @@ CSS 層與 JS 層各一份，**兩邊修改時必須同步**：
 - **CSS 變數**：`styles/tokens.css`（所有頁面適用）
 - **JS 常數**：`styles/theme.ts`（ECharts / Canvas 等無法讀取 CSS 變數的場景）
   - 使用方式：`import { colors } from '../../../styles'`
+
+`App.css` / `index.css` 是 Vite 初始樣板的殘留，與應用樣式無關，請勿修改。
 
 ### 核心色票
 
@@ -98,10 +121,27 @@ Icon：全站使用 **Material Symbols Rounded**（Google Fonts），透過 `vie
 ### CSS 慣例
 
 - 禁止在元件中自定義顏色，只用 CSS 變數。
-- 全域共用 class 定義於 `styles/global.css`（`.btn-ghost`、`.btn-icon`、`.ft-table`、`.ft-panel`、`.ft-section-header` 等）。
-- 元件專屬 CSS 放在同目錄（e.g. `SideNav.css`）。
+- 全域共用 class 定義於 `styles/global.css`。元件專屬 CSS 放在同目錄（e.g. `SideNav.css`）。
 - `.ft-table tbody td` 數值欄統一加 `className="num-value"`（`--font-mono`、`--text-value`）。
 - Table 操作按鈕用 `.btn-icon`（無邊框、icon only），加 `.accent` class 表示主要動作。
+
+**常用 global class 一覽：**
+
+| Class | 用途 |
+|-------|------|
+| `.ft-panel` | 卡片容器（背景 + 邊框 + 圓角） |
+| `.ft-section-header` | Panel 內標題列（flex，左右各放 title / actions） |
+| `.ft-section-title` | 標題文字（700, `--text`），可獨立用於 `<h2>` |
+| `.ft-table` / `.ft-table-scroll` | 標準表格 / 橫向捲動包裝 |
+| `.num-value` | 數值欄（monospace, `--text-value`） |
+| `.cell-primary` | 主要數值（同 `--text`，優先度高於 td 預設色） |
+| `.btn-ghost` | 外框按鈕（hover → accent 色） |
+| `.btn-icon` | Icon-only 操作按鈕；`.accent` 表示主要動作 |
+| `.txt-up / .txt-down / .txt-flat` | 漲跌色 utility class |
+| `.stock-code / .stock-name` | 代碼（粗體）/ 名稱（小字 muted）排版 |
+| `.change-tag` | 漲跌幅標籤（monospace sm） |
+| `.drag-handle` | 拖拉控點（hover 顯色） |
+| `@keyframes spin` | Loading spinner 動畫，搭配 `animation: spin 1s linear infinite` |
 
 ---
 
@@ -109,11 +149,11 @@ Icon：全站使用 **Material Symbols Rounded**（Google Fonts），透過 `vie
 
 | 元件 | 用途 |
 |------|------|
-| `PanelHeader` | 各頁頂部橫幅（含統計 stat + 流動資金輸入） |
+| `PanelHeader` | 各頁頂部橫幅（含統計 stat + 流動資金輸入）；掛載時自動呼叫 `snapshotStore.load()` |
 | `Modal` | 通用 Dialog（sm/md/lg 三種尺寸，ESC 關閉） |
 | `DataTable` | 可排序 / 可搜尋的通用表格元件 |
 | `FormInputs` | `TextInput`、`NumberInput`、`SelectInput`、`TextareaInput` |
-| `Toast` | 全域通知（`toast.success/error`，zustand store） |
+| `Toast` | 全域通知；在 View 中 `import { toast } from '../components/Toast'`，呼叫 `toast.success/error/info` |
 | `LoadingPanel` | 骨架屏 / spinner |
 | `Icon` | `<Icon name="edit" size={18} />` 包裝 Material Symbol |
 | `SparkLine` | 90 日走勢迷你折線圖（Recharts） |

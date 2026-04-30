@@ -231,3 +231,9 @@ tr:hover .drag-handle { color: var(--dim); }
   font-size: var(--text-sm);
   font-weight: 500;
 }
+
+/* ── Spin Animation（loading spinner） ── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

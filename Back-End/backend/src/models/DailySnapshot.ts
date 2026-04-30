@@ -3,6 +3,17 @@ import { db } from '../global/firebase';
 
 // ── 型別定義 ────────────────────────────────────────────────────────────────
 
+/** 快照中單一持股的欄位（sharesHeld 單位為張，stockValue = sharesHeld × 1000 × currentPrice） */
+export interface SnapshotHolding {
+  stockCode:        string;
+  stockName:        string;
+  sharesHeld:       number;
+  costAvg:          number;
+  currentPrice:     number;
+  stockValue:       number;
+  unrealizedProfit: number;
+}
+
 export interface DailySnapshotInput {
   date: string;             // YYYY-MM-DD（台灣時間）
   totalInvested: number;
@@ -14,6 +25,7 @@ export interface DailySnapshotInput {
   totalReturn: number;
   returnRate: number;       // e.g. 0.1371（小數，非百分比）
   note?: string;
+  holdings?: SnapshotHolding[];
 }
 
 export interface DailySnapshotDoc extends Required<DailySnapshotInput> {
@@ -89,6 +101,7 @@ export class DailySnapshot {
         total_return:      input.totalReturn,
         return_rate:       input.returnRate,
         note:              input.note ?? '',
+        holdings:          input.holdings ?? [],
         recorded_at:       admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -129,6 +142,7 @@ function deserialize(doc: admin.firestore.DocumentSnapshot): DailySnapshotDoc {
     totalReturn:      d.total_return,
     returnRate:       d.return_rate,
     note:             d.note ?? '',
+    holdings:         Array.isArray(d.holdings) ? d.holdings : [], // 舊文件無此欄位時 fallback []
     recordedAt:       d.recorded_at instanceof admin.firestore.Timestamp
       ? d.recorded_at.toDate()
       : new Date(),

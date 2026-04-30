@@ -24,7 +24,14 @@ export function useMarketViewModel() {
     }
   }, []);
 
+  const silentReload = useCallback(async () => {
+    try {
+      const data = await fetchMarketData();
+      setState(s => ({ ...s, data, lastUpdated: new Date() }));
+    } catch { /* 靜默，輪詢失敗不影響 UI */ }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
 
-  return { ...state, reload: load };
+  return { ...state, reload: load, silentReload };
 }

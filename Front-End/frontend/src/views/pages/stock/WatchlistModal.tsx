@@ -71,14 +71,14 @@ export default function WatchlistModal({
 
   const valid =
     form.stockCode.trim() &&
-    form.stockName.trim() &&
+    (isEdit || !!form.stockName.trim()) &&
     Number(form.targetPrice) > 0;
 
   const handleSubmit = () => {
     if (!valid) return;
     const payload: CreateWatchlistPayload = {
       stockCode:   form.stockCode.trim(),
-      stockName:   form.stockName.trim(),
+      stockName:   form.stockName.trim() || form.stockCode.trim(),
       targetPrice: Number(form.targetPrice),
       note:        form.note.trim() || undefined,
     };

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { yfChart, yfQuoteSummary } from '../global/yahooFinance';
 import { getOrSet } from '../global/cache';
+import { StockList } from './StockList';
 
 // ── 型別定義 ────────────────────────────────────────────────────────────────
 
@@ -78,62 +79,17 @@ export class Stock {
       .slice(0, 20);
   }
 
-  /** 抓取 TWSE + TPEX 全股清單（含 ETF 簡稱） */
+  /** 從 Firestore DB 讀取全股清單；DB 未初始化時回傳空陣列（需先執行 POST /stocks/list/refresh） */
   private static async fetchAllStockList(): Promise<StockSearchResult[]> {
-    const [bwibRes, tseRes, otcRes] = await Promise.allSettled([
-      // BWIBBU_ALL：上市所有證券（含 ETF）+ 簡稱，是最完整的簡稱來源
-      axios.get('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL', {
-        timeout: 10000,
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-      }),
-      // t187ap03_L：上市公司正式全名（備用）
-      axios.get('https://openapi.twse.com.tw/v1/opendata/t187ap03_L', {
-        timeout: 10000,
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-      }),
-      // TPEX：上櫃股票
-      axios.get(
-        'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis',
-        { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0' } }
-      ),
-    ]);
-
-    const nameMap = new Map<string, { name: string; market: 'TSE' | 'OTC' }>();
-
-    // 1. 先用全名清單建底
-    if (tseRes.status === 'fulfilled' && Array.isArray(tseRes.value.data)) {
-      for (const item of tseRes.value.data) {
-        const id   = (item['公司代號'] ?? item['stockId'] ?? item['code'] ?? '').toString().trim();
-        const name = (item['公司名稱'] ?? item['name'] ?? '').toString().trim();
-        if (id && name) nameMap.set(id, { name, market: 'TSE' });
-      }
-    }
-
-    // 2. BWIBBU_ALL 簡稱覆蓋（含 ETF），優先度更高
-    if (bwibRes.status === 'fulfilled' && Array.isArray(bwibRes.value.data)) {
-      for (const item of bwibRes.value.data) {
-        const id   = (item['Code'] ?? item['代號'] ?? '').toString().trim();
-        const name = (item['Name'] ?? item['名稱'] ?? '').toString().trim();
-        if (id && name) nameMap.set(id, { name, market: 'TSE' });
-      }
-    } else if (bwibRes.status === 'rejected') {
-      console.error('[Stock] BWIBBU_ALL API 失敗:', (bwibRes.reason as Error)?.message);
-    }
-
-    // 3. OTC（上櫃）
-    if (otcRes.status === 'fulfilled' && Array.isArray(otcRes.value.data)) {
-      for (const item of otcRes.value.data) {
-        const id   = (item['SecuritiesCompanyCode'] ?? item['代號'] ?? '').toString().trim();
-        const name = (item['CompanyName'] ?? item['名稱'] ?? '').toString().trim();
-        if (id && name && !nameMap.has(id)) nameMap.set(id, { name, market: 'OTC' });
-      }
-    }
-
-    const results: StockSearchResult[] = Array.from(nameMap.entries()).map(
-      ([stockId, { name, market }]) => ({ stockId, name, market })
-    );
-    console.log(`[Stock] 股票清單載入完成：共 ${results.length} 筆`);
-    return results;
+    const meta = await StockList.getMeta();
+    if (meta.count === 0) return [];
+    const items = await StockList.getAll();
+    console.log(`[Stock] 從 DB 載入股票清單：${items.length} 筆`);
+    return items.map(item => ({
+      stockId: item.code,
+      name:    item.name,
+      market:  item.market,
+    }));
   }
 
   // ── 即時報價 ──────────────────────────────────────────────────────────────

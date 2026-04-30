@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment, useEffect } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -9,9 +9,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import SparkLine from '../../components/Charts/SparkLine';
+import StockExpandPanel from '../../components/StockExpandPanel';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Icon from '../../components/Icon';
-import type { WatchlistItemDTO } from '../../../types';
+import type { WatchlistItemDTO, KLineDTO, StockProfileDTO, ChipDTO } from '../../../types';
 
 function fmt(n: number, decimals = 2) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -33,19 +34,27 @@ function SignalTag({ signal }: { signal: 'buy' | 'wait' }) {
 }
 
 export interface WatchlistTableProps {
-  items:      WatchlistItemDTO[];
-  sparklines: Record<string, number[]>;
-  onEdit:     (item: WatchlistItemDTO) => void;
-  onDelete:   (id: string) => void;
-  onReorder:  (newItems: WatchlistItemDTO[]) => void;
-  deleting:   boolean;
+  items:        WatchlistItemDTO[];
+  sparklines:   Record<string, number[]>;
+  klines:       Record<string, KLineDTO[]>;
+  profiles:     Record<string, StockProfileDTO>;
+  chips:        Record<string, ChipDTO[]>;
+  expandedCode: string | null;
+  onToggle:     (stockCode: string) => void;
+  onExpandLoad: (stockCode: string) => void;
+  onEdit:       (item: WatchlistItemDTO) => void;
+  onDelete:     (id: string) => void;
+  onReorder:    (newItems: WatchlistItemDTO[]) => void;
+  deleting:     boolean;
 }
 
-function WatchlistRow({ item, sparklines, onEdit, onConfirm }: {
-  item: WatchlistItemDTO;
+function WatchlistRow({ item, sparklines, isExpanded, onToggle, onEdit, onConfirm }: {
+  item:       WatchlistItemDTO;
   sparklines: Record<string, number[]>;
-  onEdit: (item: WatchlistItemDTO) => void;
-  onConfirm: (id: string) => void;
+  isExpanded: boolean;
+  onToggle:   (stockCode: string) => void;
+  onEdit:     (item: WatchlistItemDTO) => void;
+  onConfirm:  (id: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
@@ -57,11 +66,22 @@ function WatchlistRow({ item, sparklines, onEdit, onConfirm }: {
   return (
     <tr
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      onClick={() => onToggle(item.stockCode)}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        background: isExpanded ? 'rgba(255,255,255,0.02)' : undefined,
+        cursor: isDragging ? 'grabbing' : undefined,
+      }}
     >
       <td style={{ paddingLeft: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span {...attributes} {...listeners} className="drag-handle">
+          <span
+            {...attributes} {...listeners}
+            onClick={e => e.stopPropagation()}
+            className="drag-handle"
+          >
             <Icon name="drag_indicator" size={18} />
           </span>
           <a
@@ -79,7 +99,7 @@ function WatchlistRow({ item, sparklines, onEdit, onConfirm }: {
       <td className="right"><span className="num-value">{fmt(item.currentPrice)}</span></td>
       <td className="right">
         <span className={`change-tag ${cls}`}>
-          {arrow} {fmt(Math.abs(item.change))}&nbsp;{sign}{fmt(item.changePct)}%
+          {arrow} {fmt(Math.abs(item.change))}&nbsp;&nbsp;{sign}{fmt(item.changePct)}%
         </span>
       </td>
       <td className="center">
@@ -110,9 +130,17 @@ function WatchlistRow({ item, sparklines, onEdit, onConfirm }: {
   );
 }
 
-export default function WatchlistTable({ items, sparklines, onEdit, onDelete, onReorder, deleting: _ }: WatchlistTableProps) {
+export default function WatchlistTable({
+  items, sparklines, klines, profiles, chips,
+  expandedCode, onToggle, onExpandLoad,
+  onEdit, onDelete, onReorder, deleting: _,
+}: WatchlistTableProps) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  useEffect(() => {
+    if (expandedCode) onExpandLoad(expandedCode);
+  }, [expandedCode, onExpandLoad]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -121,6 +149,8 @@ export default function WatchlistTable({ items, sparklines, onEdit, onDelete, on
     const newIndex = items.findIndex(i => i.id === over.id);
     onReorder(arrayMove(items, oldIndex, newIndex));
   }
+
+  const COL_COUNT = 7;
 
   return (
     <>
@@ -140,18 +170,38 @@ export default function WatchlistTable({ items, sparklines, onEdit, onDelete, on
                 </tr>
               </thead>
               <tbody>
-                {items.map(item => (
-                  <WatchlistRow
-                    key={item.id}
-                    item={item}
-                    sparklines={sparklines}
-                    onEdit={onEdit}
-                    onConfirm={setConfirmId}
-                  />
-                ))}
+                {items.map(item => {
+                  const isExpanded = expandedCode === item.stockCode;
+                  const loadingExpand = isExpanded
+                    && !klines[item.stockCode]
+                    && !profiles[item.stockCode]
+                    && !chips[item.stockCode];
+                  return (
+                    <Fragment key={item.id}>
+                      <WatchlistRow
+                        item={item}
+                        sparklines={sparklines}
+                        isExpanded={isExpanded}
+                        onToggle={onToggle}
+                        onEdit={onEdit}
+                        onConfirm={setConfirmId}
+                      />
+                      {isExpanded && (
+                        <StockExpandPanel
+                          colSpan={COL_COUNT}
+                          code={item.stockCode}
+                          kline={klines[item.stockCode]}
+                          profile={profiles[item.stockCode]}
+                          chips={chips[item.stockCode]}
+                          loadingExpand={loadingExpand}
+                        />
+                      )}
+                    </Fragment>
+                  );
+                })}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--dim)' }}>
+                    <td colSpan={COL_COUNT} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--dim)' }}>
                       尚無關注清單
                     </td>
                   </tr>
