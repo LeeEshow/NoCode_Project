@@ -30,9 +30,17 @@ jobs:
         working-directory: Back-End/backend
         run: npm prune --production
 
+      - name: Package deployment artifact
+        run: |
+          mkdir deploy_pkg
+          cp -r Back-End/backend/dist deploy_pkg/
+          cp -r Back-End/backend/node_modules deploy_pkg/
+          cp Back-End/backend/package.json deploy_pkg/
+          cd deploy_pkg && zip -r ../deploy.zip .
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: finance-backend
           publish-profile: ${{ secrets.AZURE_BACKEND_PUBLISH_PROFILE }}
-          package: Back-End/backend
+          package: deploy.zip
