@@ -3,6 +3,8 @@ import { Stock } from '../models/Stock';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
 import { getOrSet } from '../global/cache';
+import { apiSwitch } from '../global/apiSwitch';
+import { sjGetStockQuote, sjGetStockHistory } from '../global/shioajiClient';
 
 /** GET /api/v1/stocks/search?q={keyword} */
 export const search = async (
@@ -30,8 +32,11 @@ export const getQuote = async (
     const id = String(req.params['id']);
     const data = await getOrSet(
       `stock:quote:${id}`,
-      () => Stock.getQuote(id),
-      60 // TTL 60s
+      () => apiSwitch.call(
+        () => sjGetStockQuote(id),
+        () => Stock.getQuote(id),
+      ),
+      60
     );
     res.json(ApiResponse.success(data));
   } catch (err) {
@@ -51,7 +56,10 @@ export const getHistory = async (
       365,
       Math.max(1, parseInt(String(req.query['days'] ?? '90'), 10))
     );
-    const data = await Stock.getHistory(id, days);
+    const data = await apiSwitch.call(
+      () => sjGetStockHistory(id, days),
+      () => Stock.getHistory(id, days),
+    );
     res.json(ApiResponse.success(data));
   } catch (err) {
     next(err);
@@ -69,7 +77,7 @@ export const getChip = async (
     const data = await getOrSet(
       `stock:chip:${id}`,
       () => Stock.getChip(id),
-      300 // TTL 5min
+      300
     );
     res.json(ApiResponse.success(data));
   } catch (err) {
@@ -88,7 +96,7 @@ export const getProfile = async (
     const data = await getOrSet(
       `stock:profile:${id}`,
       () => Stock.getProfile(id),
-      300 // TTL 5min
+      300
     );
     res.json(ApiResponse.success(data));
   } catch (err) {

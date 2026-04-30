@@ -2,6 +2,8 @@ import NodeCache from 'node-cache';
 
 const cache = new NodeCache();
 
+export { cache as nodeCache };
+
 export const getOrSet = async <T>(
   key: string,
   factory: () => Promise<T>,

@@ -14,6 +14,7 @@ import foreignAssetsRouter     from './routes/foreignAssets';
 import snapshotsRouter         from './routes/snapshots';
 import watchlistRouter         from './routes/watchlist';
 import preferencesRouter       from './routes/preferences';
+import systemRouter            from './routes/system';
 
 dotenv.config();
 const app = express();
@@ -34,6 +35,7 @@ app.use(`${api}/foreign-assets`,      foreignAssetsRouter);
 app.use(`${api}/snapshots`,           snapshotsRouter);
 app.use(`${api}/watchlist`,           watchlistRouter);
 app.use(`${api}/preferences`,         preferencesRouter);
+app.use(`${api}/system`,              systemRouter);
 
 app.use(errorHandler);
 

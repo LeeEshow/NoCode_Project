@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { MarketIndex } from '../models/MarketIndex';
 import { ApiResponse } from '../global/apiResponse';
 import { getOrSet } from '../global/cache';
+import { apiSwitch } from '../global/apiSwitch';
 
 /** GET /api/v1/market/indices */
 export const getIndices = async (
@@ -12,8 +13,11 @@ export const getIndices = async (
   try {
     const data = await getOrSet(
       'market:indices',
-      () => MarketIndex.fetchAll(),
-      60 // TTL 60s
+      () => apiSwitch.call(
+        () => MarketIndex.fetchAllWithShioaji(),
+        () => MarketIndex.fetchAll(),
+      ),
+      60
     );
     res.json(ApiResponse.success(data));
   } catch (err) {
@@ -31,7 +35,7 @@ export const getForexRates = async (
     const data = await getOrSet(
       'market:forex-rates',
       () => MarketIndex.fetchForexRates(),
-      300 // TTL 300s
+      300
     );
     res.json(ApiResponse.success(data));
   } catch (err) {
@@ -49,7 +53,7 @@ export const getExportIndicator = async (
     const data = await getOrSet(
       'market:export-indicator',
       () => MarketIndex.fetchExportIndicator(),
-      3600 // TTL 1hr
+      3600
     );
     res.json(ApiResponse.success(data));
   } catch (err) {

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { yfChart } from '../global/yahooFinance';
+import { sjGetTwIndices } from '../global/shioajiClient';
 
 // ── 型別定義 ────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,14 @@ const FOREX_SYMBOLS: Array<{ code: string; name: string; symbol: string }> = [
 // 台指期透過 Yahoo Finance TW SSR HTML 爬取，不在此列
 const INDEX_SYMBOLS: Array<{ id: string; name: string; symbol: string }> = [
   { id: 'twii',   name: '台股大盤',   symbol: '^TWII' },
+  { id: 'nasdaq', name: 'NASDAQ',     symbol: '^IXIC' },
+  { id: 'sp500',  name: 'S&P 500',    symbol: '^GSPC' },
+  { id: 'dji',    name: '道瓊工業',   symbol: '^DJI'  },
+  { id: 'sox',    name: '費城半導體', symbol: '^SOX'  },
+];
+
+// 美股指數（Shioaji 路徑時，台股由 Shioaji 提供，美股維持 Yahoo Finance）
+const US_INDEX_SYMBOLS: Array<{ id: string; name: string; symbol: string }> = [
   { id: 'nasdaq', name: 'NASDAQ',     symbol: '^IXIC' },
   { id: 'sp500',  name: 'S&P 500',    symbol: '^GSPC' },
   { id: 'dji',    name: '道瓊工業',   symbol: '^DJI'  },
@@ -136,6 +145,40 @@ export class MarketIndex {
       console.error('[MarketIndex] 台指期爬蟲失敗:', err instanceof Error ? err.message : err);
       return fallback;
     }
+  }
+
+  /**
+   * 台股（大盤＋台指期）由 Shioaji 提供，美股維持 Yahoo Finance
+   * 若 Shioaji 任一端點失敗，整個函式拋出讓 circuit breaker 記錄
+   */
+  static async fetchAllWithShioaji(): Promise<IndexCard[]> {
+    const [{ twii, futures }, settled] = await Promise.all([
+      sjGetTwIndices(),
+      Promise.allSettled(
+        US_INDEX_SYMBOLS.map(({ symbol }) =>
+          yfChart(symbol, { interval: '1d', range: '1d' })
+        )
+      ),
+    ]);
+
+    const usCards = US_INDEX_SYMBOLS.map(({ id, name }, i) => {
+      const r = settled[i];
+      if (r.status === 'rejected') {
+        return { id, name, price: null, change: null, changePercent: null };
+      }
+      const meta  = r.value.meta;
+      const price = meta.regularMarketPrice ?? null;
+      const prev  = meta.chartPreviousClose ?? null;
+      const change =
+        price !== null && prev ? +(price - prev).toFixed(2) : null;
+      const changePercent =
+        price !== null && prev
+          ? +(((price - prev) / prev) * 100).toFixed(2)
+          : null;
+      return { id, name, price, change, changePercent };
+    });
+
+    return [twii, futures, ...usCards];
   }
 
   /** 取得主要幣別對台幣即時匯率，並行請求；單一失敗不影響其他 */
