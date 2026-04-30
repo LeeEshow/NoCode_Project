@@ -21,6 +21,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
     showMA20:   true,
     showMA60:   true,
     showVolume: true,
+    zoomLock:   false,
   },
 };
 
@@ -62,6 +63,7 @@ export class Preferences {
         showMA20:   chart['showMA20']   ?? true,
         showMA60:   chart['showMA60']   ?? true,
         showVolume: chart['showVolume'] ?? true,
+        zoomLock:   chart['zoomLock']   ?? false,
       },
     };
   }

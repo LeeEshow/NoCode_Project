@@ -55,3 +55,7 @@
 - [ ] 行動裝置響應式佈局調整（SideNav collapse、Table 水平捲動）
 
 ---
+
+## Bug 待辦
+
+- K線TooTip顯示[o, c, l, h] 顯示異常，但K線圖資料是正確的(跟第三方圖比較)，請檢查Tooptip顯示陣列設定是否正確。ECharts trigger:'axis' 在 category axis 下，candlestick 的 p.value 格式是 [categoryIndex, open, close, low, high]，加上 length >= 5 的防禦判斷，相容未來 ECharts 版本若行為變更的情況。
