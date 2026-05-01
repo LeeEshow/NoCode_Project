@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -13,16 +14,25 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
+logger = logging.getLogger(__name__)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+
+async def _init_shioaji() -> None:
+    """背景初始化 Shioaji，不阻塞 app 啟動"""
     try:
         await manager.initialize(
             api_key=settings.sj_api_key,
             secret_key=settings.sj_secret_key,
         )
+        logger.info("Shioaji initialized successfully in background")
     except Exception as e:
-        logger.error(f"Shioaji initialization failed (app will start in degraded mode): {e}")
+        logger.error(f"Shioaji initialization failed (degraded mode): {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 背景啟動 Shioaji，不阻塞 FastAPI 接受請求
+    asyncio.create_task(_init_shioaji())
     yield
     try:
         await manager.shutdown()
