@@ -42,6 +42,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Shioaji Market API", version="0.1.0", lifespan=lifespan)
 
+
+@app.get("/")
+async def root():
+    """Azure App Service warmup probe endpoint"""
+    return {"status": "ok"}
+
+
 app.include_router(health.router)
 app.include_router(quote.router)
 app.include_router(index.router)
