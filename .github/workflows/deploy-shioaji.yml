@@ -14,17 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies to .python_packages
-        working-directory: Back-End/Shioaji_API
-        run: |
-          pip install -r requirements.txt \
-            --target=".python_packages/lib/site-packages" \
-            --upgrade
-
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
