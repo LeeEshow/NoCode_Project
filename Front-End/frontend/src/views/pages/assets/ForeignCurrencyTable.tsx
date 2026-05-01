@@ -51,7 +51,7 @@ function CurrencyRow({ item, onUpdate, onDelete, saving }: RowProps) {
     else setManualRateStr(String(item.manualRate));
   };
 
-  const activeRate = item.useManualRate ? item.manualRate : (item.liveRate ?? 0);
+  const _activeRate = item.useManualRate ? item.manualRate : (item.liveRate ?? 0);
 
   return (
     <tr>
