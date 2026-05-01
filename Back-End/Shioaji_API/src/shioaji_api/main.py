@@ -16,12 +16,18 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await manager.initialize(
-        api_key=settings.sj_api_key,
-        secret_key=settings.sj_secret_key,
-    )
+    try:
+        await manager.initialize(
+            api_key=settings.sj_api_key,
+            secret_key=settings.sj_secret_key,
+        )
+    except Exception as e:
+        logger.error(f"Shioaji initialization failed (app will start in degraded mode): {e}")
     yield
-    await manager.shutdown()
+    try:
+        await manager.shutdown()
+    except Exception as e:
+        logger.error(f"Shioaji shutdown error: {e}")
 
 
 app = FastAPI(title="Shioaji Market API", version="0.1.0", lifespan=lifespan)
