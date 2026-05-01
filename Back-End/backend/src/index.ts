@@ -72,6 +72,11 @@ app.use(`${api}/watchlist`,           watchlistRouter);
 app.use(`${api}/preferences`,         preferencesRouter);
 app.use(`${api}/system`,              systemRouter);
 
+// 健康探測端點（Azure warm-up probe 用）
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
 app.use(errorHandler);
 
 const port = process.env.PORT ?? 3001;
