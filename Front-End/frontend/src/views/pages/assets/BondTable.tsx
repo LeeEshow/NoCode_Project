@@ -103,7 +103,7 @@ export default function BondTable({ items, onEdit, onDelete, saving }: BondTable
         open={!!confirmId}
         title="確認移除"
         message="確定移除此債券紀錄？"
-        variant="danger"
+        danger
         confirmLabel="移除"
         onConfirm={() => { if (confirmId) { onDelete(confirmId); setConfirmId(null); } }}
         onCancel={() => setConfirmId(null)}

@@ -216,7 +216,7 @@ export default function WatchlistTable({
         open={!!confirmId}
         title="確認移除"
         message="確定從關注清單移除此股票？"
-        variant="danger"
+        danger
         confirmLabel="移除"
         onConfirm={() => { if (confirmId) { onDelete(confirmId); setConfirmId(null); } }}
         onCancel={() => setConfirmId(null)}

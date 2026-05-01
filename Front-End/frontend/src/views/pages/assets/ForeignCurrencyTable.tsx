@@ -52,7 +52,6 @@ function CurrencyRow({ item, onUpdate, onDelete, saving }: RowProps) {
   };
 
   const activeRate = item.useManualRate ? item.manualRate : (item.liveRate ?? 0);
-  const calcTwd    = item.amount * activeRate;
 
   return (
     <tr>
@@ -186,7 +185,7 @@ export default function ForeignCurrencyTable({ items, onUpdate, onDelete, saving
         open={!!confirmCode}
         title="確認移除"
         message={`確定移除 ${confirmCode} 外幣持倉？`}
-        variant="danger"
+        danger
         confirmLabel="移除"
         onConfirm={() => { if (confirmCode) { onDelete(confirmCode); setConfirmCode(null); } }}
         onCancel={() => setConfirmCode(null)}

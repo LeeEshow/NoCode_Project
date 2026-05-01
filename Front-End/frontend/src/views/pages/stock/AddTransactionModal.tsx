@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Modal from '../../components/Modal';
-import { FormField, TextInput, NumberInput, SelectInput, RadioGroup, TextareaInput } from '../../components/FormInputs';
+import { FormField, TextInput, NumberInput, RadioGroup, TextareaInput } from '../../components/FormInputs';
 import { useTransactionsViewModel, calcCostFromTransactions } from '../../../viewmodels/useTransactionsViewModel';
 import { toast } from '../../components/Toast/toastStore';
 import type { TransactionType } from '../../../types';

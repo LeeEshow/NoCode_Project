@@ -23,7 +23,7 @@ interface Props {
 
 const fmtNum = (n: number) => n.toLocaleString('zh-TW', { maximumFractionDigits: 0 });
 
-export default function PlanParamRow({ config, saving, onChange, onSave }: Props) {
+export default function PlanParamRow({ config, saving: _saving, onChange, onSave }: Props) {
   const [investDraft, setInvestDraft] = useState(fmtNum(config.annualInvest));
 
   const selectedKRisk = K_RISK_OPTIONS.find(o => o.value === config.kRisk) ?? K_RISK_OPTIONS[2];

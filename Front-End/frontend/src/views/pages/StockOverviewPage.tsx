@@ -39,9 +39,6 @@ import type { WatchlistItemDTO, CreateWatchlistPayload } from '../../types';
 function fmt(n: number, d = 0) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
-function sign(n: number) { return n > 0 ? '+' : ''; }
-function cls(n: number)  { return n > 0 ? 'txt-up' : n < 0 ? 'txt-down' : 'txt-flat'; }
-
 function pad2(n: number) { return String(n).padStart(2, '0'); }
 
 function formatLastUpdated(d: Date | null) {
@@ -49,13 +46,6 @@ function formatLastUpdated(d: Date | null) {
   const date = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
   const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
   return { date, time };
-}
-
-/* DecNum：小數點後小一號字體 */
-function DecNum({ value }: { value: string }) {
-  const dot = value.indexOf('.');
-  if (dot === -1) return <>{value}</>;
-  return <>{value.slice(0, dot)}<span className="dec-small">{value.slice(dot)}</span></>;
 }
 
 /* ── 持股操作 Modal 狀態 ── */

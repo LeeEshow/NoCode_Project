@@ -220,7 +220,7 @@ export default function TransactionHistoryModal({
         open={!!deleteId}
         title="確認刪除"
         message="此交易紀錄將被永久刪除，同時重新計算持倉成本。"
-        variant="danger"
+        danger
         confirmLabel="刪除"
         onConfirm={() => deleteId && handleDelete(deleteId)}
         onCancel={() => setDeleteId(null)}

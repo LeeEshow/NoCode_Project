@@ -64,7 +64,7 @@ export function usePlanViewModel() {
       const forexValue  = state.liveForex ?? row.forexValue ?? 0;
       const execCapital = row.execCapital ?? 0;
       const reinvest    = row.reinvest    ?? 0;
-      const totalAsset  = stockValue + forexValue + cashBalance;
+      const totalAsset  = (stockValue ?? 0) + forexValue + cashBalance;
       const invested    = execCapital + reinvest;
       const returnValue = totalAsset - invested;
       const returnPct   = invested !== 0 ? totalAsset / invested - 1 : null;
