@@ -14,9 +14,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create virtualenv and install dependencies
+        working-directory: Back-End/Shioaji_API
+        run: |
+          python -m venv antenv
+          source antenv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Package deployment artifact
+        run: |
+          cd Back-End/Shioaji_API
+          zip -r ../../shioaji_deploy.zip . \
+            --exclude "*.pyc" \
+            --exclude "*/__pycache__/*" \
+            --exclude "*/.git/*"
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: finance-shioaji
           publish-profile: ${{ secrets.AZURE_SHIOAJI_PUBLISH_PROFILE }}
-          package: Back-End/Shioaji_API
+          package: shioaji_deploy.zip
