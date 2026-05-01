@@ -33,6 +33,20 @@ process.on('unhandledRejection', (reason) => {
   log(`UNHANDLED REJECTION: ${String(reason)}`);
   process.exit(1);
 });
+process.on('SIGTERM', () => {
+  log('Received SIGTERM — Azure is shutting down the container');
+  process.exit(0);
+});
+process.on('SIGINT', () => {
+  log('Received SIGINT');
+  process.exit(0);
+});
+process.on('exit', (code) => {
+  // exit handler 是同步的，不能用 async，直接 fs.appendFileSync
+  try {
+    fs.appendFileSync(LOG, `[${new Date().toISOString()}] Process exiting with code ${code}\n`);
+  } catch {}
+});
 
 log('Process starting...');
 
