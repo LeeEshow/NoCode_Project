@@ -1,3 +1,4 @@
+import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -16,6 +17,26 @@ import watchlistRouter         from './routes/watchlist';
 import preferencesRouter       from './routes/preferences';
 import systemRouter            from './routes/system';
 
+// ── 診斷 log（寫入 Azure LogFiles + stdout）──────────────────────────────
+const LOG = '/home/LogFiles/node_app.log';
+const log = (msg: string) => {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { fs.appendFileSync(LOG, line); } catch {}
+  process.stdout.write(line);
+};
+
+process.on('uncaughtException', (err) => {
+  log(`UNCAUGHT EXCEPTION: ${err.stack ?? err.message}`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  log(`UNHANDLED REJECTION: ${String(reason)}`);
+  process.exit(1);
+});
+
+log('Process starting...');
+
+// ── App 初始化 ────────────────────────────────────────────────────────────
 dotenv.config();
 const app = express();
 
@@ -40,4 +61,5 @@ app.use(`${api}/system`,              systemRouter);
 app.use(errorHandler);
 
 const port = process.env.PORT ?? 3001;
-app.listen(port, () => console.log(`Server running on port ${port}`));
+log(`Calling app.listen on port ${port}...`);
+app.listen(port, () => log(`Server running on port ${port}`));
