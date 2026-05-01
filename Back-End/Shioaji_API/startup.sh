@@ -2,10 +2,11 @@
 set -e
 cd /home/site/wwwroot
 
-# 如果 antenv 尚未解壓，先解壓 Oryx 產生的 antenv.tar.gz
+# antenv.tar.gz 內部結構是 ./bin/ ./lib/，需解壓到 antenv/ 子目錄
 if [ ! -d antenv ]; then
-    echo "[startup] Extracting antenv.tar.gz..."
-    tar -xzf antenv.tar.gz
+    echo "[startup] Extracting antenv.tar.gz into antenv/..."
+    mkdir -p antenv
+    tar -xzf antenv.tar.gz -C antenv
     echo "[startup] antenv extracted"
 fi
 
