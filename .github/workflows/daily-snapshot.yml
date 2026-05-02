@@ -1,0 +1,20 @@
+name: Daily Snapshot
+
+on:
+  schedule:
+    - cron: '0 6 * * 1-5'  # 14:00 台灣時間（UTC+8）= 06:00 UTC，週一至週五
+  workflow_dispatch:        # 支援手動觸發（測試用）
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily snapshot
+        run: |
+          curl -X POST \
+            https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/api/v1/snapshots/record \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error
+          echo "Snapshot triggered at $(date '+%Y-%m-%d %H:%M:%S UTC')"
