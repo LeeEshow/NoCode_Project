@@ -76,27 +76,18 @@ export function buildPlanRows(
 
     if (status !== 'future') {
       const snapThis = lastSnapshotOfYear(snapsByYear, calendarYear);
-      const snapPrev = lastSnapshotOfYear(snapsByYear, calendarYear - 1);
 
       if (snapThis) {
         stockValue  = snapThis.stockValue;
         forexValue  = snapThis.forexValue;
         cashBalance = snapThis.cashBalance;
-      }
-
-      /* 執行資本 = 前一年末快照總計 */
-      if (snapPrev) {
-        execCapital = snapPrev.stockValue + snapPrev.forexValue + snapPrev.cashBalance;
+        execCapital = snapThis.execCapital;
+        if (status === 'past') reinvest = snapThis.reinvest;
       } else {
-        execCapital = 0; // 起始年
+        execCapital = 0;
       }
 
-      /* 再投入 */
-      if (status === 'past' && snapThis && snapPrev) {
-        reinvest = snapThis.totalInvested - snapPrev.totalInvested;
-      } else if (status === 'past' && snapThis && !snapPrev) {
-        reinvest = snapThis.totalInvested;
-      } else if (status === 'current') {
+      if (status === 'current') {
         reinvest = currentYearReinvest;
       }
 

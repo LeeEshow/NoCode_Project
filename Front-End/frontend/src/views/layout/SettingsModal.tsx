@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import PanelHeader from '../components/PanelHeader';
+import Modal from '../components/Modal/Modal';
 import Icon from '../components/Icon';
 import { useStockListViewModel } from '../../viewmodels/useStockListViewModel';
 import { fetchSnapshot, triggerSnapshotRecord } from '../../models/snapshotModel';
@@ -19,7 +19,6 @@ function todayStr(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/* ── 股票清單區塊 ── */
 function StockListSection() {
   const { count, updatedAt, loading, refreshing, refresh } = useStockListViewModel();
 
@@ -33,11 +32,11 @@ function StockListSection() {
   }
 
   return (
-    <section className="ft-panel" style={{ marginBottom: 20 }}>
+    <section className="ft-panel" style={{ marginBottom: 16 }}>
       <div className="ft-section-header">
         <span className="ft-section-title">股票清單</span>
       </div>
-      <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 24 }}>
+      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 24 }}>
         <div style={{ flex: 1 }}>
           <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 4 }}>上次更新</div>
           <div className="num-value" style={{ fontSize: 14 }}>
@@ -65,7 +64,6 @@ function StockListSection() {
   );
 }
 
-/* ── 每日快照區塊 ── */
 function SnapshotSection() {
   const [snapshot, setSnapshot] = useState<DailySnapshotDTO | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -105,11 +103,11 @@ function SnapshotSection() {
   const recordedAt = snapshot?.recordedAt ?? null;
 
   return (
-    <section className="ft-panel" style={{ marginBottom: 20 }}>
+    <section className="ft-panel">
       <div className="ft-section-header">
         <span className="ft-section-title">每日快照</span>
       </div>
-      <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 24 }}>
+      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 24 }}>
         <div style={{ flex: 1 }}>
           <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 4 }}>今日記錄狀態</div>
           <div className="num-value" style={{ fontSize: 14 }}>
@@ -131,16 +129,16 @@ function SnapshotSection() {
   );
 }
 
-/* ── 頁面 ── */
-export default function SettingsPage() {
+interface SettingsModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   return (
-    <div style={{ minWidth: 0 }}>
-      <PanelHeader />
-      <div style={{ padding: '16px 28px 28px' }}>
-        <h2 className="ft-section-title" style={{ marginBottom: 20 }}>設定</h2>
-        <StockListSection />
-        <SnapshotSection />
-      </div>
-    </div>
+    <Modal open={open} onClose={onClose} title="設定" size="md">
+      <StockListSection />
+      <SnapshotSection />
+    </Modal>
   );
 }

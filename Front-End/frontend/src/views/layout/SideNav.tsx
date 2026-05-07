@@ -40,9 +40,10 @@ function NavDivider({ expanded, label }: { expanded: boolean; label?: string }) 
 export interface SideNavProps {
   expanded: boolean;
   onToggle: () => void;
+  onSettingsOpen: () => void;
 }
 
-export default function SideNav({ expanded, onToggle }: SideNavProps) {
+export default function SideNav({ expanded, onToggle, onSettingsOpen }: SideNavProps) {
   const location = useLocation();
 
   /* 視窗寬度改變時自動同步展開狀態 */
@@ -90,7 +91,14 @@ export default function SideNav({ expanded, onToggle }: SideNavProps) {
 
       {/* 底部設定 */}
       <div className="sidenav__foot">
-        <NavItem to="/settings" icon={<Icon name="settings" size={20} />} label="設定" expanded={expanded} />
+        <button
+          className="nav-item nav-item--button"
+          onClick={onSettingsOpen}
+          title={!expanded ? '設定' : undefined}
+        >
+          <span className="nav-item__icon"><Icon name="settings" size={20} /></span>
+          {expanded && <span className="nav-item__label">設定</span>}
+        </button>
       </div>
     </nav>
   );

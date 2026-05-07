@@ -4,6 +4,7 @@ import { Holding } from '../models/Holding';
 import { Stock } from '../models/Stock';
 import { ForeignCurrency } from '../models/ForeignCurrency';
 import { Bond } from '../models/Bond';
+import { PlanConfig } from '../models/PlanConfig';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
 import { getLiveRateMap } from '../global/rateHelper';
@@ -32,50 +33,52 @@ export const record = async (
   next: NextFunction
 ) => {
   try {
-    const today = toTaiwanDateString(new Date());
+    const today       = toTaiwanDateString(new Date());
+    const currentYear = new Date().getFullYear();
 
-    // 第一批：所有獨立的 DB 讀取與匯率查詢並行執行
-    const [holdings, currencies, bonds, prev, rateMap] = await Promise.all([
+    // 第一批：所有獨立的 DB 讀取、匯率、PlanConfig 並行執行
+    const [holdings, currencies, bonds, latestSnap, prevYearSnap, rateMap, planConfig] = await Promise.all([
       Holding.findAll(),
       ForeignCurrency.findAll(),
       Bond.findAll(),
-      DailySnapshot.findLatest(),
+      DailySnapshot.findLatest(),                          // 用於繼承 cashBalance
+      DailySnapshot.findLastOfYear(currentYear - 1),       // 用於計算 execCapital
       getLiveRateMap(),
+      PlanConfig.find(),
     ]);
 
     // 第二批：各股報價（依賴 holdings，單筆失敗不中斷）
+    const active = holdings.filter(h => h.sharesHeld > 0);
     const priceResults = await Promise.allSettled(
-      holdings.map(h => Stock.getQuote(h.stockId))
+      active.map(h => Stock.getQuote(h.stockId))
     );
 
-    // 計算 stock_value / total_invested / realized_profit，同步組裝 snapshot holdings
-    let stockValue      = 0;
-    let totalInvested   = 0;
-    let realizedProfit  = 0;
+    // 組裝 snapshot holdings，計算 stockValue / unrealizedProfit
+    let stockValue       = 0;
+    let unrealizedProfit = 0;
     const snapshotHoldings: SnapshotHolding[] = [];
 
-    holdings.forEach((h, i) => {
-      totalInvested  += h.totalCost;
-      realizedProfit += h.realizedProfit;
-      const r = priceResults[i];
+    active.forEach((h, i) => {
+      const r            = priceResults[i];
+      const currentPrice = r.status === 'fulfilled' ? r.value.price : 0;
+      const currentValue = Math.round(h.sharesHeld * currentPrice);
+      const upl          = Math.round((currentPrice - h.avgCost) * h.sharesHeld);
+      const stockName    = r.status === 'fulfilled' ? (r.value.name ?? h.stockName ?? h.stockId) : (h.stockName ?? h.stockId);
+
       if (r.status === 'fulfilled') {
-        stockValue += h.sharesHeld * 1000 * r.value.price; // sharesHeld 為張數，×1000 轉為股
+        stockValue       += h.sharesHeld * currentPrice * 0.997; // 扣手續費
+        unrealizedProfit += (currentPrice - h.avgCost) * h.sharesHeld;
       }
 
-      // 只記錄有持股的標的（SS-02）
-      if (h.sharesHeld > 0) {
-        const currentPrice = r.status === 'fulfilled' ? r.value.price : 0;
-        const sv           = Math.round(h.sharesHeld * 1000 * currentPrice);
-        snapshotHoldings.push({
-          stockCode:        h.stockId,
-          stockName:        r.status === 'fulfilled' ? (r.value.name ?? h.stockId) : h.stockId,
-          sharesHeld:       h.sharesHeld,
-          costAvg:          h.avgCost,
-          currentPrice,
-          stockValue:       sv,
-          unrealizedProfit: Math.round(sv - h.totalCost),
-        });
-      }
+      snapshotHoldings.push({
+        stockCode: h.stockId,
+        stockName,
+        shares:           h.sharesHeld,
+        costAvg:          h.avgCost,
+        currentPrice,
+        currentValue,
+        unrealizedProfit: upl,
+      });
     });
 
     // 計算外幣 + 債券台幣合計
@@ -89,24 +92,23 @@ export const record = async (
       if (rate !== null) forexValue += b.faceValue * rate;
     }
 
-    const unrealizedProfit = stockValue - totalInvested;
-    const totalReturn      = unrealizedProfit + realizedProfit;
-    const returnRate       = totalInvested > 0
-      ? Math.round((totalReturn / totalInvested) * 1_000_000) / 1_000_000
+    // execCapital：前一年底資產合計；計畫起始年則為 0
+    const execCapital = prevYearSnap
+      ? prevYearSnap.stockValue + prevYearSnap.forexValue + prevYearSnap.cashBalance
       : 0;
-    const cashBalance      = prev?.cashBalance ?? 0;
+    const reinvest = planConfig.currentYearReinvest;
 
-    // 寫入快照（merge，冪等）
+    // cashBalance：優先保留今日已存在的值，否則繼承最近歷史快照
+    const cashBalance = latestSnap?.cashBalance ?? 0;
+
     const data = await DailySnapshot.record({
       date:             today,
-      totalInvested:    Math.round(totalInvested),
+      execCapital:      Math.round(execCapital),
+      reinvest:         Math.round(reinvest),
       stockValue:       Math.round(stockValue),
       cashBalance,
       forexValue:       Math.round(forexValue),
       unrealizedProfit: Math.round(unrealizedProfit),
-      realizedProfit:   Math.round(realizedProfit),
-      totalReturn:      Math.round(totalReturn),
-      returnRate,
       note:             '',
       holdings:         snapshotHoldings,
     });
@@ -155,8 +157,7 @@ export const create = async (
       throw new AppError(400, 'date 為必填欄位，格式 YYYY-MM-DD');
     }
     const required: (keyof DailySnapshotInput)[] = [
-      'totalInvested', 'stockValue', 'cashBalance',
-      'forexValue', 'unrealizedProfit', 'realizedProfit', 'returnRate',
+      'stockValue', 'cashBalance', 'forexValue', 'unrealizedProfit',
     ];
     for (const key of required) {
       if (body[key] == null) throw new AppError(400, `缺少必填欄位：${String(key)}`);
@@ -164,14 +165,12 @@ export const create = async (
 
     const data = await DailySnapshot.record({
       date:             body.date,
-      totalInvested:    Number(body.totalInvested),
+      execCapital:      Number(body.execCapital      ?? 0),
+      reinvest:         Number(body.reinvest         ?? 0),
       stockValue:       Number(body.stockValue),
       cashBalance:      Number(body.cashBalance),
       forexValue:       Number(body.forexValue),
       unrealizedProfit: Number(body.unrealizedProfit),
-      realizedProfit:   Number(body.realizedProfit),
-      totalReturn:      Number(body.totalReturn ?? 0),
-      returnRate:       Number(body.returnRate),
       note:             String(body.note ?? ''),
       holdings:         Array.isArray(body.holdings) ? body.holdings : [],
     });

@@ -26,7 +26,8 @@ export const getAll = async (
       const livePrice     = r.status === 'fulfilled' ? r.value.price         : null;
       const change        = r.status === 'fulfilled' ? r.value.change        : null;
       const changePercent = r.status === 'fulfilled' ? r.value.changePercent : null;
-      const stockName     = r.status === 'fulfilled' ? r.value.name          : null;
+      // 優先使用 DB 儲存的名稱（建立時前端傳入），報價成功時以最新名稱覆蓋
+      const stockName     = r.status === 'fulfilled' ? r.value.name : (item.stockName || item.stockId);
       const judgment      = livePrice !== null
         ? (livePrice <= item.targetPrice ? '買進' : '觀望')
         : null;
@@ -50,7 +51,7 @@ export const create = async (
   next: NextFunction
 ) => {
   try {
-    const { stockId, targetPrice, note } = req.body;
+    const { stockId, stockName, targetPrice, note } = req.body;
 
     if (!stockId || targetPrice == null) {
       throw new AppError(400, '缺少必填欄位：stockId / targetPrice');
@@ -58,6 +59,7 @@ export const create = async (
 
     const data = await Watchlist.create({
       stockId:     String(stockId),
+      stockName:   stockName ? String(stockName) : undefined,
       targetPrice: Number(targetPrice),
       note:        note ?? '',
     });

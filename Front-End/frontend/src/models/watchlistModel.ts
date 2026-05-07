@@ -41,6 +41,7 @@ export async function fetchWatchlist(): Promise<WatchlistItemDTO[]> {
 export async function createWatchlistItem(payload: CreateWatchlistPayload): Promise<WatchlistItemDTO> {
   const res = await api.post<ApiResponse<RawWatchlistItem>>('/watchlist', {
     stockId:     payload.stockCode,
+    stockName:   payload.stockName,
     targetPrice: payload.targetPrice,
     note:        payload.note,
   });
@@ -52,6 +53,7 @@ export async function updateWatchlistItem(
   payload: Partial<CreateWatchlistPayload>,
 ): Promise<WatchlistItemDTO> {
   const res = await api.put<ApiResponse<RawWatchlistItem>>(`/watchlist/${id}`, {
+    ...(payload.stockName !== undefined && { stockName: payload.stockName }),
     targetPrice: payload.targetPrice,
     note:        payload.note,
   });

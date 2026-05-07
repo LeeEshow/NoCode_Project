@@ -81,7 +81,6 @@ export default function ReportPage() {
                             <th>外幣資產</th>
                             <th>流動資金</th>
                             <th>未實現損益</th>
-                            <th>已實現損益</th>
                             <th>淨損益</th>
                             <th>報酬率</th>
                             <th>備註</th>
@@ -102,9 +101,6 @@ export default function ReportPage() {
                                 <td className="num-value">{fmt(row.cashBalance)}</td>
                                 <td className="num-value" style={{ color: row.unrealizedProfit >= 0 ? 'var(--up)' : 'var(--down)' }}>
                                   {row.unrealizedProfit >= 0 ? '+' : ''}{fmt(row.unrealizedProfit)}
-                                </td>
-                                <td className="num-value" style={{ color: row.realizedProfit >= 0 ? 'var(--up)' : 'var(--down)' }}>
-                                  {row.realizedProfit >= 0 ? '+' : ''}{fmt(row.realizedProfit)}
                                 </td>
                                 <td className="num-value" style={{ color: c }}>
                                   {row.netReturn >= 0 ? '+' : ''}{fmt(row.netReturn)}

@@ -125,6 +125,16 @@
   text-overflow: ellipsis;
 }
 
+.nav-item--button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--text-base);
+  font-family: var(--font-sans);
+}
+
 /* ── Divider ── */
 
 .nav-divider {

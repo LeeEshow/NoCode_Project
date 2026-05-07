@@ -72,12 +72,14 @@ export function usePlanViewModel() {
     });
   }, [state.baseRows, state.liveStock, state.liveForex, liveCash]);
 
-  /* 同步當年度報酬率到 planStore，供其他頁面讀取 */
+  /* 同步當年度原始輸入到 planStore，供 StockOverviewPage 計算整年報酬率 */
   useEffect(() => {
     const cur = rows.find(r => r.status === 'current');
+    if (!cur) return;
     usePlanStore.setState({
-      currentYearReturnPct:   cur?.returnPct   ?? null,
-      currentYearReturnValue: cur?.returnValue ?? null,
+      execCapital: cur.execCapital ?? 0,
+      reinvest:    cur.reinvest    ?? 0,
+      forexValue:  cur.forexValue  ?? 0,
       loaded: true,
     });
   }, [rows]);

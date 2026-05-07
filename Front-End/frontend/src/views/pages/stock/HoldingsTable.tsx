@@ -1,4 +1,4 @@
-import { useEffect, Fragment } from 'react';
+import { useEffect, Fragment, memo } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -33,7 +33,7 @@ function OpBtn({
 }
 
 /* ── 主列（可拖拉）── */
-function HoldingRow({
+const HoldingRow = memo(function HoldingRow({
   h, sparkline, isExpanded,
   onToggle, onHistory, onAddTx,
 }: {
@@ -120,7 +120,7 @@ function HoldingRow({
       </td>
     </tr>
   );
-}
+});
 
 /* ── 主元件 ── */
 export interface HoldingsTableProps {

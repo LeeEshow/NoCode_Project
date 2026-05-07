@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { fetchSnapshot, fetchSnapshots, updateSnapshot, createSnapshot } from '../models/snapshotModel';
-import { toast } from '../views/components/Toast/toastStore';
+import { fetchSnapshot, fetchSnapshots, updateSnapshot, triggerSnapshotRecord } from '../models/snapshotModel';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -11,17 +10,17 @@ interface SnapshotState {
   update:      (cashBalance: number) => Promise<void>;
 }
 
-export const useSnapshotStore = create<SnapshotState>((set) => ({
+export const useSnapshotStore = create<SnapshotState>((set, get) => ({
   cashBalance: 0,
   loaded: false,
 
   async load() {
+    if (get().loaded) return;
     try {
       const snap = await fetchSnapshot(today());
       set({ cashBalance: snap.cashBalance, loaded: true });
     } catch {
-      /* 今日尚無快照 → 用今年最近一筆的 cashBalance 作 fallback */
-      toast.error(`查無 ${today()} 的快照紀錄，流動資金顯示上次記錄值`);
+      /* 今日快照尚未建立（14:00 前為正常狀態），靜默 fallback 至最近一筆 */
       try {
         const year = new Date().getFullYear();
         const snaps = await fetchSnapshots(year);
@@ -41,18 +40,9 @@ export const useSnapshotStore = create<SnapshotState>((set) => ({
     try {
       await updateSnapshot(date, { cashBalance });
     } catch {
-      /* 今日尚無快照 → 建立一筆 */
       try {
-        await createSnapshot({
-          date,
-          cashBalance,
-          totalInvested: 0,
-          stockValue:    0,
-          forexValue:    0,
-          unrealizedProfit: 0,
-          realizedProfit:   0,
-          returnRate:       0,
-        });
+        await triggerSnapshotRecord();
+        await updateSnapshot(date, { cashBalance });
       } catch { /* silent */ }
     }
   },

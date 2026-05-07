@@ -48,16 +48,40 @@ src/
 
 `api/axios.ts` 的 response interceptor 會將所有 HTTP 錯誤統一轉換為 `new Error(string)`，因此在 Model / ViewModel 的 catch 區塊中，`err` 一定是 `Error` 實例，可直接使用 `(err as Error).message`。
 
+### React 單向資料流原則（A-01）
+
+本專案遵守 **Single Source of Truth + 禁止儲存 Derived State** 原則：
+
+- ✅ **可存**：`stocks`、`plans`、`cash` 等原始資料
+- ❌ **禁存**：`totalValue`、`returnRate` 等可由原始資料計算出的結果
+- ✅ Derived Data 一律用 `useMemo` 在 ViewModel 或 View 層計算
+
+```
+API (Polling / Query)
+        ↓
+ViewModel / Store（只存原始資料）
+        ↓
+┌──────────┼──────────┐
+↓          ↓          ↓
+Table    股票現值    報酬率
+           ↑            ↑
+    useMemo / selector 計算
+```
+
+違反此原則的後果：UI 不同步、race condition、state 不一致。
+
+---
+
 ### Zustand Stores（跨頁全域狀態）
 
 ViewModels 是頁面內 local state；跨頁需要共用的狀態放在 `stores/`：
 
 | Store | 用途 |
 |-------|------|
-| `planStore` | 投報計畫當年度 `currentYearReturnPct / currentYearReturnValue`，由 `useEnsurePlanStore` 在首頁懶載入後寫入，供 PanelHeader stat 讀取 |
+| `planStore` | 投報計畫當年度**原始輸入**：`execCapital / reinvest / forexValue / liveStockValue`。由 `useEnsurePlanStore` 初始化靜態欄位一次；`StockOverviewPage` 在每次 `holdings.items` 變動後呼叫 `updateStockValue()` 更新即時股票現值。整年報酬率（Derived）以 `useMemo` 在 `StockOverviewPage` 計算，**不存於 store** |
 | `snapshotStore` | 流動資金 `cashBalance`，今日快照優先，無則 fallback 最近一筆；PanelHeader 輸入框直接操作此 store |
 
-`useEnsurePlanStore`（viewmodels）：負責確保 `planStore` 只被初始化一次，在 `StockOverviewPage` 掛載時呼叫。
+`useEnsurePlanStore`（viewmodels）：負責確保 `planStore` 靜態欄位（`execCapital / reinvest / forexValue`）只初始化一次（`loaded` 守衛）。`liveStockValue` 由 `StockOverviewPage` 的 `useEffect` 在 `holdings.items` 每次變動時同步寫入。
 
 **重要**：`PanelHeader` 元件在每次掛載時都會自動呼叫 `snapshotStore.load()`，因此所有包含 `PanelHeader` 的頁面皆可直接讀取 `cashBalance`，不需另外觸發載入。
 
@@ -92,6 +116,28 @@ useEffect(() => {
   return () => clearInterval(id);
 }, []); // 空 deps，不重建 interval
 ```
+
+**盤中判斷（`isTradingHours`）必須放在 callback 內，而非 `useEffect` 最外層**：
+
+```ts
+// ❌ 錯誤：mount 時若非盤中，interval 永遠不建立
+useEffect(() => {
+  if (!isTradingHours()) return;
+  const id = setInterval(() => { ... }, 5000);
+  ...
+}, []);
+
+// ✅ 正確：interval 永遠建立，每次 tick 才判斷
+useEffect(() => {
+  const id = setInterval(() => {
+    if (!isTradingHours()) return;
+    vmRef.current.refreshPrices();
+  }, 5000);
+  return () => clearInterval(id);
+}, []);
+```
+
+這樣即使頁面在盤前開啟，開盤後無需重載即可自動開始輪詢。
 
 ---
 

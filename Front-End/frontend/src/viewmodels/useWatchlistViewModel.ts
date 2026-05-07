@@ -130,5 +130,13 @@ export function useWatchlistViewModel() {
     reorderWatchlist(newOrder).catch(() => { /* 靜默，排序已在本地生效 */ });
   }, []);
 
-  return { ...state, items: sortedItems, load, toggleExpand, ensureExpandData, addItem, updateItem, removeItem, reorder };
+  /* 盤中輪詢用，靜默重新取得含即時報價的清單，不觸發 loading */
+  const silentReload = useCallback(async () => {
+    try {
+      const items = await fetchWatchlist();
+      setState(s => ({ ...s, items }));
+    } catch { /* 輪詢失敗靜默 */ }
+  }, []);
+
+  return { ...state, items: sortedItems, load, toggleExpand, ensureExpandData, addItem, updateItem, removeItem, reorder, silentReload };
 }

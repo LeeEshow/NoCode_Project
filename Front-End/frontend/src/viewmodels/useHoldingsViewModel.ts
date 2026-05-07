@@ -16,7 +16,6 @@ interface State {
   profiles:     Record<string, StockProfileDTO>;
   chips:        Record<string, ChipDTO[]>;
   expandedCode: string | null;
-  summary:      HoldingsSummary;
   loading:      boolean;
   error:        string | null;
 }
@@ -32,7 +31,6 @@ function computeSummary(items: HoldingDTO[]): HoldingsSummary {
 const INIT: State = {
   items: [], sparklines: {}, klines: {}, profiles: {}, chips: {},
   expandedCode: null,
-  summary: { totalUnrealized: 0, totalReturnPct: 0, totalDailyChange: 0, totalCost: 0 },
   loading: true, error: null,
 };
 
@@ -46,7 +44,6 @@ export function useHoldingsViewModel() {
     setState(s => ({ ...s, loading: true, error: null }));
     try {
       const items = await fetchHoldings();
-      const summary = computeSummary(items);
       const sparklineEntries = await Promise.all(
         items.map(async h => {
           const data = await fetchSparklineData(h.stockCode).catch(() => [] as number[]);
@@ -56,7 +53,6 @@ export function useHoldingsViewModel() {
       setState(s => ({
         ...s,
         items,
-        summary,
         sparklines: Object.fromEntries(sparklineEntries),
         loading: false,
       }));
@@ -86,6 +82,9 @@ export function useHoldingsViewModel() {
     }));
   }, []);
 
+  /* summary 為 Derived Data，以 useMemo 計算，不存入 state */
+  const summary = useMemo(() => computeSummary(state.items), [state.items]);
+
   /* 依 order 排序 items */
   const sortedItems = useMemo(() => {
     if (order.length === 0) return state.items;
@@ -111,20 +110,26 @@ export function useHoldingsViewModel() {
         const items = s.items.map(h => {
           const p = priceMap.get(h.stockCode);
           if (!p) return h;
-          const currentValue = p.currentPrice * h.shares;
-          const returnPct    = h.costAvg > 0 ? ((p.currentPrice - h.costAvg) / h.costAvg) * 100 : 0;
+          if (
+            p.currentPrice === h.currentPrice &&
+            p.change       === h.change       &&
+            p.changePct    === h.changePct
+          ) return h;
+          const currentValue    = p.currentPrice * h.shares;
+          const unrealizedProfit = currentValue - h.totalCost;
+          const returnPct        = h.costAvg > 0 ? ((p.currentPrice - h.costAvg) / h.costAvg) * 100 : 0;
           return {
             ...h,
             currentPrice:     p.currentPrice,
             change:           p.change,
             changePct:        p.changePct,
-            unrealizedProfit: p.unrealizedProfit,
+            unrealizedProfit,
             currentValue,
             returnPct,
             isUp: p.changePct > 0,
           };
         });
-        return { ...s, items, summary: computeSummary(items) };
+        return { ...s, items };
       });
     } catch { /* 靜默，輪詢失敗不影響 UI */ }
   }, []);
@@ -132,5 +137,5 @@ export function useHoldingsViewModel() {
   /* 新增/刪除交易後刷新庫存 */
   const refreshAfterTx = useCallback(async () => { await load(); }, [load]);
 
-  return { ...state, items: sortedItems, load, refreshPrices, toggleExpand, ensureExpandData, refreshAfterTx, reorder, chips: state.chips };
+  return { ...state, items: sortedItems, summary, load, refreshPrices, toggleExpand, ensureExpandData, refreshAfterTx, reorder, chips: state.chips };
 }

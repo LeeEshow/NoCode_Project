@@ -317,22 +317,21 @@ export interface CreateYearlyRecordPayload {
 export interface SnapshotHoldingDTO {
   stockCode:        string;
   stockName:        string;
-  sharesHeld:       number;
+  shares:           number;
   costAvg:          number;
   currentPrice:     number;
-  stockValue:       number;
+  currentValue:     number;
   unrealizedProfit: number;
 }
 
 export interface DailySnapshotDTO {
   date:             string;
-  totalInvested:    number;
+  execCapital:      number;
+  reinvest:         number;
   stockValue:       number;
   cashBalance:      number;
   forexValue:       number;
   unrealizedProfit: number;
-  realizedProfit:   number;
-  returnRate:       number;
   note?:            string;
   recordedAt?:      string;
   holdings?:        SnapshotHoldingDTO[];

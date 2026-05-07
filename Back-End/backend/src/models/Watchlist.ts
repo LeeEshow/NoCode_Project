@@ -5,6 +5,7 @@ import { db } from '../global/firebase';
 
 export interface WatchlistInput {
   stockId: string;
+  stockName?: string;
   targetPrice: number;
   note?: string;
 }
@@ -52,6 +53,7 @@ export class Watchlist {
 
     await ref.set({
       stock_id:     input.stockId,
+      stock_name:   input.stockName ?? '',
       target_price: input.targetPrice,
       note:         input.note ?? '',
       created_at:   admin.firestore.FieldValue.serverTimestamp(),
@@ -93,6 +95,7 @@ function deserialize(doc: admin.firestore.DocumentSnapshot): WatchlistDoc {
   const d = doc.data()!;
   return {
     stockId:     doc.id,
+    stockName:   d.stock_name ?? '',
     targetPrice: d.target_price,
     note:        d.note ?? '',
     createdAt:   d.created_at instanceof admin.firestore.Timestamp

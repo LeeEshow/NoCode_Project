@@ -4,7 +4,6 @@ import StockOverviewPage from './views/pages/StockOverviewPage';
 import PlanPage          from './views/pages/PlanPage';
 import AssetsPage        from './views/pages/AssetsPage';
 import ReportPage        from './views/pages/ReportPage';
-import SettingsPage      from './views/pages/SettingsPage';
 import ToastContainer    from './views/components/Toast';
 
 export default function App() {
@@ -16,7 +15,6 @@ export default function App() {
           <Route path="plan"     element={<PlanPage />} />
           <Route path="assets"   element={<AssetsPage />} />
           <Route path="report"   element={<ReportPage />} />
-          <Route path="settings" element={<SettingsPage />} />
           <Route path="*"        element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

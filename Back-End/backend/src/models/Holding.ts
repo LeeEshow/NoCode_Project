@@ -3,6 +3,7 @@ import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 
 export interface HoldingInput {
   stockId: string;
+  stockName?: string;
   sharesHeld: number;
   avgCost: number;
   totalCost: number;
@@ -12,6 +13,7 @@ export interface HoldingInput {
 
 export class Holding {
   stockId!: string;
+  stockName?: string;       // 持久化於 Firestore，recalculate 時寫入
   sharesHeld!: number;
   avgCost!: number;
   totalCost!: number;
@@ -21,7 +23,6 @@ export class Holding {
   sortIndex!: number;
 
   // 即時資料由 Controller 注入，不存 Firestore
-  stockName?: string;
   currentPrice?: number;
   change?: number;
   changePercent?: number;
@@ -48,8 +49,24 @@ export class Holding {
   }
 
   static async upsert(input: HoldingInput): Promise<void> {
-    await this.col.doc(input.stockId).set(
-      {
+    const payload: Record<string, unknown> = {
+      stock_id:        input.stockId,
+      shares_held:     input.sharesHeld,
+      avg_cost:        input.avgCost,
+      total_cost:      input.totalCost,
+      realized_profit: input.realizedProfit,
+      cost_method:     input.costMethod,
+      updated_at:      FieldValue.serverTimestamp(),
+    };
+    if (input.stockName) payload.stock_name = input.stockName;
+    await this.col.doc(input.stockId).set(payload, { merge: true });
+  }
+
+  static async batchUpsert(inputs: HoldingInput[]): Promise<void> {
+    const batch = db.batch();
+    for (const input of inputs) {
+      const ref = this.col.doc(input.stockId);
+      const payload: Record<string, unknown> = {
         stock_id:        input.stockId,
         shares_held:     input.sharesHeld,
         avg_cost:        input.avgCost,
@@ -57,28 +74,9 @@ export class Holding {
         realized_profit: input.realizedProfit,
         cost_method:     input.costMethod,
         updated_at:      FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-  }
-
-  static async batchUpsert(inputs: HoldingInput[]): Promise<void> {
-    const batch = db.batch();
-    for (const input of inputs) {
-      const ref = this.col.doc(input.stockId);
-      batch.set(
-        ref,
-        {
-          stock_id:        input.stockId,
-          shares_held:     input.sharesHeld,
-          avg_cost:        input.avgCost,
-          total_cost:      input.totalCost,
-          realized_profit: input.realizedProfit,
-          cost_method:     input.costMethod,
-          updated_at:      FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+      };
+      if (input.stockName) payload.stock_name = input.stockName;
+      batch.set(ref, payload, { merge: true });
     }
     await batch.commit();
   }
@@ -87,6 +85,7 @@ export class Holding {
     const d = doc.data()!;
     const h = new Holding();
     h.stockId        = doc.id;
+    h.stockName      = d['stock_name'] || undefined;
     h.sharesHeld     = d['shares_held'];
     h.avgCost        = d['avg_cost'];
     h.totalCost      = d['total_cost'];

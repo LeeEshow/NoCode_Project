@@ -3,29 +3,27 @@ import { db } from '../global/firebase';
 
 // ── 型別定義 ────────────────────────────────────────────────────────────────
 
-/** 快照中單一持股的欄位（sharesHeld 單位為張，stockValue = sharesHeld × 1000 × currentPrice） */
+/** 快照中單一持股的欄位（shares 單位為股，currentValue = shares × currentPrice） */
 export interface SnapshotHolding {
   stockCode:        string;
   stockName:        string;
-  sharesHeld:       number;
+  shares:           number;
   costAvg:          number;
   currentPrice:     number;
-  stockValue:       number;
-  unrealizedProfit: number;
+  currentValue:     number;   // shares × currentPrice（不含手續費）
+  unrealizedProfit: number;   // (currentPrice - costAvg) × shares
 }
 
 export interface DailySnapshotInput {
-  date: string;             // YYYY-MM-DD（台灣時間）
-  totalInvested: number;
-  stockValue: number;
-  cashBalance: number;
-  forexValue: number;
-  unrealizedProfit: number;
-  realizedProfit: number;
-  totalReturn: number;
-  returnRate: number;       // e.g. 0.1371（小數，非百分比）
-  note?: string;
-  holdings?: SnapshotHolding[];
+  date:             string;   // YYYY-MM-DD（台灣時間）
+  execCapital:      number;   // 前一年底資產合計（帶入本金）
+  reinvest:         number;   // 當年度 PlanConfig.currentYearReinvest 快照值
+  stockValue:       number;   // Σ(currentPrice × shares × 0.997)
+  cashBalance:      number;   // 使用者手填，cron 覆寫時保留
+  forexValue:       number;   // 外幣資產台幣合計
+  unrealizedProfit: number;   // Σ(currentPrice - costAvg) × shares
+  note?:            string;
+  holdings?:        SnapshotHolding[];
 }
 
 export interface DailySnapshotDoc extends Required<DailySnapshotInput> {
@@ -75,10 +73,23 @@ export class DailySnapshot {
     return doc.exists ? deserialize(doc) : null;
   }
 
-  /** 查詢最新一筆快照（用於取得上次 cash_balance） */
+  /** 查詢最新一筆快照（用於繼承 cash_balance） */
   static async findLatest(): Promise<DailySnapshotDoc | null> {
     const snap = await db
       .collection(COL)
+      .orderBy('date', 'desc')
+      .limit(1)
+      .get();
+    if (snap.empty) return null;
+    return deserialize(snap.docs[0]);
+  }
+
+  /** 查詢指定年度最後一筆快照（用於計算 execCapital） */
+  static async findLastOfYear(year: number): Promise<DailySnapshotDoc | null> {
+    const snap = await db
+      .collection(COL)
+      .where('date', '>=', `${year}-01-01`)
+      .where('date', '<=', `${year}-12-31`)
       .orderBy('date', 'desc')
       .limit(1)
       .get();
@@ -92,14 +103,12 @@ export class DailySnapshot {
     await ref.set(
       {
         date:              input.date,
-        total_invested:    input.totalInvested,
+        exec_capital:      input.execCapital,
+        reinvest:          input.reinvest,
         stock_value:       input.stockValue,
         cash_balance:      input.cashBalance,
         forex_value:       input.forexValue,
         unrealized_profit: input.unrealizedProfit,
-        realized_profit:   input.realizedProfit,
-        total_return:      input.totalReturn,
-        return_rate:       input.returnRate,
         note:              input.note ?? '',
         holdings:          input.holdings ?? [],
         recorded_at:       admin.firestore.FieldValue.serverTimestamp(),
@@ -133,16 +142,14 @@ function deserialize(doc: admin.firestore.DocumentSnapshot): DailySnapshotDoc {
   const d = doc.data()!;
   return {
     date:             d.date,
-    totalInvested:    d.total_invested,
-    stockValue:       d.stock_value,
-    cashBalance:      d.cash_balance,
-    forexValue:       d.forex_value,
-    unrealizedProfit: d.unrealized_profit,
-    realizedProfit:   d.realized_profit,
-    totalReturn:      d.total_return,
-    returnRate:       d.return_rate,
+    execCapital:      d.exec_capital      ?? 0,
+    reinvest:         d.reinvest          ?? 0,
+    stockValue:       d.stock_value       ?? 0,
+    cashBalance:      d.cash_balance      ?? 0,
+    forexValue:       d.forex_value       ?? 0,
+    unrealizedProfit: d.unrealized_profit ?? 0,
     note:             d.note ?? '',
-    holdings:         Array.isArray(d.holdings) ? d.holdings : [], // 舊文件無此欄位時 fallback []
+    holdings:         Array.isArray(d.holdings) ? d.holdings : [],
     recordedAt:       d.recorded_at instanceof admin.firestore.Timestamp
       ? d.recorded_at.toDate()
       : new Date(),

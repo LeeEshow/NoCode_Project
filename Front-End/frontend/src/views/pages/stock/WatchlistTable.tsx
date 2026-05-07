@@ -1,4 +1,4 @@
-import { useState, Fragment, useEffect } from 'react';
+import { useState, Fragment, useEffect, memo } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -48,9 +48,9 @@ export interface WatchlistTableProps {
   deleting:     boolean;
 }
 
-function WatchlistRow({ item, sparklines, isExpanded, onToggle, onEdit, onConfirm }: {
+const WatchlistRow = memo(function WatchlistRow({ item, sparkline, isExpanded, onToggle, onEdit, onConfirm }: {
   item:       WatchlistItemDTO;
-  sparklines: Record<string, number[]>;
+  sparkline:  number[];
   isExpanded: boolean;
   onToggle:   (stockCode: string) => void;
   onEdit:     (item: WatchlistItemDTO) => void;
@@ -103,9 +103,9 @@ function WatchlistRow({ item, sparklines, isExpanded, onToggle, onEdit, onConfir
         </span>
       </td>
       <td className="center">
-        {(sparklines[item.stockCode]?.length ?? 0) > 1
+        {sparkline.length > 1
           ? <div style={{ width: 72, height: 24, display: 'inline-block' }}>
-              <SparkLine data={sparklines[item.stockCode]} height={24} />
+              <SparkLine data={sparkline} height={24} />
             </div>
           : <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>—</span>
         }
@@ -128,7 +128,7 @@ function WatchlistRow({ item, sparklines, isExpanded, onToggle, onEdit, onConfir
       </td>
     </tr>
   );
-}
+});
 
 export default function WatchlistTable({
   items, sparklines, klines, profiles, chips,
@@ -180,7 +180,7 @@ export default function WatchlistTable({
                     <Fragment key={item.id}>
                       <WatchlistRow
                         item={item}
-                        sparklines={sparklines}
+                        sparkline={sparklines[item.stockCode] ?? []}
                         isExpanded={isExpanded}
                         onToggle={onToggle}
                         onEdit={onEdit}

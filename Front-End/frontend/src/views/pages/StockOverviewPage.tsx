@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { isTradingHours } from '../../utils/tradingHours';
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -20,6 +20,7 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
 import PanelHeader from '../components/PanelHeader';
 import MarketIndicesRow from '../components/MarketIndicesRow';
 import { usePlanStore } from '../../stores/planStore';
+import { useSnapshotStore } from '../../stores/snapshotStore';
 import { useEnsurePlanStore } from '../../viewmodels/useEnsurePlanStore';
 import LoadingPanel from '../components/LoadingPanel';
 import { useMarketViewModel }   from '../../viewmodels/useMarketViewModel';
@@ -86,17 +87,34 @@ export default function StockOverviewPage() {
     if (watchlist.error) toast.error(watchlist.error);
   };
 
+  /* 穩定的 callback，避免 HoldingRow / WatchlistRow memo 失效 */
+  const handleOpenHistory = useCallback((code: string, name: string) => {
+    setHistoryTarget({ code, name });
+  }, []);
+
+  const handleOpenAddTx = useCallback((code: string, name: string) => {
+    setAddTxTarget({ code, name });
+  }, []);
+
+  const handleWlEdit = useCallback((item: WatchlistItemDTO) => {
+    setWlEditItem(item);
+    setWlModalOpen(true);
+  }, []);
+
   /* 5 秒輪詢（僅盤中） */
-  const holdingsRef = useRef(holdings);
-  const marketRef   = useRef(market);
-  holdingsRef.current = holdings;
-  marketRef.current   = market;
+  const holdingsRef  = useRef(holdings);
+  const marketRef    = useRef(market);
+  const watchlistRef = useRef(watchlist);
+  holdingsRef.current  = holdings;
+  marketRef.current    = market;
+  watchlistRef.current = watchlist;
 
   useEffect(() => {
-    if (!isTradingHours()) return;
     const id = setInterval(() => {
+      if (!isTradingHours()) return;
       holdingsRef.current.refreshPrices();
       marketRef.current.silentReload();
+      watchlistRef.current.silentReload();
     }, 5000);
     return () => clearInterval(id);
   }, []);
@@ -104,13 +122,35 @@ export default function StockOverviewPage() {
   const { date: dateStr, time: timeStr } = formatLastUpdated(market.lastUpdated);
 
   /* PanelHeader 財務數值 */
-  const totalCurrentValue    = holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 0.997, 0);
-  const totalDailyAmt        = holdings.items.reduce((s, h) => s + h.change * h.shares, 0);
-  const totalUnrealizedProfit = holdings.items.reduce((s, h) => s + h.unrealizedProfit, 0);
-  const prevValue            = totalCurrentValue - totalDailyAmt;
-  const dailyGrowthRate      = prevValue !== 0 ? (totalDailyAmt / prevValue) * 100 : 0;
+  const { totalCurrentValue, totalDailyAmt, totalUnrealizedProfit } = useMemo(() => ({
+    totalCurrentValue:    holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 0.997, 0),
+    totalDailyAmt:        holdings.items.reduce((s, h) => s + h.change * h.shares, 0),
+    totalUnrealizedProfit: holdings.items.reduce((s, h) => s + h.unrealizedProfit, 0),
+  }), [holdings.items]);
+  const prevValue       = totalCurrentValue - totalDailyAmt;
+  const dailyGrowthRate = prevValue !== 0 ? (totalDailyAmt / prevValue) * 100 : 0;
   useEnsurePlanStore();
-  const { currentYearReturnPct, currentYearReturnValue } = usePlanStore();
+
+  /* planStore 原始輸入 + snapshotStore cashBalance → 整年報酬率以 useMemo 計算（Derived Data，不存 state） */
+  const execCapital      = usePlanStore(s => s.execCapital);
+  const reinvest         = usePlanStore(s => s.reinvest);
+  const planForexValue   = usePlanStore(s => s.forexValue);
+  const liveStockInStore = usePlanStore(s => s.liveStockValue);
+  const updateStockValue = usePlanStore(s => s.updateStockValue);
+  const cashBalance      = useSnapshotStore(s => s.cashBalance);
+
+  const { currentYearReturnPct, currentYearReturnValue } = useMemo(() => {
+    const invested   = execCapital + reinvest;
+    const totalAsset = liveStockInStore + planForexValue + cashBalance;
+    const returnValue = totalAsset - invested;
+    const returnPct   = invested !== 0 ? totalAsset / invested - 1 : null;
+    return { currentYearReturnPct: returnPct, currentYearReturnValue: returnValue };
+  }, [execCapital, reinvest, planForexValue, liveStockInStore, cashBalance]);
+
+  /* holdings.items 每次更新（含 5 秒輪詢）→ 同步最新股票現值到 planStore */
+  useEffect(() => {
+    updateStockValue(totalCurrentValue);
+  }, [totalCurrentValue, updateStockValue]);
 
   return (
     <div style={{ minWidth: 0 }}>
@@ -220,8 +260,8 @@ export default function StockOverviewPage() {
                   expandedCode={holdings.expandedCode}
                   onToggle={holdings.toggleExpand}
                   onExpandLoad={holdings.ensureExpandData}
-                  onHistory={(code, name) => setHistoryTarget({ code, name })}
-                  onAddTx={(code, name) => setAddTxTarget({ code, name })}
+                  onHistory={handleOpenHistory}
+                  onAddTx={handleOpenAddTx}
                   onReorder={holdings.reorder}
                 />
               </>
@@ -259,7 +299,7 @@ export default function StockOverviewPage() {
                   expandedCode={watchlist.expandedCode}
                   onToggle={watchlist.toggleExpand}
                   onExpandLoad={watchlist.ensureExpandData}
-                  onEdit={item => { setWlEditItem(item); setWlModalOpen(true); }}
+                  onEdit={handleWlEdit}
                   onDelete={handleWlDelete}
                   onReorder={watchlist.reorder}
                   deleting={watchlist.saving}

@@ -79,6 +79,11 @@ export class Stock {
       .slice(0, 20);
   }
 
+  /** 取得全股名稱清單（快取 3600s），供其他 Model/Controller 查名稱用 */
+  static async getStockNameList(): Promise<StockSearchResult[]> {
+    return getOrSet('stocks:all-list', () => Stock.fetchAllStockList(), 3600, s => s.length > 0);
+  }
+
   /** 從 Firestore DB 讀取全股清單；DB 未初始化時回傳空陣列（需先執行 POST /stocks/list/refresh） */
   private static async fetchAllStockList(): Promise<StockSearchResult[]> {
     const meta = await StockList.getMeta();

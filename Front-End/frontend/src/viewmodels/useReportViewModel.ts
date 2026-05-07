@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchSnapshots } from '../models/snapshotModel';
 import { fetchHoldings } from '../models/holdingModel';
 import { useSnapshotStore } from '../stores/snapshotStore';
@@ -14,8 +14,9 @@ export interface ReportSummary {
 }
 
 export interface ReportRow extends DailySnapshotDTO {
-  /* 已有所有欄位，額外算出當年損益 */
-  netReturn: number;
+  netReturn:     number;
+  totalInvested: number;
+  returnRate:    number;
 }
 
 interface State {
@@ -48,23 +49,30 @@ export function useReportViewModel() {
   useEffect(() => { load(); }, [load]);
 
   /* 即時摘要 */
-  const summary: ReportSummary | null = (() => {
+  const summary = useMemo((): ReportSummary | null => {
     const latest = state.snapshots.at(-1);
     if (!latest && state.holdings.length === 0) return null;
-    const stockValue  = state.holdings.reduce((sum, h) => sum + h.currentValue, 0);
-    const cashBalance = liveCash > 0 ? liveCash : (latest?.cashBalance ?? 0);
-    const forexValue  = latest?.forexValue ?? 0;
-    const totalInvested = latest?.totalInvested ?? 0;
-    const totalAsset  = stockValue + forexValue + cashBalance;
-    const returnValue = totalAsset - totalInvested;
-    const returnRate  = totalInvested > 0 ? returnValue / totalInvested : 0;
+    const stockValue    = state.holdings.reduce((sum, h) => sum + h.currentValue, 0);
+    const cashBalance   = liveCash > 0 ? liveCash : (latest?.cashBalance ?? 0);
+    const forexValue    = latest?.forexValue ?? 0;
+    const totalInvested = (latest?.execCapital ?? 0) + (latest?.reinvest ?? 0);
+    const totalAsset    = stockValue + forexValue + cashBalance;
+    const returnValue   = totalAsset - totalInvested;
+    const returnRate    = totalInvested > 0 ? returnValue / totalInvested : 0;
     return { totalInvested, stockValue, cashBalance, totalAsset, returnValue, returnRate };
-  })();
+  }, [state.snapshots, state.holdings, liveCash]);
 
   /* 快照列表（降序） */
-  const rows: ReportRow[] = [...state.snapshots]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .map(s => ({ ...s, netReturn: s.stockValue + s.forexValue + s.cashBalance - s.totalInvested }));
+  const rows: ReportRow[] = useMemo(() =>
+    [...state.snapshots]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(s => {
+        const totalInvested = s.execCapital + s.reinvest;
+        const netReturn     = s.stockValue + s.forexValue + s.cashBalance - totalInvested;
+        const returnRate    = totalInvested > 0 ? netReturn / totalInvested : 0;
+        return { ...s, netReturn, totalInvested, returnRate };
+      }),
+  [state.snapshots]);
 
   return { summary, rows, loading: state.loading, error: state.error, load };
 }

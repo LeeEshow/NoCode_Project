@@ -1,10 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import { Holding, HoldingInput } from '../models/Holding';
-import { Stock } from '../models/Stock';
+import { Stock, StockSearchResult } from '../models/Stock';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
 import { apiSwitch } from '../global/apiSwitch';
 import { sjGetStockQuote } from '../global/shioajiClient';
+import { nodeCache } from '../global/cache';
 
 /**
  * GET /api/v1/holdings/prices
@@ -35,7 +36,7 @@ export const getPrices = async (_req: Request, res: Response, next: NextFunction
           currentPrice:     q.price,
           change:           q.change,
           changePct:        q.changePercent,
-          unrealizedProfit: Math.round(q.price * h.sharesHeld * 1000 - h.totalCost),
+          unrealizedProfit: Math.round(q.price * h.sharesHeld - h.totalCost),
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -48,16 +49,16 @@ export const getAll = async (_req: Request, res: Response, next: NextFunction) =
   try {
     const holdings = await Holding.findAll();
 
-    // 平行取得有持股的即時報價，失敗時靜默跳過
+    // stockName 已由 recalculate 寫入 Firestore，此處只需對有持股的品項補抓即時報價
     const withPrices = await Promise.all(
       holdings.map(async h => {
         if (h.sharesHeld <= 0) return h;
         try {
           const quote = await Stock.getQuote(h.stockId);
-          h.stockName      = quote.name;
-          h.currentPrice   = quote.price;
-          h.change         = quote.change;
-          h.changePercent  = quote.changePercent;
+          h.stockName     = quote.name;
+          h.currentPrice  = quote.price;
+          h.change        = quote.change;
+          h.changePercent = quote.changePercent;
         } catch {
           // 報價失敗不中斷整體回應
         }
@@ -106,7 +107,16 @@ export const recalculate = async (req: Request, res: Response, next: NextFunctio
     if (!Array.isArray(holdings) || holdings.length === 0) {
       throw new AppError(400, 'Request body 必須為非空陣列');
     }
-    await Holding.batchUpsert(holdings);
-    res.json(ApiResponse.success({ updated: holdings.length }));
+
+    // 從 NodeCache peek 全股名稱（不觸發 fetch），在寫入時一併存 stock_name
+    const list = nodeCache.get<StockSearchResult[]>('stocks:all-list');
+    const nameMap = new Map(list?.map(s => [s.stockId, s.name]) ?? []);
+    const enriched = holdings.map(h => ({
+      ...h,
+      stockName: h.stockName || nameMap.get(h.stockId) || undefined,
+    }));
+
+    await Holding.batchUpsert(enriched);
+    res.json(ApiResponse.success({ updated: enriched.length }));
   } catch (err) { next(err); }
 };
