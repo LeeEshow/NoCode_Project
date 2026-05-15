@@ -89,7 +89,9 @@
       "Bash(Remove-Item \"D:\\\\Project\\\\NoCode_Project\\\\Back-End\\\\backend\\\\src\\\\scripts\\\\backfillHoldingNames.ts\")",
       "Bash(Remove-Item \"D:\\\\Project\\\\NoCode_Project\\\\Back-End\\\\backend\\\\src\\\\scripts\")",
       "Bash(not exist *)",
-      "PowerShell(New-Item *)"
+      "PowerShell(New-Item *)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(git *)"
     ]
   }
 }

@@ -8,20 +8,20 @@
 :root {
 
   /* ── 背景層 ──────────────────────────────── */
-  --bg:          #101010;   /* 最底層 body 背景 */
-  --surface:     #0a0a0f;   /* Sidebar / TopBar 背景 */
-  --panel:       #212126;   /* 卡片 / Table Panel 背景 */
+  --bg:          #111111;   /* 最底層 body 背景 */
+  --surface:     #080808;   /* Sidebar / TopBar 背景 */
+  --panel:       #1d1d1d;   /* 卡片 / Table Panel 背景 */
 
   /* ── 邊框 ────────────────────────────────── */
-  --border:      #2d2d33df;   /* 一般邊框 */
-  --border-hi:   #38383d;   /* hover / 強調邊框 */
+  --border:      #2c2c2c;   /* 一般邊框 */
+  --border-hi:   #383838;   /* hover / 強調邊框 */
 
   /* ── 文字色系 ────────────────────────────── */
-  --text:        #ced6df;   /* 主文字（代碼、section title） */
-  --text-value:  #ced6df;   /* 數值統一色（指數 / Table num-value 中間值） */
-  --muted:       #646c76;   /* 次要文字（label、btn、Table 次要數值欄） */
-  --dim:         #6B7681;   /* 輔助文字（nav icon、分隔線文字） */
-  --label:       #7A8490;   /* 小標題（card-label、stock-name） */
+  --text:        #cdd6e0;   /* 主文字（代碼、section title）降亮冷白 */
+  --text-value:  #c8d2de;   /* 數值統一色（指數 / Table num-value）略藍 */
+  --muted:       #7a8390;   /* 次要文字（label、btn、Table 次要數值欄） */
+  --dim:         #4e5e6e;   /* 輔助文字（nav icon、分隔線文字）對比 ≈ 6:1 */
+  --label:       #5e6c7a;   /* 小標題（card-label、stock-name）對比 ≈ 10:1 */
 
   /* ── 漲跌色系 ────────────────────────────── */
   --up:          #B87A7A;
@@ -30,7 +30,7 @@
   --down:        #7CA88D;
   --down-bg:     rgba(124,168,141,0.10);
   --down-bd:     rgba(124,168,141,0.22);
-  --flat:        #6E7681;
+  --flat:        #636b74;
 
   /* ── Accent（互動 / 選中） ───────────────── */
   --accent:      #6A8FB5;
@@ -38,9 +38,9 @@
   --accent-bd:   rgba(106,143,181,0.26);
 
   /* ── Table 表頭 ──────────────────────────── */
-  --thead-text:  #7A8FA0;
-  --thead-bg:    rgba(106,130,155,0.08);
-  --thead-bd:    rgba(106,130,155,0.16);
+  --thead-text:  #808a94;
+  --thead-bg:    rgba(180,185,190,0.06);
+  --thead-bd:    rgba(180,185,190,0.12);
 
   /* ── 字型 ────────────────────────────────── */
   --font-sans:   'Open Sans', sans-serif;
@@ -72,4 +72,12 @@
 
   /* ── 頂部橫幅高度 ────────────────────────── */
   --topbar-h:    52px;
+
+  /* ── 圖表莫蘭迪色板（6 色循環） ─────────── */
+  --chart-1: #C8ACA4;  /* 煙粉 Smoky Rose */
+  --chart-2: #A8B4A6;  /* 苔灰 Moss Grey */
+  --chart-3: #A0ACBA;  /* 霧藍 Fog Blue */
+  --chart-4: #C4B8A8;  /* 燕麥 Oatmeal */
+  --chart-5: #B4AEBC;  /* 薰紫灰 Lavender Smoke */
+  --chart-6: #96A8B4;  /* 鴿藍 Pigeon Blue */
 }

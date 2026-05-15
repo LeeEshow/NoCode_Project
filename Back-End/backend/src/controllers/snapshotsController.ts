@@ -5,9 +5,11 @@ import { Stock } from '../models/Stock';
 import { ForeignCurrency } from '../models/ForeignCurrency';
 import { Bond } from '../models/Bond';
 import { PlanConfig } from '../models/PlanConfig';
+import { MarketState } from '../models/MarketState';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
 import { getLiveRateMap } from '../global/rateHelper';
+import { recalculateDynamicRisk } from '../services/tagRiskService';
 
 // ── 工具函式 ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +114,11 @@ export const record = async (
       note:             '',
       holdings:         snapshotHoldings,
     });
+
+    // 快照完成後靜默觸發動態風險重算（失敗不影響主流程）
+    MarketState.find()
+      .then(({ current }) => recalculateDynamicRisk(current))
+      .catch(err => console.error(`[DynamicRisk] 每日重算失敗：${String(err)}`));
 
     res.json(ApiResponse.success(data));
   } catch (err) {

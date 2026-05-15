@@ -123,6 +123,21 @@ export interface CreateTransactionPayload {
 
 /* ── 庫存持股 ───────────────────────────────────────────────── */
 
+export interface HoldingTagDTO {
+  id:          string;
+  tagName:     string;
+  weightRatio: number;
+}
+
+export interface AddHoldingTagPayload {
+  tagName:     string;
+  weightRatio: number;
+}
+
+export interface UpdateHoldingTagPayload {
+  weightRatio: number;
+}
+
 export interface HoldingDTO {
   stockCode:      string;
   stockName:      string;
@@ -136,6 +151,7 @@ export interface HoldingDTO {
   change:         number;
   changePct:      number;
   isUp:           boolean;
+  tags:           HoldingTagDTO[];
 }
 
 export interface RecalculatePayload {
@@ -342,6 +358,92 @@ export interface UpdateSnapshotPayload {
   note?:        string;
 }
 
+/* ── Tag ────────────────────────────────────────────────────── */
+
+export type FallbackBehavior = 'hold' | 'exclude';
+
+export type MarketState = 'neutral' | 'risk-on' | 'risk-off' | 'liquidity-dry';
+
+export interface TagDTO {
+  id:               string;
+  name:             string;
+  baseRisk:         number;
+  dynamicRisk:      number;
+  targetWeight:     number | null;
+  fallbackBehavior: FallbackBehavior;
+  marketStatePresets?: {
+    riskOn:       number;
+    riskOff:      number;
+    liquidityDry: number;
+  };
+}
+
+export interface CreateTagPayload {
+  name:              string;
+  baseRisk:          number;
+  targetWeight?:     number | null;
+  fallbackBehavior?: FallbackBehavior;
+  marketStatePresets?: {
+    riskOn?:       number;
+    riskOff?:      number;
+    liquidityDry?: number;
+  } | null;
+}
+
+export type UpdateTagPayload = Partial<CreateTagPayload>;
+
+export interface CorrelationEntry {
+  tagA: string;
+  tagB: string;
+  rho:  number;
+}
+
+export interface TagCorrelationMatrix {
+  lastUpdated:      string;
+  entries:          CorrelationEntry[];
+  previousEntries?: CorrelationEntry[];
+}
+
+/* ── 風險模型（Phase 2）────────────────────────────────────── */
+
+export interface TagStat {
+  tagName:          string;
+  baseRisk:         number;
+  targetWeight:     number | null;
+  fallbackBehavior: FallbackBehavior;
+  actualWeight:     number;   /* 當前配置%（0~100） */
+  delta:            number;   /* 偏差 = actual - target（null target 時為 0） */
+  triggered:        boolean;  /* |delta| > baseThreshold（percentage points） */
+  chartColor:       string;
+}
+
+export interface OverlappingTagGroup {
+  stockCodes:              string[];
+  tagNames:                string[];
+  combinedWeight:          number;  /* 群組合計持股市值 / totalAsset（0~1） */
+  isConcentrationBreached: boolean; /* combinedWeight > concentrationLimit */
+}
+
+/* ── Asset-Tag ──────────────────────────────────────────────── */
+
+export interface AssetTagDTO {
+  id:          string;
+  stockCode:   string;
+  stockName:   string | null;
+  tagName:     string;
+  weightRatio: number;
+}
+
+export interface CreateAssetTagPayload {
+  stockCode:   string;
+  tagName:     string;
+  weightRatio: number;
+}
+
+export interface UpdateAssetTagPayload {
+  weightRatio: number;
+}
+
 /* ── 使用者設定 ────────────────────────────────────────────── */
 
 export type CostMethod = 'profit-return' | 'cost-retain';
@@ -354,7 +456,7 @@ export interface SettingsDTO {
 
 /* ── 使用者偏好設定 ──────────────────────────────────────────── */
 
-export type ExpandTab = 'kline' | 'chip';
+export type ExpandTab = 'kline' | 'chip' | 'tx' | 'tags';
 
 export interface ChartPreferences {
   showK:      boolean;
@@ -374,3 +476,37 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   chart:     { showK: true, showMA5: true, showMA20: true, showMA60: true, showVolume: true, zoomLock: false },
   expandTab: 'kline' as ExpandTab,
 };
+
+/* ── 再平衡規則（Phase 3）───────────────────────────────────── */
+
+export interface RebalanceRulesDTO {
+  baseThreshold:     number;
+  liquidityCapRatio: number;
+  advLookbackDays:   number; /* ADV 計算天數，預設 20 */
+  concentrationLimit: number; /* 同質 Tag 集中度上限（小數），預設 0.70 */
+}
+
+/* ── 再平衡決策層（Phase 3）────────────────────────────────── */
+
+export type RebalanceAction = 'buy' | 'sell' | 'hold';
+
+export interface RebalanceSuggestion {
+  stockCode:          string;
+  stockName:          string;
+  action:             RebalanceAction;
+  shares:             number;
+  estimatedAmount:    number;
+  isLiquidityLimited: boolean;
+}
+
+export interface RebalanceSnapshot {
+  id:        string;
+  createdAt: string;
+  params: {
+    totalAsset:        number;
+    baseThreshold:     number;
+    liquidityCapRatio: number;
+    marketState:       MarketState;
+  };
+  suggestions: RebalanceSuggestion[];
+}

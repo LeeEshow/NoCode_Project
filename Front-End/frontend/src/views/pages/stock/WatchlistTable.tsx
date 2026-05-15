@@ -190,6 +190,7 @@ export default function WatchlistTable({
                         <StockExpandPanel
                           colSpan={COL_COUNT}
                           code={item.stockCode}
+                          name={item.stockName}
                           kline={klines[item.stockCode]}
                           profile={profiles[item.stockCode]}
                           chips={chips[item.stockCode]}

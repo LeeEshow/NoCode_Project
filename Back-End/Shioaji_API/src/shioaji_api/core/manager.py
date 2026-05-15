@@ -89,7 +89,9 @@ class ShioajiManager:
             logger.info(f"Shioaji event [{event_code}]: {info}")
             if event_code == 2:
                 self._connected = False
-                logger.warning("Shioaji disconnected")
+                self._quote_cache.clear()
+                self._futures_cache.clear()
+                logger.warning("Shioaji disconnected, quote/futures cache cleared")
             elif event_code == 4:
                 self._connected = True
                 logger.info("Shioaji reconnected, resubscribing...")

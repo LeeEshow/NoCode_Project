@@ -11,43 +11,48 @@ import { CSS } from '@dnd-kit/utilities';
 import SparkLine from '../../components/Charts/SparkLine';
 import StockExpandPanel from '../../components/StockExpandPanel';
 import Icon from '../../components/Icon';
-import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO } from '../../../types';
+import type {
+  HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO,
+  TagDTO, AddHoldingTagPayload, UpdateHoldingTagPayload,
+  OverlappingTagGroup, RebalanceSuggestion,
+} from '../../../types';
 
 function fmt(n: number, decimals = 0) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
-/* ── 操作按鈕 ── */
-function OpBtn({
-  title, accent, onClick, children,
-}: { title: string; accent?: boolean; onClick: (e: React.MouseEvent) => void; children: React.ReactNode }) {
+function SuggestionCell({ s }: { s: RebalanceSuggestion | undefined }) {
+  if (!s || s.action === 'hold' || s.shares === 0) {
+    return <span style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)' }}>—</span>;
+  }
+  const label = s.action === 'sell' ? '賣' : '買';
   return (
-    <button
-      className={`btn-icon${accent ? ' accent' : ''}`}
-      title={title}
-      onClick={e => { e.stopPropagation(); onClick(e); }}
-    >
-      {children}
-    </button>
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.5 }}>
+      <span>
+        {label} {fmt(s.shares)} 股
+        {s.isLiquidityLimited && (
+          <span title="流動性不足，已調降交易量" style={{ cursor: 'help', marginLeft: 4 }}>⚠</span>
+        )}
+      </span>
+      <span>約 ${fmt(Math.round(s.estimatedAmount))}</span>
+    </span>
   );
 }
 
 /* ── 主列（可拖拉）── */
 const HoldingRow = memo(function HoldingRow({
-  h, sparkline, isExpanded,
-  onToggle, onHistory, onAddTx,
+  h, sparkline, isExpanded, onToggle, suggestion,
 }: {
-  h:          HoldingDTO;
-  sparkline:  number[];
-  isExpanded: boolean;
-  onToggle:   (code: string) => void;
-  onHistory:  (code: string, name: string) => void;
-  onAddTx:    (code: string, name: string) => void;
+  h:           HoldingDTO;
+  sparkline:   number[];
+  isExpanded:  boolean;
+  onToggle:    (code: string) => void;
+  suggestion?: RebalanceSuggestion;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: h.stockCode });
 
-  const cls = h.changePct === 0 ? 'txt-flat' : (h.isUp ? 'txt-up' : 'txt-down');
+  const cls   = h.changePct === 0 ? 'txt-flat' : (h.isUp ? 'txt-up' : 'txt-down');
   const arrow = h.changePct === 0 ? '—' : (h.isUp ? '▲' : '▼');
   const sign  = h.changePct > 0 ? '+' : '';
 
@@ -109,14 +114,7 @@ const HoldingRow = memo(function HoldingRow({
         </span>
       </td>
       <td className="center">
-        <div style={{ display: 'inline-flex', gap: 5 }}>
-          <OpBtn title="交易紀錄" onClick={() => onHistory(h.stockCode, h.stockName)}>
-            <Icon name="history" size={21} />
-          </OpBtn>
-          <OpBtn title="新增交易" accent onClick={() => onAddTx(h.stockCode, h.stockName)}>
-            <Icon name="add" size={21} />
-          </OpBtn>
-        </div>
+        <SuggestionCell s={suggestion} />
       </td>
     </tr>
   );
@@ -132,14 +130,25 @@ export interface HoldingsTableProps {
   expandedCode: string | null;
   onToggle:     (code: string) => void;
   onExpandLoad: (code: string) => void;
-  onHistory:    (code: string, name: string) => void;
   onAddTx:      (code: string, name: string) => void;
+  onChanged:    () => void;
   onReorder:    (newItems: HoldingDTO[]) => void;
+  allTags:            TagDTO[];
+  onAddHoldingTag:    (stockCode: string, payload: AddHoldingTagPayload, onSuccess?: () => void) => void;
+  onUpdateHoldingTag: (stockCode: string, id: string, payload: UpdateHoldingTagPayload) => void;
+  onRemoveHoldingTag: (stockCode: string, id: string, onSuccess?: () => void) => void;
+  overlappingGroups?:  OverlappingTagGroup[];
+  concentrationLimit?: number;
+  /* Phase 3 */
+  rebalanceSuggestions?: Record<string, RebalanceSuggestion>;
 }
 
 export default function HoldingsTable({
   items, sparklines, klines, profiles, chips,
-  expandedCode, onToggle, onExpandLoad, onHistory, onAddTx, onReorder,
+  expandedCode, onToggle, onExpandLoad, onAddTx, onChanged, onReorder,
+  allTags, onAddHoldingTag, onUpdateHoldingTag, onRemoveHoldingTag,
+  overlappingGroups, concentrationLimit,
+  rebalanceSuggestions,
 }: HoldingsTableProps) {
   useEffect(() => {
     if (expandedCode) onExpandLoad(expandedCode);
@@ -171,7 +180,7 @@ export default function HoldingsTable({
               <th className="right">成本均價</th>
               <th className="right">持有（股）</th>
               <th className="right">損益 %</th>
-              <th className="center">操作</th>
+              <th className="center" style={{ minWidth: 130 }}>再平衡建議</th>
             </tr>
           </thead>
           <tbody>
@@ -188,17 +197,26 @@ export default function HoldingsTable({
                     sparkline={sparklines[h.stockCode] ?? []}
                     isExpanded={isExpanded}
                     onToggle={onToggle}
-                    onHistory={onHistory}
-                    onAddTx={onAddTx}
+                    suggestion={rebalanceSuggestions?.[h.stockCode]}
                   />
                   {isExpanded && (
                     <StockExpandPanel
                       colSpan={COL_COUNT}
                       code={h.stockCode}
+                      name={h.stockName}
                       kline={klines[h.stockCode]}
                       profile={profiles[h.stockCode]}
                       chips={chips[h.stockCode]}
                       loadingExpand={loadingExpand}
+                      onAddTx={onAddTx}
+                      onChanged={onChanged}
+                      holdingTags={h.tags}
+                      allTags={allTags}
+                      onAddHoldingTag={onAddHoldingTag}
+                      onUpdateHoldingTag={onUpdateHoldingTag}
+                      onRemoveHoldingTag={onRemoveHoldingTag}
+                      overlappingGroups={overlappingGroups}
+                      concentrationLimit={concentrationLimit}
                     />
                   )}
                 </Fragment>

@@ -1,5 +1,5 @@
-import { NavLink, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, startTransition } from 'react';
 import Icon from '../components/Icon';
 import './SideNav.css';
 
@@ -13,12 +13,14 @@ interface NavItemProps {
 }
 
 function NavItem({ to, icon, label, expanded }: NavItemProps) {
+  const navigate = useNavigate();
   return (
     <NavLink
       to={to}
       end={to === '/'}
       className={({ isActive }) => `nav-item${isActive ? ' nav-item--active' : ''}`}
       title={!expanded ? label : undefined}
+      onClick={e => { e.preventDefault(); startTransition(() => navigate(to)); }}
     >
       <span className="nav-item__icon">{icon}</span>
       {expanded && <span className="nav-item__label">{label}</span>}
@@ -63,7 +65,7 @@ export default function SideNav({ expanded, onToggle, onSettingsOpen }: SideNavP
   }, [location.pathname]);
 
   return (
-    <nav className={`sidenav${expanded ? ' sidenav--expanded' : ''}`}>
+    <nav className={`sidenav${expanded ? ' sidenav--expanded' : ''}`} style={{ viewTransitionName: 'site-nav' }}>
 
       {/* FIX-06：展開時 Logo 靠左、‹ 靠右；收折時 › 置中 */}
       <div className="sidenav__top">

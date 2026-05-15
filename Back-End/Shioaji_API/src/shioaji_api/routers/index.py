@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
@@ -7,15 +7,27 @@ from shioaji_api.schemas.market import IndexResponse
 
 router = APIRouter()
 
+_TICK_MAX_AGE_SECONDS = 120
+
+
+def _is_fresh(cached: dict) -> bool:
+    try:
+        ts = datetime.fromisoformat(cached["timestamp"])
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() < _TICK_MAX_AGE_SECONDS
+    except Exception:
+        return True
+
 
 @router.get("/index/taiex", response_model=IndexResponse)
 async def get_taiex():
     if not manager.initialized:
         raise HTTPException(503, detail="Service not ready")
 
-    # 優先回傳 tick 快取（若訂閱成功）
+    # 優先回傳 tick 快取（確認資料新鮮）
     cached = manager.get_cached_taiex()
-    if cached:
+    if cached and _is_fresh(cached):
         return IndexResponse(**cached)
 
     # Fallback：snapshot
@@ -50,9 +62,9 @@ async def get_futures():
     if not manager.initialized:
         raise HTTPException(503, detail="Service not ready")
 
-    # 優先回傳 tick 快取（啟動時已訂閱 TXFC0）
+    # 優先回傳 tick 快取（確認資料新鮮）
     cached = manager.get_cached_futures()
-    if cached:
+    if cached and _is_fresh(cached):
         return IndexResponse(**cached)
 
     # Fallback：snapshot（動態找近月合約）

@@ -1,0 +1,56 @@
+/* 置中容器 */
+.ecg-loader {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 380px;
+  height: 72px;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* ECG SVG 波形：從左到右 clip-path 展開 */
+.ecg-loader__line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  animation:
+    ecg-reveal 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+    ecg-fade   0.2s ease 0.5s forwards;
+}
+
+/* 掃描頭：金色發光豎線，與波形同速右移 */
+.ecg-loader__scanner {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #8C7215 15%,
+    #8C7215 85%,
+    transparent 100%
+  );
+  box-shadow: 0 0 2px 2px rgba(140, 114, 21, 0.5);
+  animation:
+    ecg-scan  0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+    ecg-fade  0.2s ease 0.5s forwards;
+}
+
+@keyframes ecg-reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0%   0 0); }
+}
+
+@keyframes ecg-scan {
+  from { left: 0%; }
+  to   { left: 100%; }
+}
+
+@keyframes ecg-fade {
+  to { opacity: 0; }
+}

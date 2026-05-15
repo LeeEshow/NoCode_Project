@@ -45,3 +45,101 @@
   font-size: var(--text-sm);
   color: var(--dim);
 }
+
+/* ── 控制列 ── */
+.report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-range-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.report-range-label {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  min-width: 28px;
+  font-family: var(--font-mono);
+}
+
+.report-date-input {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 3px 8px;
+  outline: none;
+  transition: border-color var(--trans-fast), box-shadow var(--trans-fast);
+  color-scheme: dark;
+  cursor: pointer;
+}
+.report-date-input:hover { border-color: var(--border-hi); }
+.report-date-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bd);
+}
+
+/* ── Tab 列 ── */
+.report-tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+}
+
+.report-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  padding: 9px 16px 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color var(--trans-fast), border-color var(--trans-fast);
+  margin-bottom: -1px;
+}
+.report-tab:hover { color: var(--text); }
+.report-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.report-tab__count {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--dim);
+  background: rgba(255,255,255,0.05);
+  border-radius: 10px;
+  padding: 0 6px;
+  line-height: 18px;
+}
+.report-tab--active .report-tab__count { color: var(--muted); }
+
+/* ── 分頁 ── */
+.report-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.report-pagination__info {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--dim);
+  min-width: 52px;
+  text-align: center;
+}

@@ -79,7 +79,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
-  color: #484F58;
+  color: var(--dim);
   text-decoration: none;
   border-radius: 0;
   transition: background var(--trans-fast), color var(--trans-fast);

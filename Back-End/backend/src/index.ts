@@ -16,6 +16,12 @@ import snapshotsRouter         from './routes/snapshots';
 import watchlistRouter         from './routes/watchlist';
 import preferencesRouter       from './routes/preferences';
 import systemRouter            from './routes/system';
+import tagsRouter                  from './routes/tags';
+import assetTagsRouter             from './routes/assetTags';
+import tagCorrelationMatrixRouter  from './routes/tagCorrelationMatrix';
+import rebalanceRulesRouter        from './routes/rebalanceRules';
+import marketStateRouter           from './routes/marketState';
+import rebalanceSnapshotsRouter    from './routes/rebalanceSnapshots';
 
 // ── 診斷 log（寫入 Azure LogFiles + stdout）──────────────────────────────
 const LOG = '/home/LogFiles/node_app.log';
@@ -71,6 +77,12 @@ app.use(`${api}/snapshots`,           snapshotsRouter);
 app.use(`${api}/watchlist`,           watchlistRouter);
 app.use(`${api}/preferences`,         preferencesRouter);
 app.use(`${api}/system`,              systemRouter);
+app.use(`${api}/tags`,                      tagsRouter);
+app.use(`${api}/asset-tags`,               assetTagsRouter);
+app.use(`${api}/tag-correlation-matrix`,   tagCorrelationMatrixRouter);
+app.use(`${api}/rebalance-rules`,          rebalanceRulesRouter);
+app.use(`${api}/market-state`,             marketStateRouter);
+app.use(`${api}/rebalance-snapshots`,      rebalanceSnapshotsRouter);
 
 // 健康探測端點（Azure warm-up probe 用）
 app.get('/health', (_req, res) => {

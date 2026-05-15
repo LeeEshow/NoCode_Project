@@ -1,11 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { Holding, HoldingInput } from '../models/Holding';
 import { Stock, StockSearchResult } from '../models/Stock';
+import { AssetTag } from '../models/AssetTag';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
 import { apiSwitch } from '../global/apiSwitch';
 import { sjGetStockQuote } from '../global/shioajiClient';
-import { nodeCache } from '../global/cache';
+import { nodeCache, getOrSet } from '../global/cache';
 
 /**
  * GET /api/v1/holdings/prices
@@ -19,9 +20,14 @@ export const getPrices = async (_req: Request, res: Response, next: NextFunction
 
     const priceResults = await Promise.allSettled(
       active.map(h =>
-        apiSwitch.call(
-          () => sjGetStockQuote(h.stockId),
-          () => Stock.getQuote(h.stockId),
+        getOrSet(
+          `quote:live:${h.stockId}`,
+          () => apiSwitch.call(
+            () => sjGetStockQuote(h.stockId),
+            () => Stock.getQuote(h.stockId),
+          ),
+          10,
+          q => q.price > 0,
         )
       )
     );
@@ -47,22 +53,34 @@ export const getPrices = async (_req: Request, res: Response, next: NextFunction
 
 export const getAll = async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const holdings = await Holding.findAll();
+    const [holdings, allAssetTags] = await Promise.all([
+      Holding.findAll(),
+      AssetTag.findAll(),
+    ]);
+
+    // 建立 stockCode → HoldingTagDTO[] 查找表
+    const tagsByStock = new Map<string, { id: string; tagName: string; weightRatio: number }[]>();
+    for (const at of allAssetTags) {
+      const list = tagsByStock.get(at.stockCode) ?? [];
+      list.push({ id: at.id, tagName: at.tagName, weightRatio: at.weightRatio });
+      tagsByStock.set(at.stockCode, list);
+    }
 
     // stockName 已由 recalculate 寫入 Firestore，此處只需對有持股的品項補抓即時報價
     const withPrices = await Promise.all(
       holdings.map(async h => {
-        if (h.sharesHeld <= 0) return h;
-        try {
-          const quote = await Stock.getQuote(h.stockId);
-          h.stockName     = quote.name;
-          h.currentPrice  = quote.price;
-          h.change        = quote.change;
-          h.changePercent = quote.changePercent;
-        } catch {
-          // 報價失敗不中斷整體回應
+        if (h.sharesHeld > 0) {
+          try {
+            const quote = await Stock.getQuote(h.stockId);
+            h.stockName     = quote.name;
+            h.currentPrice  = quote.price;
+            h.change        = quote.change;
+            h.changePercent = quote.changePercent;
+          } catch {
+            // 報價失敗不中斷整體回應
+          }
         }
-        return h;
+        return { ...h, tags: tagsByStock.get(h.stockId) ?? [] };
       })
     );
 

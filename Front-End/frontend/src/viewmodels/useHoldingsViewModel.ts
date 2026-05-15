@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData, reorderHoldings, fetchHoldingPrices } from '../models/holdingModel';
-import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO } from '../types';
+import { addHoldingTag as apiAddHoldingTag, updateHoldingTag as apiUpdateHoldingTag, deleteHoldingTag as apiDeleteHoldingTag } from '../models/tagModel';
+import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO, AddHoldingTagPayload, UpdateHoldingTagPayload } from '../types';
+import { toast } from '../views/components/Toast';
 
 export interface HoldingsSummary {
   totalUnrealized:  number;
@@ -43,7 +45,8 @@ export function useHoldingsViewModel() {
   const load = useCallback(async () => {
     setState(s => ({ ...s, loading: true, error: null }));
     try {
-      const items = await fetchHoldings();
+      const rawItems = await fetchHoldings();
+      const items = rawItems.map(h => ({ ...h, tags: h.tags ?? [] }));
       const sparklineEntries = await Promise.all(
         items.map(async h => {
           const data = await fetchSparklineData(h.stockCode).catch(() => [] as number[]);
@@ -94,6 +97,84 @@ export function useHoldingsViewModel() {
     return [...ordered, ...rest];
   }, [state.items, order]);
 
+  /* ── HoldingTag CRUD ── */
+
+  const addHoldingTag = useCallback(async (
+    stockCode: string,
+    payload: AddHoldingTagPayload,
+    onSuccess?: () => void,
+  ) => {
+    try {
+      const tag = await apiAddHoldingTag(stockCode, payload);
+      setState(s => ({
+        ...s,
+        items: s.items.map(h =>
+          h.stockCode === stockCode ? { ...h, tags: [...h.tags, tag] } : h
+        ),
+      }));
+      onSuccess?.();
+    } catch (err) {
+      toast.error(`新增標籤失敗：${(err as Error).message}`);
+    }
+  }, []);
+
+  const updateHoldingTag = useCallback(async (
+    stockCode: string,
+    id: string,
+    payload: UpdateHoldingTagPayload,
+  ) => {
+    try {
+      const updated = await apiUpdateHoldingTag(stockCode, id, payload);
+      setState(s => ({
+        ...s,
+        items: s.items.map(h =>
+          h.stockCode === stockCode
+            ? { ...h, tags: h.tags.map(t => t.id === id ? updated : t) }
+            : h
+        ),
+      }));
+    } catch (err) {
+      toast.error(`更新配置比例失敗：${(err as Error).message}`);
+    }
+  }, []);
+
+  const removeHoldingTag = useCallback(async (
+    stockCode: string,
+    id: string,
+    onSuccess?: () => void,
+  ) => {
+    try {
+      await apiDeleteHoldingTag(stockCode, id);
+      setState(s => ({
+        ...s,
+        items: s.items.map(h =>
+          h.stockCode === stockCode
+            ? { ...h, tags: h.tags.filter(t => t.id !== id) }
+            : h
+        ),
+      }));
+      onSuccess?.();
+    } catch (err) {
+      toast.error(`移除標籤失敗：${(err as Error).message}`);
+    }
+  }, []);
+
+  /* 批次預載所有持股 K 線（計算再平衡前呼叫，確保 ADV 資料齊全；回傳合併後的完整 klines）*/
+  const fetchAllKlines = useCallback(async (): Promise<Record<string, KLineDTO[]>> => {
+    const { items, klines } = stateRef.current;
+    const missing = items.filter(h => !klines[h.stockCode]);
+    if (missing.length === 0) return klines;
+    const results = await Promise.allSettled(
+      missing.map(h => fetchKLine(h.stockCode).then(data => ({ code: h.stockCode, data })))
+    );
+    const merged: Record<string, KLineDTO[]> = { ...klines };
+    for (const r of results) {
+      if (r.status === 'fulfilled') merged[r.value.code] = r.value.data;
+    }
+    setState(s => ({ ...s, klines: merged }));
+    return merged;
+  }, []);
+
   /* 拖拉重新排序 */
   const reorder = useCallback((newItems: HoldingDTO[]) => {
     const newOrder = newItems.map(h => h.stockCode);
@@ -137,5 +218,20 @@ export function useHoldingsViewModel() {
   /* 新增/刪除交易後刷新庫存 */
   const refreshAfterTx = useCallback(async () => { await load(); }, [load]);
 
-  return { ...state, items: sortedItems, summary, load, refreshPrices, toggleExpand, ensureExpandData, refreshAfterTx, reorder, chips: state.chips };
+  return {
+    ...state,
+    items: sortedItems,
+    summary,
+    load,
+    refreshPrices,
+    toggleExpand,
+    ensureExpandData,
+    fetchAllKlines,
+    refreshAfterTx,
+    reorder,
+    chips: state.chips,
+    addHoldingTag,
+    updateHoldingTag,
+    removeHoldingTag,
+  };
 }

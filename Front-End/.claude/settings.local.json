@@ -29,7 +29,27 @@
       "Bash(Remove-Item *)",
       "Bash(dir D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\models *)",
       "Bash(dir D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\stores *)",
-      "Bash(dir \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\utils\")"
+      "Bash(dir \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\utils\")",
+      "Bash(python -c ' *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(del *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('react:', p.dependencies.react, '\\\\nreact-dom:', p.dependencies['react-dom']\\)\")",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('react-router-dom:', p.dependencies['react-router-dom']\\)\")",
+      "Bash(head -5 PlanPage.tsx AssetsPage.tsx ReportPage.tsx)",
+      "Bash(Get-Content PlanPage.tsx -TotalCount 5)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\views\\\\pages\" | ForEach-Object { $_.Name })",
+      "PowerShell(\\(Get-Content \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\views\\\\pages\\\\StockOverviewPage.tsx\" | Measure-Object -Line\\).Lines)",
+      "PowerShell(\\(Get-Content \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\views\\\\pages\\\\AssetsPage.tsx\" | Measure-Object -Line\\).Lines; \\(Get-Content \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\views\\\\pages\\\\PlanPage.tsx\" | Measure-Object -Line\\).Lines; \\(Get-Content \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\views\\\\pages\\\\ReportPage.tsx\" | Measure-Object -Line\\).Lines)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); const deps={...p.dependencies,...p.devDependencies}; const keys=['react','react-dom','react-router-dom','echarts','echarts-for-react','@dnd-kit/core','zustand','axios','vite','typescript']; keys.forEach\\(k=>console.log\\(k+': '+\\(deps[k]||'n/a'\\)\\)\\)\")",
+      "Bash(node -e \"const p = require\\('./node_modules/eslint-plugin-react-hooks/package.json'\\); console.log\\(p.version\\);\")",
+      "Bash(Get-ChildItem src/routes)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(grep -v \"^$\")",
+      "Bash(powershell -Command \"\\(Get-Content AssetsPage.tsx\\) -replace 'enter=\\\\\"fade-in\\\\\" exit=\\\\\"fade-out\\\\\" ', '' | Set-Content AssetsPage.tsx; \\(Get-Content StockOverviewPage.tsx\\) -replace 'enter=\\\\\"fade-in\\\\\" exit=\\\\\"fade-out\\\\\" ', '' | Set-Content StockOverviewPage.tsx; \\(Get-Content PlanPage.tsx\\) -replace 'enter=\\\\\"fade-in\\\\\" exit=\\\\\"fade-out\\\\\" ', '' | Set-Content PlanPage.tsx; \\(Get-Content ReportPage.tsx\\) -replace 'enter=\\\\\"fade-in\\\\\" exit=\\\\\"fade-out\\\\\" ', '' | Set-Content ReportPage.tsx\")",
+      "Bash(python3 *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\" -Recurse -File)",
+      "Bash(Select-Object -First 50)",
+      "Bash(Format-Table Name, FullName)"
     ]
   }
 }

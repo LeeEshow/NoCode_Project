@@ -1,5 +1,27 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { isTradingHours } from '../../utils/tradingHours';
+import PanelHeader from '../components/PanelHeader';
+import MarketIndicesRow from '../components/MarketIndicesRow';
+import { usePlanStore } from '../../stores/planStore';
+import { useSnapshotStore } from '../../stores/snapshotStore';
+import { useEnsurePlanStore } from '../../viewmodels/useEnsurePlanStore';
+import LoadingPanel from '../components/LoadingPanel';
+import { useMarketViewModel }   from '../../viewmodels/useMarketViewModel';
+import { useHoldingsViewModel } from '../../viewmodels/useHoldingsViewModel';
+import { useWatchlistViewModel } from '../../viewmodels/useWatchlistViewModel';
+import { useTagViewModel } from '../../viewmodels/useTagViewModel';
+import { useRiskViewModel } from '../../viewmodels/useRiskViewModel';
+import { useRebalanceViewModel, computeVolatilityFactor, computeRebalanceSuggestions } from '../../viewmodels/useRebalanceViewModel';
+import { useRebalanceRulesViewModel } from '../../viewmodels/useRebalanceRulesViewModel';
+import { useRebalanceSnapshotViewModel } from '../../viewmodels/useRebalanceSnapshotViewModel';
+import HoldingsTable        from './stock/HoldingsTable';
+import AddTransactionModal  from './stock/AddTransactionModal';
+import AddHoldingModal      from './stock/AddHoldingModal';
+import WatchlistTable       from './stock/WatchlistTable';
+import WatchlistModal       from './stock/WatchlistModal';
+import RiskPanel from './stock/RiskPanel';
+import { toast } from '../components/Toast/toastStore';
+import type { WatchlistItemDTO, CreateWatchlistPayload, RebalanceSuggestion } from '../../types';
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -16,24 +38,6 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
     </div>
   );
 }
-
-import PanelHeader from '../components/PanelHeader';
-import MarketIndicesRow from '../components/MarketIndicesRow';
-import { usePlanStore } from '../../stores/planStore';
-import { useSnapshotStore } from '../../stores/snapshotStore';
-import { useEnsurePlanStore } from '../../viewmodels/useEnsurePlanStore';
-import LoadingPanel from '../components/LoadingPanel';
-import { useMarketViewModel }   from '../../viewmodels/useMarketViewModel';
-import { useHoldingsViewModel } from '../../viewmodels/useHoldingsViewModel';
-import { useWatchlistViewModel } from '../../viewmodels/useWatchlistViewModel';
-import HoldingsTable        from './stock/HoldingsTable';
-import TransactionHistoryModal from './stock/TransactionHistoryModal';
-import AddTransactionModal  from './stock/AddTransactionModal';
-import AddHoldingModal      from './stock/AddHoldingModal';
-import WatchlistTable       from './stock/WatchlistTable';
-import WatchlistModal       from './stock/WatchlistModal';
-import { toast } from '../components/Toast/toastStore';
-import type { WatchlistItemDTO, CreateWatchlistPayload } from '../../types';
 
 /* ── 工具函式 ── */
 
@@ -54,12 +58,47 @@ interface TxTarget { code: string; name: string; }
 
 export default function StockOverviewPage() {
   /* ViewModels */
-  const market   = useMarketViewModel();
-  const holdings = useHoldingsViewModel();
-  const watchlist = useWatchlistViewModel();
+  const market     = useMarketViewModel();
+  const holdings   = useHoldingsViewModel();
+  const watchlist  = useWatchlistViewModel();
+  const tagVm      = useTagViewModel();
+  const rulesVm    = useRebalanceRulesViewModel();
+  const snapshotVm = useRebalanceSnapshotViewModel();
+
+  /* 風險/再平衡純計算（CLAUDE.md 組裝順序）*/
+  const volatilityFactor    = useMemo(
+    () => computeVolatilityFactor(holdings.items, holdings.sparklines),
+    [holdings.items, holdings.sparklines],
+  );
+  const preDynamicThreshold = rulesVm.rules.baseThreshold * volatilityFactor;
+
+  const risk = useRiskViewModel(
+    holdings.items,
+    tagVm.tags,
+    rulesVm.rules.baseThreshold,
+    tagVm.correlationMatrix,
+    preDynamicThreshold,
+    rulesVm.rules.concentrationLimit,
+  );
+
+  const rebalance = useRebalanceViewModel(
+    holdings.items,
+    risk.tagStats,
+    rulesVm.rules,
+    holdings.klines,
+    holdings.sparklines,
+  );
+
+  /* 快照建議 → HoldingsTable（優先用選取快照，fallback 即時計算）*/
+  const rebalanceSuggestions = useMemo<Record<string, RebalanceSuggestion>>(() => {
+    const src = snapshotVm.selectedSnapshot?.suggestions ?? rebalance.suggestions;
+    return Object.fromEntries(src.map(s => [s.stockCode, s]));
+  }, [snapshotVm.selectedSnapshot, rebalance.suggestions]);
+
+  /* 相關性矩陣是否有重大更新 */
+  const [correlationUpdated, setCorrelationUpdated] = useState(false);
 
   /* Modal 狀態 */
-  const [historyTarget, setHistoryTarget] = useState<TxTarget | null>(null);
   const [addTxTarget,   setAddTxTarget]   = useState<TxTarget | null>(null);
   const [addHoldingOpen, setAddHoldingOpen] = useState(false);
   const [wlModalOpen,   setWlModalOpen]   = useState(false);
@@ -88,10 +127,6 @@ export default function StockOverviewPage() {
   };
 
   /* 穩定的 callback，避免 HoldingRow / WatchlistRow memo 失效 */
-  const handleOpenHistory = useCallback((code: string, name: string) => {
-    setHistoryTarget({ code, name });
-  }, []);
-
   const handleOpenAddTx = useCallback((code: string, name: string) => {
     setAddTxTarget({ code, name });
   }, []);
@@ -101,6 +136,26 @@ export default function StockOverviewPage() {
     setWlModalOpen(true);
   }, []);
 
+  /* 初始載入 rules 與 correlationMatrix（自身 viewmodel 不自動載入）*/
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { rulesVm.loadRules(); tagVm.loadCorrelationMatrix(); }, []);
+
+  /* 計算再平衡並儲存快照 */
+  const handleTriggerRebalance = useCallback(async () => {
+    const totalAsset = holdings.items.reduce((s, h) => s + h.currentPrice * h.shares, 0);
+    const { suggestions } = computeRebalanceSuggestions(
+      holdings.items, risk.tagStats, rulesVm.rules, holdings.klines, holdings.sparklines,
+    );
+    await snapshotVm.triggerCalculation(suggestions, {
+      totalAsset,
+      baseThreshold:     rulesVm.rules.baseThreshold,
+      liquidityCapRatio: rulesVm.rules.liquidityCapRatio,
+      marketState:       tagVm.marketState,
+    });
+    setCorrelationUpdated(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdings.items, holdings.klines, holdings.sparklines, risk.tagStats, rulesVm.rules, tagVm.marketState]);
+
   /* 5 秒輪詢（僅盤中） */
   const holdingsRef  = useRef(holdings);
   const marketRef    = useRef(market);
@@ -108,6 +163,19 @@ export default function StockOverviewPage() {
   holdingsRef.current  = holdings;
   marketRef.current    = market;
   watchlistRef.current = watchlist;
+
+  /* RiskPanel 穩定 callback（vmRef 模式，空 deps，避免 inline arrow 每次 render 重建） */
+  const rulesVmRef = useRef(rulesVm);
+  const tagVmRef   = useRef(tagVm);
+  rulesVmRef.current = rulesVm;
+  tagVmRef.current   = tagVm;
+
+  const handleThresholdChange         = useCallback((v: number) => rulesVmRef.current.updateRules({ baseThreshold: v }), []);
+  const handleLiquidityCapChange      = useCallback((v: number) => rulesVmRef.current.updateRules({ liquidityCapRatio: v }), []);
+  const handleAdvLookbackDaysChange   = useCallback((v: number) => rulesVmRef.current.updateRules({ advLookbackDays: v }), []);
+  const handleConcentrationLimitChange= useCallback((v: number) => rulesVmRef.current.updateRules({ concentrationLimit: v }), []);
+  const handleCorrelationUpdated      = useCallback(() => setCorrelationUpdated(true), []);
+  const handleRecalculateAll          = useCallback(() => tagVmRef.current.recalculateAllDynamicRisk(tagVmRef.current.marketState), []);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -231,12 +299,52 @@ export default function StockOverviewPage() {
           loading={market.loading}
         />
 
+        {/* ── 風險/再平衡模組 ── */}
+        <RiskPanel
+          tags={tagVm.tags}
+          loading={tagVm.loading}
+          saving={tagVm.saving}
+          onAdd={tagVm.addTag}
+          onUpdate={tagVm.updateTag}
+          onRemove={tagVm.removeTag}
+          riskTotal={risk.riskTotal}
+          tagStats={risk.tagStats}
+          overlappingGroups={risk.overlappingGroups}
+          hasWarning={risk.hasWarning}
+          baseThreshold={rulesVm.rules.baseThreshold}
+          onThresholdChange={handleThresholdChange}
+          marketState={tagVm.marketState}
+          marketStateChanging={tagVm.marketStateChanging}
+          correlationMatrix={tagVm.correlationMatrix}
+          onMarketStateChange={tagVm.changeMarketState}
+          onSaveCorrelationMatrix={tagVm.saveCorrelationMatrix}
+          liquidityCapRatio={rulesVm.rules.liquidityCapRatio}
+          onLiquidityCapChange={handleLiquidityCapChange}
+          onTriggerRebalance={handleTriggerRebalance}
+          calculating={snapshotVm.saving}
+          volatilityFactor={rebalance.volatilityFactor}
+          dynamicThreshold={rebalance.dynamicThreshold}
+          advLookbackDays={rulesVm.rules.advLookbackDays}
+          onAdvLookbackDaysChange={handleAdvLookbackDaysChange}
+          concentrationLimit={rulesVm.rules.concentrationLimit}
+          onConcentrationLimitChange={handleConcentrationLimitChange}
+          holdings={holdings.items}
+          sparklines={holdings.sparklines}
+          correlationUpdated={correlationUpdated}
+          onCorrelationUpdated={handleCorrelationUpdated}
+          onRecalculateAll={handleRecalculateAll}
+          recalculating={tagVm.saving}
+          snapshots={snapshotVm.snapshots}
+          snapshotsReady={snapshotVm.ready}
+          selectedSnapshotId={snapshotVm.selectedId}
+          onSelectSnapshot={snapshotVm.selectSnapshot}
+        />
+
         {/* ── 庫存持股 Panel（P2-12 ~ P2-16）── */}
         <div className="ft-panel" style={{ marginBottom: 16 }}>
           <div className="ft-section-header">
             <span className="ft-section-title">庫存持股</span>
             <div style={{ display: 'flex', gap: 6 }}>
-              {/* FIX-05：新增持股入口 */}
               <button className="btn-ghost" onClick={() => { holdings.refreshPrices(); market.silentReload(); }}>重新整理</button>
               <button className="btn-ghost" onClick={() => setAddHoldingOpen(true)}>＋ 新增</button>
             </div>
@@ -249,8 +357,6 @@ export default function StockOverviewPage() {
                 {holdings.error && (
                   <ErrorBanner message={`持股載入失敗：${holdings.error}`} onRetry={holdings.load} />
                 )}
-
-                {/* P2-13 ~ P2-16：持股表格（含 SparkLine / K線 / 基礎數據）*/}
                 <HoldingsTable
                   items={holdings.items}
                   sparklines={holdings.sparklines}
@@ -260,9 +366,16 @@ export default function StockOverviewPage() {
                   expandedCode={holdings.expandedCode}
                   onToggle={holdings.toggleExpand}
                   onExpandLoad={holdings.ensureExpandData}
-                  onHistory={handleOpenHistory}
                   onAddTx={handleOpenAddTx}
+                  onChanged={holdings.refreshAfterTx}
                   onReorder={holdings.reorder}
+                  allTags={tagVm.tags}
+                  onAddHoldingTag={holdings.addHoldingTag}
+                  onUpdateHoldingTag={holdings.updateHoldingTag}
+                  onRemoveHoldingTag={holdings.removeHoldingTag}
+                  overlappingGroups={risk.overlappingGroups}
+                  concentrationLimit={rulesVm.rules.concentrationLimit}
+                  rebalanceSuggestions={rebalanceSuggestions}
                 />
               </>
             )
@@ -311,15 +424,6 @@ export default function StockOverviewPage() {
       </div>
 
       {/* ── Modals ── */}
-
-      {/* P2-19：交易歷史 */}
-      <TransactionHistoryModal
-        open={!!historyTarget}
-        stockCode={historyTarget?.code ?? null}
-        stockName={historyTarget?.name ?? ''}
-        onClose={() => setHistoryTarget(null)}
-        onChanged={holdings.refreshAfterTx}
-      />
 
       {/* P2-20：新增交易 */}
       {addTxTarget && (

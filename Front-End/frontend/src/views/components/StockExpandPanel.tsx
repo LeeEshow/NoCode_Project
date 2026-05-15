@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts/core';
 import { BarChart } from 'echarts/charts';
@@ -6,7 +6,14 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 import { CanvasRenderer } from 'echarts/renderers';
 import KLineChart from './Charts/KLineChart';
 import LoadingPanel from './LoadingPanel';
-import type { KLineDTO, StockProfileDTO, ChipDTO, ExpandTab } from '../../types';
+import Icon from './Icon';
+import TransactionHistoryPanel from '../pages/stock/TransactionHistoryPanel';
+import { toast } from './Toast';
+import type {
+  KLineDTO, StockProfileDTO, ChipDTO, ExpandTab,
+  HoldingTagDTO, TagDTO, AddHoldingTagPayload, UpdateHoldingTagPayload,
+  OverlappingTagGroup,
+} from '../../types';
 
 echarts.use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 
@@ -16,7 +23,6 @@ function fmt(n: number, decimals = 0) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
-/* 日期格式防禦：YYYY-MM-DD → MM/DD，YYYYMMDD / YYYMMDD 同理 */
 function parseChipDate(raw: unknown): string {
   const d = String(raw ?? '');
   const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -28,24 +34,34 @@ function parseChipDate(raw: unknown): string {
 
 /* ── Tab 控制列 ── */
 
-const TABS: { key: ExpandTab; label: string }[] = [
-  { key: 'kline', label: 'K 線' },
-  { key: 'chip',  label: '法人 & 基本面' },
-];
+type TabDef = { key: ExpandTab; label: string };
 
-function TabBar({ active, onChange }: { active: ExpandTab; onChange: (t: ExpandTab) => void }) {
+function TabBar({
+  tabs, active, onChange,
+}: {
+  tabs:     TabDef[];
+  active:   ExpandTab;
+  onChange: (t: ExpandTab) => void;
+}) {
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      borderRight: '1px solid var(--border)',
-      padding: '8px 0',
-      minWidth: 110,
-      flexShrink: 0,
-      marginLeft: 8,
-    }}>
-      {TABS.map(t => (
+    <div
+      role="tablist"
+      style={{
+        display: 'flex', flexDirection: 'column',
+        borderRight: '1px solid var(--border)',
+        padding: '8px 0',
+        minWidth: 110,
+        flexShrink: 0,
+        marginLeft: 8,
+      }}
+    >
+      {tabs.map(t => (
         <button
           key={t.key}
+          role="tab"
+          id={`expand-tab-${t.key}`}
+          aria-selected={active === t.key}
+          aria-controls={`expand-panel-${t.key}`}
           onClick={() => onChange(t.key)}
           style={{
             background: active === t.key ? 'rgba(255,255,255,0.04)' : 'none',
@@ -191,6 +207,190 @@ function ChipProfileSection({
   );
 }
 
+/* ── Tab：標籤設定 ── */
+
+interface StockTagSectionProps {
+  stockCode:       string;
+  holdingTags:     HoldingTagDTO[];
+  allTags:         TagDTO[];
+  onAddHoldingTag:    (stockCode: string, payload: AddHoldingTagPayload, onSuccess?: () => void) => void;
+  onUpdateHoldingTag: (stockCode: string, id: string, payload: UpdateHoldingTagPayload) => void;
+  onRemoveHoldingTag: (stockCode: string, id: string, onSuccess?: () => void) => void;
+}
+
+function StockTagSection({
+  stockCode, holdingTags, allTags,
+  onAddHoldingTag, onUpdateHoldingTag, onRemoveHoldingTag,
+}: StockTagSectionProps) {
+  const [localWeights, setLocalWeights] = useState<Record<string, string>>(() =>
+    Object.fromEntries(holdingTags.map(t => [t.id, String(t.weightRatio)]))
+  );
+
+  useEffect(() => {
+    setLocalWeights(prev => {
+      const next = { ...prev };
+      const validIds = new Set(holdingTags.map(t => t.id));
+      for (const t of holdingTags) {
+        if (!(t.id in next)) next[t.id] = String(t.weightRatio);
+      }
+      for (const id in next) {
+        if (!validIds.has(id)) delete next[id];
+      }
+      return next;
+    });
+  }, [holdingTags]);
+
+  const total = holdingTags.reduce(
+    (sum, t) => sum + (parseFloat(localWeights[t.id] ?? '0') || 0),
+    0,
+  );
+  const assignedNames = new Set(holdingTags.map(t => t.tagName));
+
+  function handleAddTag(tagName: string) {
+    if (!tagName) return;
+    const newCount  = holdingTags.length + 1;
+    const base      = Math.floor(100 / newCount);
+    const remainder = 100 - base * newCount;
+    const newWeight = base + remainder;
+
+    onAddHoldingTag(stockCode, { tagName, weightRatio: newWeight }, () => {
+      setLocalWeights(prev => {
+        const next = { ...prev };
+        holdingTags.forEach(t => { next[t.id] = String(base); });
+        return next;
+      });
+    });
+  }
+
+  function handleSaveAll() {
+    let saved = 0;
+    holdingTags.forEach(t => {
+      const weight = parseFloat(localWeights[t.id] ?? '');
+      if (!isNaN(weight) && weight > 0 && weight <= 100) {
+        onUpdateHoldingTag(stockCode, t.id, { weightRatio: weight });
+        saved++;
+      }
+    });
+    if (saved > 0) toast.success('配置已儲存');
+  }
+
+  const addSelect = (
+    <select
+      value=""
+      onChange={e => { handleAddTag(e.target.value); (e.target as HTMLSelectElement).value = ''; }}
+      style={{
+        background: 'var(--surface)',
+        color: 'var(--text)',
+        border: '1px solid var(--border-hi)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '3px 8px',
+        fontSize: 'var(--text-sm)',
+        cursor: 'pointer',
+      }}
+    >
+      <option value="">＋ 加入 Tag</option>
+      {allTags.length === 0 ? (
+        <option value="" disabled>請先至風險再平衡模組建立標籤</option>
+      ) : (
+        allTags.map(tag => (
+          <option
+            key={tag.id}
+            value={tag.name}
+            disabled={assignedNames.has(tag.name)}
+            style={{ color: assignedNames.has(tag.name) ? 'var(--dim)' : undefined }}
+          >
+            {tag.name}
+          </option>
+        ))
+      )}
+    </select>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* 表格內容 */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {holdingTags.length === 0 ? (
+          <EmptyMsg text="尚未設定標籤，請從下方加入" />
+        ) : (
+          <table className="ft-table" style={{ fontSize: 'var(--text-sm)' }}>
+            <colgroup>
+              <col />
+              <col style={{ width: 140 }} />
+              <col style={{ width: 60 }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Tag 名稱</th>
+                <th className="center">配置比例</th>
+                <th className="right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {holdingTags.map(t => (
+                <tr key={t.id}>
+                  <td>{t.tagName}</td>
+                  <td className="center">
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        className="fi-input fi-input--mono"
+                        style={{ width: 70, padding: '3px 6px', fontVariantNumeric: 'tabular-nums' }}
+                        min={1}
+                        max={100}
+                        value={localWeights[t.id] ?? String(t.weightRatio)}
+                        onChange={e => setLocalWeights(p => ({ ...p, [t.id]: e.target.value }))}
+                      />
+                      <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)' }}>%</span>
+                    </div>
+                  </td>
+                  <td className="right">
+                    <button
+                      className="btn-icon"
+                      aria-label={`移除標籤 ${t.tagName}`}
+                      onClick={() => onRemoveHoldingTag(
+                        stockCode, t.id,
+                        () => toast.success(`已移除 ${t.tagName}`),
+                      )}
+                    >
+                      <Icon name="close" size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* 底部 action bar：合計 ＋ 加入Tag ＋ 儲存 */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '8px 4px 4px', borderTop: '1px solid var(--border)', flexShrink: 0, gap: 8,
+      }}>
+        <span aria-live="polite" style={{ fontSize: 'var(--text-sm)', fontVariantNumeric: 'tabular-nums' }}>
+          {holdingTags.length > 0 && total === 100 && <span style={{ color: 'var(--down)' }}>✓ 合計 100%</span>}
+          {holdingTags.length > 0 && total < 100  && <span style={{ color: 'var(--accent)' }}>⚠ {total}%，差 {100 - total}%</span>}
+          {holdingTags.length > 0 && total > 100  && <span style={{ color: 'var(--up)' }}>✗ {total}%，超出 {total - 100}%</span>}
+        </span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {addSelect}
+          {holdingTags.length > 0 && (
+            <button
+              className="btn-ghost"
+              style={{ padding: '3px 12px', fontSize: 'var(--text-sm)' }}
+              onClick={handleSaveAll}
+            >
+              儲存配置
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EmptyMsg({ text }: { text: string }) {
   return (
     <div style={{ padding: '16px', fontSize: 'var(--text-sm)', color: 'var(--dim)', textAlign: 'center' }}>
@@ -204,34 +404,108 @@ export function EmptyMsg({ text }: { text: string }) {
 export interface StockExpandPanelProps {
   colSpan:       number;
   code:          string;
+  name:          string;
   kline:         KLineDTO[]      | undefined;
   profile:       StockProfileDTO | undefined;
   chips:         ChipDTO[]       | undefined;
   loadingExpand: boolean;
+  onAddTx?:      (code: string, name: string) => void;
+  onChanged?:    () => void;
+  /* Tag 相關（持股表使用，關注清單不傳則不顯示此 Tab）*/
+  holdingTags?:        HoldingTagDTO[];
+  allTags?:            TagDTO[];
+  onAddHoldingTag?:    (stockCode: string, payload: AddHoldingTagPayload, onSuccess?: () => void) => void;
+  onUpdateHoldingTag?: (stockCode: string, id: string, payload: UpdateHoldingTagPayload) => void;
+  onRemoveHoldingTag?: (stockCode: string, id: string, onSuccess?: () => void) => void;
+  overlappingGroups?:  OverlappingTagGroup[];
+  concentrationLimit?: number; /* 同質集中度上限（小數），用於定量顯示 */
 }
 
 export default function StockExpandPanel({
-  colSpan, code, kline, profile, chips, loadingExpand,
+  colSpan, code, name, kline, profile, chips, loadingExpand, onAddTx, onChanged,
+  holdingTags, allTags, onAddHoldingTag, onUpdateHoldingTag, onRemoveHoldingTag,
+  overlappingGroups, concentrationLimit,
 }: StockExpandPanelProps) {
   const [activeTab, setActiveTab] = useState<ExpandTab>('kline');
   const hasData = kline || profile || chips;
+  const hasTagTab = holdingTags !== undefined && allTags !== undefined
+    && onAddHoldingTag && onUpdateHoldingTag && onRemoveHoldingTag;
+
+  const TABS: TabDef[] = [
+    { key: 'kline', label: 'K 線' },
+    { key: 'chip',  label: '法人 & 基本面' },
+    { key: 'tx',    label: '交易紀錄' },
+    ...(hasTagTab ? [{ key: 'tags' as ExpandTab, label: '標籤設定' }] : []),
+  ];
 
   return (
-    <tr style={{ background: 'rgba(255,255,255,0.012)' }}>
+    <tr style={{ background: 'rgba(0,0,0,0.22)' }}>
       <td colSpan={colSpan} style={{ padding: 0, borderBottom: '1px solid var(--border)' }}>
         {loadingExpand
           ? <div style={{ padding: 16 }}><LoadingPanel loading type="spinner" /></div>
           : hasData
             ? (
               <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                <TabBar active={activeTab} onChange={setActiveTab} />
-                <div style={{ flex: 1, minWidth: 0, padding: '8px 16px 12px', height: 400, overflow: 'hidden' }}>
+                <TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />
+                <div
+                  role="tabpanel"
+                  id={`expand-panel-${activeTab}`}
+                  aria-labelledby={`expand-tab-${activeTab}`}
+                  style={{ flex: 1, minWidth: 0, padding: '8px 16px 12px', height: 400, overflow: 'hidden' }}
+                >
                   {activeTab === 'kline' && (kline
                     ? <KLineSection data={kline} />
                     : <EmptyMsg text={`無法載入 ${code} 的 K 線資料`} />
                   )}
                   {activeTab === 'chip' && (
                     <ChipProfileSection chips={chips} profile={profile} />
+                  )}
+                  {activeTab === 'tx' && (
+                    <TransactionHistoryPanel
+                      stockCode={code}
+                      stockName={name}
+                      onAddTx={onAddTx}
+                      onChanged={onChanged}
+                    />
+                  )}
+                  {activeTab === 'tags' && hasTagTab && (
+                    <>
+                      <StockTagSection
+                        stockCode={code}
+                        holdingTags={holdingTags}
+                        allTags={allTags}
+                        onAddHoldingTag={onAddHoldingTag}
+                        onUpdateHoldingTag={onUpdateHoldingTag}
+                        onRemoveHoldingTag={onRemoveHoldingTag}
+                      />
+                      {/* 同質重疊警示（4-B 定量化）*/}
+                      {(overlappingGroups ?? [])
+                        .filter(g => g.stockCodes.includes(code))
+                        .map((g, i) => {
+                          const others  = g.stockCodes.filter(c => c !== code).join('、');
+                          const pct     = Math.round(g.combinedWeight * 100);
+                          const exceed  = concentrationLimit != null && g.combinedWeight > concentrationLimit;
+                          return (
+                            <div key={i} style={{
+                              marginTop: 10,
+                              padding: '8px 12px',
+                              background: exceed ? 'var(--up-bg)' : 'var(--accent-bg)',
+                              border: `1px solid ${exceed ? 'var(--up-bd)' : 'var(--accent-bd)'}`,
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: 'var(--text-sm)',
+                            }}>
+                              <span style={{ color: exceed ? 'var(--up)' : 'var(--accent)' }}>
+                                ⚠ 與 {others} 持有相同標籤（{g.tagNames.join('、')}）
+                                {' — '}合計佔比 {pct}%
+                                {exceed && concentrationLimit != null && (
+                                  <span>，超過上限（{Math.round(concentrationLimit * 100)}%）</span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })
+                      }
+                    </>
                   )}
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchSnapshots } from '../models/snapshotModel';
 import { fetchHoldings } from '../models/holdingModel';
+import { fetchPlanConfig } from '../models/planConfigModel';
 import { useSnapshotStore } from '../stores/snapshotStore';
 import type { DailySnapshotDTO, HoldingDTO } from '../types';
 
@@ -22,13 +23,14 @@ export interface ReportRow extends DailySnapshotDTO {
 interface State {
   snapshots: DailySnapshotDTO[];
   holdings:  HoldingDTO[];
+  rBase:     number;
   loading:   boolean;
   error:     string | null;
 }
 
 export function useReportViewModel() {
   const [state, setState] = useState<State>({
-    snapshots: [], holdings: [], loading: true, error: null,
+    snapshots: [], holdings: [], rBase: 0.08, loading: true, error: null,
   });
 
   const liveCash = useSnapshotStore(s => s.cashBalance);
@@ -36,11 +38,12 @@ export function useReportViewModel() {
   const load = useCallback(async () => {
     setState(s => ({ ...s, loading: true, error: null }));
     try {
-      const [snapshots, holdings] = await Promise.all([
+      const [snapshots, holdings, planConfig] = await Promise.all([
         fetchSnapshots(),
         fetchHoldings(),
+        fetchPlanConfig(),
       ]);
-      setState({ snapshots, holdings, loading: false, error: null });
+      setState({ snapshots, holdings, rBase: planConfig.rBase, loading: false, error: null });
     } catch (err) {
       setState(s => ({ ...s, loading: false, error: (err as Error).message }));
     }
@@ -74,5 +77,5 @@ export function useReportViewModel() {
       }),
   [state.snapshots]);
 
-  return { summary, rows, loading: state.loading, error: state.error, load };
+  return { summary, rows, snapshots: state.snapshots, rBase: state.rBase, loading: state.loading, error: state.error, load };
 }

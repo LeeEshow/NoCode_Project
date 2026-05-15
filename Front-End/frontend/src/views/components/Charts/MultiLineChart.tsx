@@ -3,7 +3,7 @@ import * as echarts from 'echarts/core';
 import { LineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-import { colors } from '../../../styles';
+import { colors, chartColors } from '../../../styles';
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer]);
 
@@ -34,6 +34,7 @@ export default function MultiLineChart({
 
   const option = {
     animation: false,
+    color: [...chartColors],
     backgroundColor: colors.panel,
     textStyle: { color: colors.dim, fontFamily: 'Open Sans, sans-serif', fontSize: 11 },
     grid: { left: 64, right: 16, top: 32, bottom: 48 },

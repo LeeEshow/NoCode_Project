@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
@@ -6,6 +6,19 @@ from shioaji_api.core.manager import manager
 from shioaji_api.schemas.market import QuoteResponse
 
 router = APIRouter()
+
+# tick 資料超過此秒數視為 stale，改走 snapshot
+_TICK_MAX_AGE_SECONDS = 120
+
+
+def _is_fresh(cached: dict) -> bool:
+    try:
+        ts = datetime.fromisoformat(cached["timestamp"])
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() < _TICK_MAX_AGE_SECONDS
+    except Exception:
+        return True  # 解析失敗時保守地視為新鮮
 
 
 @router.get("/quote/{stock_id}", response_model=QuoteResponse)
@@ -19,9 +32,9 @@ async def get_quote(stock_id: str):
     except Exception:
         pass
 
-    # 優先回傳 WebSocket tick 快取
+    # 優先回傳 WebSocket tick 快取（需確認資料新鮮）
     cached = manager.get_cached_quote(stock_id)
-    if cached:
+    if cached and _is_fresh(cached):
         return QuoteResponse(**cached)
 
     # Fallback：snapshot

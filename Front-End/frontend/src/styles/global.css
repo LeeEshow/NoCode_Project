@@ -13,6 +13,45 @@ input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; }
 
+/* ── Range slider ── */
+input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  /* 填充色由元件 inline style 以 gradient 控制 */
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+}
+input[type=range]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  cursor: pointer;
+}
+input[type=range]::-moz-range-track {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+}
+input[type=range]::-moz-range-progress {
+  height: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
 /* ── Body ── */
 body {
   margin: 0;
@@ -74,9 +113,23 @@ body {
   border-radius: var(--radius-sm);
   font-size: var(--text-md);
   cursor: pointer;
-  transition: border-color var(--trans-fast), color var(--trans-fast);
+  transition: border-color var(--trans-fast), color var(--trans-fast), background var(--trans-fast), transform var(--trans-fast);
 }
 .btn-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(106, 143, 181, 0.06);
+}
+.btn-ghost:active { transform: scale(0.97); }
+.btn-ghost:disabled, .btn-ghost[disabled] { opacity: 0.38; cursor: not-allowed; }
+
+.btn-ghost--accent {
+  border-color: var(--accent-bd);
+  color: var(--accent);
+}
+.btn-ghost--accent:hover {
+  background: var(--accent-bg);
+  box-shadow: 0 0 8px var(--accent-bd);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -125,7 +178,8 @@ tr:hover .drag-handle { color: var(--dim); }
   padding: 0;
   transition: color var(--trans-fast), background var(--trans-fast);
 }
-.btn-icon:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.btn-icon:hover  { color: var(--text); background: rgba(255,255,255,0.06); }
+.btn-icon:active { transform: scale(0.95); }
 .btn-icon.accent { color: var(--accent); }
 .btn-icon.accent:hover { color: var(--accent); background: var(--accent-bg); }
 
@@ -237,3 +291,205 @@ tr:hover .drag-handle { color: var(--dim); }
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+/* ============================================================
+   View Transitions
+   ============================================================ */
+
+:root {
+  --duration-exit:  150ms;
+  --duration-enter: 210ms;
+  --duration-move:  400ms;
+}
+
+@keyframes fade {
+  from { filter: blur(3px); opacity: 0; }
+  to   { filter: blur(0);   opacity: 1; }
+}
+
+@keyframes slide {
+  from { translate: var(--slide-offset); }
+  to   { translate: 0; }
+}
+
+@keyframes slide-y {
+  from { transform: translateY(var(--slide-y-offset, 10px)); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes via-blur {
+  30% { filter: blur(3px); }
+}
+
+/* Slide vertical */
+::view-transition-old(.slide-down) {
+  animation:
+    var(--duration-exit) ease-out both fade reverse,
+    var(--duration-exit) ease-out both slide-y reverse;
+}
+::view-transition-new(.slide-up) {
+  animation:
+    var(--duration-enter) ease-in var(--duration-exit) both fade,
+    var(--duration-move)  ease-in both slide-y;
+}
+
+/* Directional navigation */
+::view-transition-old(.nav-forward) {
+  --slide-offset: -60px;
+  animation:
+    var(--duration-exit) ease-in both fade reverse,
+    var(--duration-move) ease-in-out both slide reverse;
+}
+::view-transition-new(.nav-forward) {
+  --slide-offset: 60px;
+  animation:
+    var(--duration-enter) ease-out var(--duration-exit) both fade,
+    var(--duration-move)  ease-in-out both slide;
+}
+::view-transition-old(.nav-back) {
+  --slide-offset: 60px;
+  animation:
+    var(--duration-exit) ease-in both fade reverse,
+    var(--duration-move) ease-in-out both slide reverse;
+}
+::view-transition-new(.nav-back) {
+  --slide-offset: -60px;
+  animation:
+    var(--duration-enter) ease-out var(--duration-exit) both fade,
+    var(--duration-move)  ease-in-out both slide;
+}
+
+/* Shared element morph */
+::view-transition-group(.morph) {
+  animation-duration: var(--duration-move);
+}
+::view-transition-image-pair(.morph) {
+  animation-name: via-blur;
+}
+
+/* Persistent element — SideNav stays static */
+::view-transition-group(site-nav) {
+  animation: none;
+  z-index: 100;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay:    0s !important;
+  }
+}
+
+/* ============================================================
+   RiskPanel 收折/展開動畫（3-A）
+   ============================================================ */
+.risk-panel-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 250ms ease-out;
+}
+.risk-panel-body.is-open {
+  grid-template-rows: 1fr;
+}
+.risk-panel-body__inner {
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .risk-panel-body { transition: none; }
+}
+
+/* ── TabPanel 展開背景（統一規則）── */
+/* 對應 StockExpandPanel <tr> 的 rgba(0,0,0,0.22)；凡展開式 Tab 內容區均套此 class */
+.tab-panel-body {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+/* ============================================================
+   Radix UI Primitives
+   ============================================================ */
+
+/* ── Radix Slider ── */
+.rd-slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 140px;
+  height: 20px;
+  user-select: none;
+  touch-action: none;
+  flex-shrink: 0;
+}
+.rd-slider__track {
+  position: relative;
+  flex-grow: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+}
+.rd-slider__range {
+  position: absolute;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.rd-slider__thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: box-shadow 0.15s;
+  flex-shrink: 0;
+}
+.rd-slider__thumb:hover       { box-shadow: 0 0 0 6px rgba(106, 143, 181, 0.2); }
+.rd-slider__thumb:focus-visible { box-shadow: 0 0 0 4px var(--accent-bd); }
+
+/* ── Radix Select ── */
+.rd-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--trans-fast), color var(--trans-fast), box-shadow var(--trans-fast);
+  white-space: nowrap;
+}
+.rd-select-trigger:hover        { border-color: var(--accent-bd); color: var(--text); }
+.rd-select-trigger:focus-visible { box-shadow: 0 0 0 2px var(--accent-bd); border-color: var(--accent); }
+
+.rd-select-content {
+  background: var(--panel);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 4px 0;
+  z-index: 9999;
+  overflow: hidden;
+  min-width: var(--radix-select-trigger-width);
+}
+.rd-select-item {
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--muted);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.1s, color 0.1s;
+}
+.rd-select-item[data-highlighted] { background: var(--accent-bg); color: var(--accent); }
+.rd-select-item[data-state="checked"] { color: var(--text); }

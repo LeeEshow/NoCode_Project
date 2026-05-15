@@ -104,7 +104,7 @@ function DataTable<T extends object>({
   };
 
   const handleSearchBtnClick = () => {
-    searchOpen ? closeSearch() : openSearch();
+    if (searchOpen) closeSearch(); else openSearch();
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

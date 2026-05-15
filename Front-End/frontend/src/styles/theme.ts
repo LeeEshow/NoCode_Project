@@ -6,20 +6,20 @@
 
 export const colors = {
   /* 背景層 */
-  bg:          '#090909',
-  surface:     '#0D0D0F',
-  panel:       '#1A1A1E',
+  bg:          '#111111',
+  surface:     '#080808',
+  panel:       '#1d1d1d',
 
   /* 邊框 */
-  border:      '#1E1E22',
-  borderHi:    '#2A2A30',
+  border:      '#2c2c2c',
+  borderHi:    '#383838',
 
   /* 文字 */
-  text:        '#C9D1D9',
-  textValue:   '#D7DFE6',
-  muted:       '#8B949E',
-  dim:         '#6B7681',
-  label:       '#7A8490',
+  text:        '#cdd6e0',
+  textValue:   '#c8d2de',
+  muted:       '#7a8390',
+  dim:         '#4e5e6e',
+  label:       '#5e6c7a',
 
   /* 漲跌 */
   up:          '#B87A7A',
@@ -28,7 +28,7 @@ export const colors = {
   down:        '#7CA88D',
   downBg:      'rgba(124,168,141,0.10)',
   downBd:      'rgba(124,168,141,0.22)',
-  flat:        '#6E7681',
+  flat:        '#636b74',
 
   /* Accent */
   accent:      '#6A8FB5',
@@ -36,14 +36,14 @@ export const colors = {
   accentBd:    'rgba(106,143,181,0.26)',
 
   /* Table 表頭 */
-  theadText:   '#7A8FA0',
-  theadBg:     'rgba(106,130,155,0.08)',
-  theadBd:     'rgba(106,130,155,0.16)',
+  theadText:   '#808a94',
+  theadBg:     'rgba(180,185,190,0.06)',
+  theadBd:     'rgba(180,185,190,0.12)',
 } as const;
 
 export const fonts = {
-  sans: "'IBM Plex Sans', sans-serif",
-  mono: "'IBM Plex Mono', monospace",
+  sans: "'Open Sans', sans-serif",
+  mono: "'Open Sans', sans-serif",
 } as const;
 
 export const fontSizes = {
@@ -71,8 +71,8 @@ export const nav = {
 
 export const topbarH = 52;
 
-/** Recharts / Sparkline 用色快捷包 */
-export const chartColors = {
+/** SparkLine / KLineChart 漲跌用色快捷包 */
+export const chartUiColors = {
   up:   colors.up,
   down: colors.down,
   flat: colors.flat,
@@ -85,5 +85,15 @@ export const chartColors = {
   },
 } as const;
 
-const theme = { colors, fonts, fontSizes, radii, nav, topbarH, chartColors };
+/** 莫蘭迪 6 色板 — ECharts series color palette / 進度條循環色 */
+export const chartColors = [
+  '#C8ACA4', // 煙粉 Smoky Rose
+  '#A8B4A6', // 苔灰 Moss Grey
+  '#A0ACBA', // 霧藍 Fog Blue
+  '#C4B8A8', // 燕麥 Oatmeal
+  '#B4AEBC', // 薰紫灰 Lavender Smoke
+  '#96A8B4', // 鴿藍 Pigeon Blue
+] as const;
+
+const theme = { colors, fonts, fontSizes, radii, nav, topbarH, chartColors, chartUiColors };
 export default theme;

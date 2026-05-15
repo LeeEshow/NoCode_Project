@@ -1,10 +1,13 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import MainLayout from './views/layout/MainLayout';
+import MainLayout        from './views/layout/MainLayout';
 import StockOverviewPage from './views/pages/StockOverviewPage';
-import PlanPage          from './views/pages/PlanPage';
-import AssetsPage        from './views/pages/AssetsPage';
-import ReportPage        from './views/pages/ReportPage';
 import ToastContainer    from './views/components/Toast';
+
+/* 非首頁頁面懶載入：首次造訪才下載對應 chunk，減少初始 bundle */
+const PlanPage   = lazy(() => import('./views/pages/PlanPage'));
+const AssetsPage = lazy(() => import('./views/pages/AssetsPage'));
+const ReportPage = lazy(() => import('./views/pages/ReportPage'));
 
 export default function App() {
   return (
@@ -12,10 +15,10 @@ export default function App() {
       <Routes>
         <Route element={<MainLayout />}>
           <Route index element={<StockOverviewPage />} />
-          <Route path="plan"     element={<PlanPage />} />
-          <Route path="assets"   element={<AssetsPage />} />
-          <Route path="report"   element={<ReportPage />} />
-          <Route path="*"        element={<Navigate to="/" replace />} />
+          <Route path="plan"   element={<Suspense fallback={null}><PlanPage /></Suspense>} />
+          <Route path="assets" element={<Suspense fallback={null}><AssetsPage /></Suspense>} />
+          <Route path="report" element={<Suspense fallback={null}><ReportPage /></Suspense>} />
+          <Route path="*"      element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
       <ToastContainer />
