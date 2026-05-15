@@ -56,6 +56,26 @@ src/
 - **ViewModel**：`useState` + `useCallback`，暴露 `loading / saving / error` 及 CRUD 方法。每個頁面自行 instantiate，不跨頁共用。
 - **View**：不直接呼叫 API，所有副作用透過 ViewModel。
 
+### ViewModel 清單
+
+| Hook | 頁面 / 用途 |
+|------|------------|
+| `useHoldingsViewModel` | 持股 CRUD、樂觀排序、即時報價輪詢 |
+| `useWatchlistViewModel` | 關注清單 CRUD、樂觀排序 |
+| `useTagViewModel` | Tag CRUD、AssetTag、MarketState、相關性矩陣、批次重算動態風險 |
+| `useRebalanceRulesViewModel` | 再平衡規則 CRUD |
+| `useRebalanceSnapshotViewModel` | 再平衡快照（建立 / 列表 / 選取） |
+| `useTransactionsViewModel` | 交易紀錄 CRUD（含持股展開列） |
+| `useStockListViewModel` | 股票搜尋 / 市場指數 |
+| `useMarketViewModel` | 法人籌碼、基本面等市場資料 |
+| `useAssetsViewModel` | 外幣 / 債券 / 海外股資產 CRUD |
+| `usePlanViewModel` | 年度投報計畫 CRUD |
+| `useReportViewModel` | 績效快照查詢（含日期範圍、分段） |
+| `usePreferencesViewModel` | 使用者偏好雙層持久化（localStorage + 後端） |
+| `useEnsurePlanStore` | 初始化 `planStore`（每頁掛載一次） |
+| `useRiskViewModel` | **純計算**：riskTotal、tagStats 偏差、重疊群組 |
+| `useRebalanceViewModel` | **純計算**：volatilityFactor、dynamicThreshold、再平衡建議 |
+
 ### 純計算 ViewModel（副作用為零）
 
 這類 hook 不 fetch、不持有 `loading/error`，完全以 `useMemo` 從傳入參數計算，可在元件內多次呼叫無副作用：
@@ -125,6 +145,7 @@ useEffect(() => {
 - **全局 Tag（TagDTO）** 由 `useTagViewModel` 管理，包含 CRUD（`/tags`）、AssetTag、MarketState 切換、相關性矩陣、`recalculateDynamicRisk`。
 - **Risk 計算**：`useRiskViewModel` 依 `correlationEntries` 建 ρ 查找表，未設定 pair 預設 ρ=1.0。`dynamicRisk` 優先，`targetWeight` 為 null 的 Tag 不計算 delta/triggered。
 - **相關性矩陣**：`utils/correlationCalc.ts` 提供 `calcTagDailyReturnsFromSparklines`（sparklines→日報酬序列）與 `buildCorrelationEntries`（計算 Pearson ρ）；`stdDev` 也從此處 export。
+- **交易時段判斷**：`utils/tradingHours.ts` 的 `isTradingHours()` 回傳目前是否為台股盤中（週一至五 09:00–13:30 台灣時間）；報價輪詢 callback 內必須呼叫此函式，不可在外層判斷（stale closure 問題）。
 
 ### 頁面切換動畫（ECGLoader + Overlay）
 
@@ -135,10 +156,12 @@ useEffect(() => {
 - 700ms 後以 300ms 淡出，新頁面才顯露
 - 新頁面元件在背景靜默 mount + fetch，遮罩提供視覺緩衝
 
-**2. ECG 心電圖動畫（`views/components/ECGLoader/ECGLoader.tsx`）**
+**2. 股價折線動畫（`views/components/ECGLoader/ECGLoader.tsx`）**
 - 固定定位於頁面正中央（z-index 9999），顯示在遮罩上方
-- PQRST 波形 SVG 以 `clip-path: inset(0 100% 0 0)` → `inset(0 0% 0 0)` 做左→右展開
-- 掃描頭（金色豎線）同步右移
+- xorshift32 偽隨機 + 動量衰減 + 均值回歸，在 module 載入時生成 300 點股價走勢路徑（固定 seed，結果一致）
+- SVG 以 `clip-path: inset(0 100% 0 0)` → `inset(0 0% 0 0)` 左→右展開；路徑下方有半透明漸層填色
+- 紅色發光圓點（`.ecg-loader__dot`）跟隨趨勢從左下往右上移動，模擬行情頭燈
+- 底部有刻度點（每 40 SVG 單位一個），同步隨 clip-path 顯現
 - 總時長：500ms 展開 + 200ms 淡出 = 700ms
 - 首次 mount 不觸發（`isFirstRender` ref guard）
 - **注意**：使用 `useLocation()`，不可改用 `useNavigation()`（需 data router，本專案用 `<BrowserRouter>`）

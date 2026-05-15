@@ -1,6 +1,6 @@
 # Azure 部署文件
 
-> 最後更新：2026-05-01  
+> 最後更新：2026-05-02  
 > 架構：Azure Static Web Apps（前端）+ Azure App Service Plan B1（後端雙服務）
 
 ---
@@ -16,7 +16,8 @@
 | Node.js CI/CD（`deploy-backend.yml`） | ✅ |
 | Python CI/CD（`deploy-shioaji.yml`） | ✅ |
 | Azure Static Web Apps 前端 | ✅ 正常運行 |
-| 前端 CORS 設定 | ✅ 正常（cors() 無限制） |
+| 前端 Easy Auth（Microsoft 帳號） | ✅ |
+| 每日快照排程（`daily-snapshot.yml`） | ✅ |
 
 ---
 
@@ -27,6 +28,7 @@
 ```
 使用者瀏覽器
   └─ Azure Static Web Apps（免費）
+       ├─ Easy Auth（Microsoft 帳號登入）
        └─ React 前端（Vite build 靜態檔）
 
 Azure App Service Plan B1（~$13 USD/月）
@@ -34,6 +36,12 @@ Azure App Service Plan B1（~$13 USD/月）
   └─ Web App: finance-shioaji   → Python FastAPI + Shioaji
 
 Firebase Firestore（保留現有，不遷移）
+
+GitHub Actions
+  ├─ deploy-backend.yml         → 推送 Back-End/backend/** 自動部署
+  ├─ deploy-shioaji.yml         → 推送 Back-End/Shioaji_API/** 自動部署
+  ├─ azure-static-web-apps-*.yml → 推送 main 自動部署前端
+  └─ daily-snapshot.yml         → 每日 14:00（台灣時間）自動快照
 ```
 
 ### 費用摘要
@@ -52,17 +60,16 @@ Firebase Firestore（保留現有，不遷移）
 
 | 服務 | URL |
 |------|-----|
+| finance-frontend | `https://gray-bay-05c35e200.7.azurestaticapps.net` |
 | finance-backend | `https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net` |
 | finance-shioaji | `https://finance-shioaji-bucre4ccehejfvcf.southeastasia-01.azurewebsites.net` |
-| finance-frontend | `https://gray-bay-05c35e200.7.azurestaticapps.net` |
 
 ### 健康檢查
 
 ```bash
 curl https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/health
 curl https://finance-shioaji-bucre4ccehejfvcf.southeastasia-01.azurewebsites.net/health
-# 前端
-# 瀏覽 https://gray-bay-05c35e200.7.azurestaticapps.net
+# 前端：瀏覽 https://gray-bay-05c35e200.7.azurestaticapps.net
 ```
 
 ---
@@ -160,7 +167,46 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 
 ---
 
-## 三、後端除錯與注意事項
+### 2-3 每日快照排程
+
+**Workflow**：`.github/workflows/daily-snapshot.yml`
+
+- 每天 **14:00 台灣時間**（UTC+8 = 06:00 UTC）自動執行
+- 僅**週一至週五**（台股交易日）
+- 支援 GitHub Actions 手動觸發（測試用）
+- 呼叫端點：`POST /api/v1/snapshots/record`
+
+```yaml
+on:
+  schedule:
+    - cron: '0 6 * * 1-5'
+  workflow_dispatch:
+```
+
+---
+
+## 三、前端部署參數
+
+> URL：`https://gray-bay-05c35e200.7.azurestaticapps.net`  
+> CI/CD：`.github/workflows/azure-static-web-apps-gray-bay-05c35e200.yml`（任何 push to main 觸發）
+
+**GitHub Actions Variable**
+
+| 名稱 | 值 |
+|------|-----|
+| `VITE_API_BASE_URL` | `https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/api/v1` |
+
+**Easy Auth**（Microsoft 帳號）
+
+已設定於 `Front-End/frontend/public/staticwebapp.config.json`：未登入的使用者自動導向 Microsoft 登入頁，登入後才能進入網站。
+
+**SPA 路由**
+
+`staticwebapp.config.json` 設定 `navigationFallback`，重新整理不會 404。
+
+---
+
+## 四、後端除錯與注意事項
 
 ### SSH 診斷說明
 
@@ -171,7 +217,7 @@ Azure App Service 有兩種 SSH 入口，行為不同：
 | Azure Portal → 開發工具 → SSH | **App 容器**（可測 localhost） | 診斷 app 本身 |
 | `{app}.scm.azurewebsites.net/webssh/host` | **SCM/Kudu 容器** | 看 log、看部署狀態 |
 
-兩個容器共用 `/home/LogFiles/`，但網路隔離。從 Kudu SSH 執行 `curl localhost:8080` 不會打到 App。
+兩個容器共用 `/home/LogFiles/`，但網路隔離。從 Kudu SSH 執行 `curl localhost` 不會打到 App。
 
 **診斷用 log 路徑**
 
@@ -198,7 +244,7 @@ az webapp restart --name finance-shioaji --resource-group finance-app-rg
 
 ---
 
-### 問題記錄
+### 注意事項
 
 #### ❶ Japan East 配額不足
 **症狀**：建立 App Service Plan 時出現 `SubscriptionIsOverQuotaForSku`。  
@@ -252,53 +298,8 @@ az webapp restart --name finance-shioaji --resource-group finance-app-rg
 ---
 
 #### ❽ Python 容器 warmup probe 無限超時（Python）
-**症狀**：uvicorn 正常啟動，`/health` log 顯示初始化成功，但 230 秒後容器被殺，無限重啟。  
-**原因**：`finance-backend`（Node.js）與 `finance-shioaji`（Python）共用同一 App Service Plan 主機，Node.js 佔用 port 8080。Azure warmup probe 打 port 8080 收到 Node.js 的 `Cannot GET /`（404），判定啟動失敗。  
+**症狀**：uvicorn 正常啟動，log 顯示初始化成功，但 230 秒後容器被殺，無限重啟。  
+**原因**：`finance-backend` 與 `finance-shioaji` 共用同一 App Service Plan 主機，Node.js 佔用 port 8080。Azure warmup probe 打 port 8080 收到 Node.js 的 404，判定啟動失敗。  
 **解法**：Python 改用 port 8000：
 - 啟動命令：`python3 -m uvicorn main:app --host 0.0.0.0 --port 8000`
 - 環境變數：`WEBSITES_PORT=8000`
-
----
-
-## 四、前端部署參數
-
-> 狀態：✅ 完成  
-> URL：`https://gray-bay-05c35e200.7.azurestaticapps.net`  
-> CI/CD：`.github/workflows/azure-static-web-apps-gray-bay-05c35e200.yml`
-
-### 建立 Azure Static Web Apps
-
-```bash
-az staticwebapp create \
-  --name finance-frontend \
-  --resource-group finance-app-rg \
-  --location eastasia \
-  --source "https://github.com/LeeEshow/NoCode_Project" \
-  --branch main \
-  --app-location "Front-End/frontend" \
-  --output-location "dist" \
-  --login-with-github
-```
-
-### 環境變數（Portal → Static Web Apps → Configuration）
-
-| 名稱 | 值 |
-|------|-----|
-| `VITE_API_BASE_URL` | `https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/api/v1` |
-
-### SPA 路由設定
-
-在 `Front-End/frontend/` 建立 `staticwebapp.config.json`：
-
-```json
-{
-  "navigationFallback": {
-    "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/favicon.svg"]
-  }
-}
-```
-
-### CORS 設定
-
-前端網域確認後，更新 `Back-End/backend/src/index.ts` 的 CORS allowlist，加入 Static Web Apps 網域。

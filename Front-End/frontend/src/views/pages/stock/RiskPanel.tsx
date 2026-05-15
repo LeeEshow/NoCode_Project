@@ -292,70 +292,56 @@ export default function RiskPanel({
           onClick={handleToggle}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggle(); } }}
           style={{
-            display: 'flex', alignItems: 'center', gap: 50,
-            flex: 1, cursor: 'pointer', flexWrap: 'wrap',
+            display: 'flex', alignItems: 'center', gap: 12,
+            flex: 1, cursor: 'pointer', flexWrap: 'nowrap',
             fontSize: 'var(--text-sm)', color: 'var(--text)',
+            overflow: 'hidden', minWidth: 0,
           }}
         >
-          {/* 標題 + Risk 合併群組，兩者間距 10px */}
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: 'var(--muted)' }}>{expanded ? '▲' : '▼'}</span>
-              <span
-                onClick={handleCopyClick}
-                title="點擊複製配置報告"
-                style={{
-                  fontWeight: 500, whiteSpace: 'nowrap', color: 'var(--text)',
-                  cursor: 'copy', userSelect: 'none',
-                  borderBottom: '1px dashed var(--dim)',
-                  paddingBottom: 1,
-                }}
-              >
-                風險/再平衡模組
-              </span>
+          {/* 標題 */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <span style={{ color: 'var(--muted)' }}>{expanded ? '▲' : '▼'}</span>
+            <span
+              onClick={handleCopyClick}
+              title="點擊複製配置報告"
+              style={{
+                fontWeight: 500, whiteSpace: 'nowrap', color: 'var(--text)',
+                cursor: 'copy', userSelect: 'none',
+                borderBottom: '1px dashed var(--dim)',
+                paddingBottom: 1,
+              }}
+            >
+              風險/再平衡模組
             </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: 'var(--dim)' }}>·</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-                <span style={{ color: 'var(--muted)' }}>Risk：</span>
-                <span
-                  aria-live="polite"
-                  style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}
-                >
-                  {riskLabel}
-                </span>
-                {/* Mini 進度條（max = 2.0，超過 cap 至滿格）*/}
-                {riskBarPct > 0 && (
-                  <span
-                    aria-hidden="true"
-                    style={{ display: 'inline-flex', alignItems: 'center', width: 56, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}
-                  >
-                    <span style={{ width: `${riskBarPct}%`, height: '100%', background: riskBarColor, borderRadius: 3, transition: 'width 0.4s ease, background 0.4s ease' }} />
-                  </span>
-                )}
-              </span>
-            </span>
-          </span>{/* end 標題 + Risk 合併群組 */}
-          {/* 市場狀態 Badge */}
-          <span style={{
-            border: '1px solid var(--border)',
-            color: 'var(--muted)', borderRadius: 'var(--radius-sm)',
-            fontSize: 'var(--text-sm)', padding: '2px 10px', whiteSpace: 'nowrap',
-          }}>
-            {marketStateLabel}
           </span>
-          {/* 偏差標籤數 */}
-          {deviationCount > 0 && (
-            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
-              ⚠ {deviationCount} 標籤偏差
+          {/* {市場狀態}：進度條 {風險值} {標籤偏差說明} */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+            <span style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{marketStateLabel}：</span>
+            {riskBarPct > 0 && (
+              <span
+                aria-hidden="true"
+                style={{ display: 'inline-flex', alignItems: 'center', width: 56, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}
+              >
+                <span style={{ width: `${riskBarPct}%`, height: '100%', background: riskBarColor, borderRadius: 3, transition: 'width 0.4s ease, background 0.4s ease' }} />
+              </span>
+            )}
+            <span
+              aria-live="polite"
+              style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+            >
+              {riskLabel}
             </span>
-          )}
-          {/* 每月再平衡提醒（僅收折時顯示）*/}
-          {!expanded && needsMonthlyReminder && (
-            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
-              ⏰ 本月尚未再平衡
-            </span>
-          )}
+            {deviationCount > 0 && (
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 24 }}>
+                ⚠ {deviationCount} 標籤偏差
+              </span>
+            )}
+            {!expanded && needsMonthlyReminder && (
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
+                ⏰ 本月尚未再平衡
+              </span>
+            )}
+          </span>
         </div>
 
         {/* 右側：快照下拉（不觸發展開/收折）*/}
