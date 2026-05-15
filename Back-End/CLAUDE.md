@@ -106,8 +106,10 @@ Model 層欄位用 **snake_case**（Firestore 儲存），回應時轉為 **came
 ### Tag 功能路由結構
 
 `tags` 與 `asset_tags` 是兩個獨立集合：
-- `tags`：全局 Tag 定義（name / baseRisk / dynamicRisk / targetWeight / fallbackBehavior / marketStatePresets）
+- `tags`：全局 Tag 定義（name / baseRisk / dynamicRisk / targetWeight / fallbackBehavior / marketStatePresets / triggerDirection）
 - `asset_tags`：持股與 Tag 的對應關係（stockCode / tagName / weightRatio）
+
+`triggerDirection`：`'both' | 'upper_only' | 'lower_only'`，預設 `'both'`；舊文件無此欄位時 deserialize fallback `'both'`。
 
 持股 Tag 操作掛在 holdings 路由下（嵌套）：
 
@@ -160,8 +162,8 @@ Firestore 無資料時 `GET` 回傳內建預設值，不拋錯。
 2. 對各 Tag 有效持股，`Promise.allSettled` 取 90 日收盤價（`Stock.getHistory`）
 3. 計算加權日報酬序列：`Σ (weightRatio/100 × 持股日報酬)`
 4. `vol_ratio = std(近 20 日) / std(近 90 日)`；資料不足或 baseVol=0 時預設 1.0
-5. presets clamp 至 0–3：`riskOn = baseRisk×1.3×vol_ratio`、`riskOff ×1.8`、`liquidityDry ×2.5`
-6. `dynamicRisk`：neutral → `baseRisk×vol_ratio`；其餘取對應 preset
+5. presets clamp 至 0–3：`riskOn = baseRisk×1.3×vol_ratio`、`riskOff ×1.8`、`liquidityDry ×2.5`；**各值四捨五入至小數兩位**（`parseFloat(v.toFixed(2))`）
+6. `dynamicRisk`：neutral → `baseRisk×vol_ratio`；其餘取對應 preset；**同樣四捨五入至小數兩位**
 7. `Tag.batchUpdateRisk` 一次寫回 `dynamic_risk` + `market_state_presets`；無有效持股的 Tag 跳過（skippedCount）
 
 `POST /tags/recalculate-dynamic-risk` 為手動觸發入口；每日 14:00 cron 呼叫 `POST /snapshots/record` 時自動觸發（fire-and-forget）。

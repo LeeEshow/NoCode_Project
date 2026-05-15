@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { chartColors } from '../styles';
-import type { HoldingDTO, TagDTO, TagStat, OverlappingTagGroup, CorrelationEntry } from '../types';
+import type { HoldingDTO, TagDTO, TagStat, OverlappingTagGroup, CorrelationEntry, TriggerDirection } from '../types';
 
 export interface RiskResult {
   riskTotal:         number;
@@ -73,7 +73,12 @@ export function useRiskViewModel(
     const tagStats: TagStat[] = tags.map((tag, idx) => {
       const actualWeight = (actualRaw.get(tag.name) ?? 0) * 100;
       const delta     = tag.targetWeight != null ? actualWeight - tag.targetWeight : 0;
-      const triggered = tag.targetWeight != null && Math.abs(delta) > thresholdPP;
+      const dir: TriggerDirection = tag.triggerDirection ?? 'both';
+      const triggered = tag.targetWeight != null && (
+        dir === 'upper_only' ? delta > thresholdPP :
+        dir === 'lower_only' ? delta < -thresholdPP :
+        Math.abs(delta) > thresholdPP
+      );
       return {
         tagName:          tag.name,
         baseRisk:         tag.baseRisk,

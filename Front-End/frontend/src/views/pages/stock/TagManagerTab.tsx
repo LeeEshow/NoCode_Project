@@ -1,6 +1,6 @@
 import { useState, useId } from 'react';
 import type {
-  TagDTO, TagStat, CreateTagPayload, FallbackBehavior,
+  TagDTO, TagStat, CreateTagPayload, FallbackBehavior, TriggerDirection,
   HoldingDTO, OverlappingTagGroup,
 } from '../../../types';
 import { calcTagDailyReturnsFromSparklines, stdDev } from '../../../utils/correlationCalc';
@@ -17,6 +17,7 @@ interface FormState {
   baseRisk:         string;
   targetWeight:     string;
   fallbackBehavior: FallbackBehavior;
+  triggerDirection: TriggerDirection;
   presetRiskOn:     string;
   presetRiskOff:    string;
   presetLiqDry:     string;
@@ -50,12 +51,19 @@ interface Props {
 
 const EMPTY_FORM: FormState = {
   name: '', baseRisk: '', targetWeight: '', fallbackBehavior: 'hold',
+  triggerDirection: 'both',
   presetRiskOn: '', presetRiskOff: '', presetLiqDry: '',
 };
 
 const FALLBACK_OPTIONS = [
   { value: 'hold',    label: '持有' },
   { value: 'exclude', label: '排除' },
+];
+
+const TRIGGER_DIR_OPTIONS: { value: TriggerDirection; label: string; desc: string }[] = [
+  { value: 'both',       label: '雙向 ±',   desc: '超配或低配都觸發' },
+  { value: 'upper_only', label: '僅上限 ↓', desc: '超配才觸發（30%↓ 代表上限，適合衛星部位）' },
+  { value: 'lower_only', label: '僅下限 ↑', desc: '低配才觸發（30%↑ 代表下限，適合核心持倉）' },
 ];
 
 /* ── 元件 ── */
@@ -96,6 +104,7 @@ export default function TagManagerTab({
       baseRisk:         String(tag.baseRisk),
       targetWeight:     tag.targetWeight != null ? String(tag.targetWeight) : '',
       fallbackBehavior: tag.fallbackBehavior,
+      triggerDirection: tag.triggerDirection ?? 'both',
       presetRiskOn:     tag.marketStatePresets?.riskOn       != null ? String(r2(tag.marketStatePresets.riskOn))       : '',
       presetRiskOff:    tag.marketStatePresets?.riskOff      != null ? String(r2(tag.marketStatePresets.riskOff))      : '',
       presetLiqDry:     tag.marketStatePresets?.liquidityDry != null ? String(r2(tag.marketStatePresets.liquidityDry)) : '',
@@ -148,6 +157,7 @@ export default function TagManagerTab({
       baseRisk:         parseFloat(form.baseRisk),
       targetWeight:     form.targetWeight.trim() ? parseFloat(form.targetWeight) : null,
       fallbackBehavior: form.fallbackBehavior,
+      triggerDirection: form.triggerDirection,
       marketStatePresets: hasPresets ? {
         riskOn:       !isNaN(riskOn)  ? riskOn  : undefined,
         riskOff:      !isNaN(riskOff) ? riskOff : undefined,
@@ -257,7 +267,17 @@ export default function TagManagerTab({
                   }}>
                     {tag.dynamicRisk.toFixed(2)}
                   </td>
-                  <td className="center num-value">{tag.targetWeight != null ? `${tag.targetWeight}%` : '—'}</td>
+                  <td className="center num-value">
+                    {tag.targetWeight != null ? (
+                      <>
+                        {tag.targetWeight}%
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginLeft: 3 }}>
+                          {(tag.triggerDirection ?? 'both') === 'upper_only' ? '↓' :
+                           (tag.triggerDirection ?? 'both') === 'lower_only' ? '↑' : '±'}
+                        </span>
+                      </>
+                    ) : '—'}
+                  </td>
                   <td className="center">{tag.fallbackBehavior === 'hold' ? '持有' : '排除'}</td>
                   {/* 進度條 */}
                   <td className="center">
@@ -361,6 +381,47 @@ export default function TagManagerTab({
                 placeholder="50" min={0} max={100} step={1} disabled={saving} />
               <div aria-live="polite">{errors.targetWeight && <span className="fi-error">{errors.targetWeight}</span>}</div>
             </div>
+          </div>
+
+          {/* 觸發方向 */}
+          <div className="fi-field">
+            <label className="fi-label">觸發方向</label>
+            <div role="radiogroup" aria-label="觸發方向" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {TRIGGER_DIR_OPTIONS.map(opt => (
+                <label
+                  key={opt.value}
+                  title={opt.desc}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center',
+                    padding: '4px 10px',
+                    border: `1px solid ${form.triggerDirection === opt.value ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    background: form.triggerDirection === opt.value ? 'var(--accent-bg)' : 'transparent',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    fontSize: 'var(--text-sm)', whiteSpace: 'nowrap',
+                    color: form.triggerDirection === opt.value ? 'var(--accent)' : 'var(--muted)',
+                    opacity: saving ? 0.6 : 1,
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name={`${idBase}-trigger-dir`}
+                    value={opt.value}
+                    checked={form.triggerDirection === opt.value}
+                    disabled={saving}
+                    onChange={() => setForm(f => ({ ...f, triggerDirection: opt.value }))}
+                    style={{ display: 'none' }}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            {!form.targetWeight.trim() && (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 4 }}>
+                設定目標配置後生效
+              </p>
+            )}
           </div>
 
           {/* 行為 */}

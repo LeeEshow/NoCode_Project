@@ -1,10 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
-import { Tag, TagInput, MarketStatePresets } from '../models/Tag';
+import { Tag, TagInput, MarketStatePresets, TriggerDirection } from '../models/Tag';
 import { AssetTag } from '../models/AssetTag';
 import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
 import { MarketStateName } from '../models/MarketState';
 import { recalculateDynamicRisk } from '../services/tagRiskService';
+
+const VALID_TRIGGER_DIRECTIONS: TriggerDirection[] = ['both', 'upper_only', 'lower_only'];
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
+}
 
 function validatePresets(presets: unknown): Partial<MarketStatePresets> {
   if (presets == null || typeof presets !== 'object') {
@@ -18,9 +24,9 @@ function validatePresets(presets: unknown): Partial<MarketStatePresets> {
     }
   }
   return {
-    riskOn:       typeof p['riskOn']       === 'number' ? p['riskOn']       : null,
-    riskOff:      typeof p['riskOff']      === 'number' ? p['riskOff']      : null,
-    liquidityDry: typeof p['liquidityDry'] === 'number' ? p['liquidityDry'] : null,
+    riskOn:       typeof p['riskOn']       === 'number' ? round2(p['riskOn'])       : null,
+    riskOff:      typeof p['riskOff']      === 'number' ? round2(p['riskOff'])      : null,
+    liquidityDry: typeof p['liquidityDry'] === 'number' ? round2(p['liquidityDry']) : null,
   };
 }
 
@@ -32,7 +38,7 @@ export const getAll = async (_req: Request, res: Response, next: NextFunction) =
 
 export const create = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, baseRisk, targetWeight, fallbackBehavior, marketStatePresets } = req.body;
+    const { name, baseRisk, targetWeight, fallbackBehavior, marketStatePresets, triggerDirection } = req.body;
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       throw new AppError(400, 'name 為必填欄位');
@@ -45,6 +51,9 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
     }
     if (fallbackBehavior != null && !['hold', 'exclude'].includes(fallbackBehavior)) {
       throw new AppError(400, 'fallbackBehavior 必須為 "hold" 或 "exclude"');
+    }
+    if (triggerDirection != null && !VALID_TRIGGER_DIRECTIONS.includes(triggerDirection)) {
+      throw new AppError(400, 'triggerDirection 必須為 "both" | "upper_only" | "lower_only"');
     }
 
     let parsedPresets: Partial<MarketStatePresets> | null = null;
@@ -60,6 +69,7 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
       targetWeight:       targetWeight ?? null,
       fallbackBehavior:   fallbackBehavior ?? 'hold',
       marketStatePresets: parsedPresets,
+      triggerDirection:   (triggerDirection as TriggerDirection) ?? 'both',
     });
     res.status(201).json(ApiResponse.success(tag));
   } catch (err) { next(err); }
@@ -68,7 +78,7 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
 export const update = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = String(req.params['id']);
-    const { name, baseRisk, targetWeight, fallbackBehavior, marketStatePresets } = req.body;
+    const { name, baseRisk, targetWeight, fallbackBehavior, marketStatePresets, triggerDirection } = req.body;
 
     if (name !== undefined) {
       if (typeof name !== 'string' || name.trim() === '') {
@@ -88,12 +98,16 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
     if (fallbackBehavior != null && !['hold', 'exclude'].includes(fallbackBehavior)) {
       throw new AppError(400, 'fallbackBehavior 必須為 "hold" 或 "exclude"');
     }
+    if (triggerDirection != null && !VALID_TRIGGER_DIRECTIONS.includes(triggerDirection)) {
+      throw new AppError(400, 'triggerDirection 必須為 "both" | "upper_only" | "lower_only"');
+    }
 
     const input: Partial<TagInput> = {};
-    if (name              !== undefined) input.name              = name.trim();
-    if (baseRisk          !== undefined) input.baseRisk          = baseRisk;
-    if ('targetWeight'    in req.body)   input.targetWeight      = targetWeight ?? null;
-    if ('fallbackBehavior' in req.body)  input.fallbackBehavior  = fallbackBehavior ?? null;
+    if (name               !== undefined) input.name              = name.trim();
+    if (baseRisk           !== undefined) input.baseRisk          = baseRisk;
+    if ('targetWeight'    in req.body)    input.targetWeight      = targetWeight ?? null;
+    if ('fallbackBehavior' in req.body)   input.fallbackBehavior  = fallbackBehavior ?? null;
+    if ('triggerDirection' in req.body)   input.triggerDirection  = (triggerDirection as TriggerDirection) ?? 'both';
     if ('marketStatePresets' in req.body) {
       input.marketStatePresets = marketStatePresets != null
         ? validatePresets(marketStatePresets)

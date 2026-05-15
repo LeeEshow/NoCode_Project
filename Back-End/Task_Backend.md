@@ -7,15 +7,7 @@
 
 ## 待辦
 
-### 動態風險數值統一四捨五入至小數後兩位
-
-- **背景**：前端發現 `dynamicRisk` 及 `marketStatePresets`（riskOn / riskOff / liquidityDry）儲存了超過兩位小數的浮點值（例如 `0.7152847329`），前端顯示雖已用 `toFixed(2)` 處理，但開啟編輯 Modal 時表單欄位仍會顯示原始多位小數
-- **修改位置**：`tagRiskService.ts`（計算後 `parseFloat(value.toFixed(2))` 再存入 DB）；`PUT /tags/:id` 接收 `marketStatePresets` 時同步做 round（`Math.round(v * 100) / 100`）
-- **影響 API**：
-  - `POST /tags/recalculate-dynamic-risk`（batch 計算）
-  - `POST /tags` / `PUT /tags/:id`（建立 / 更新 Tag 時的 preset 欄位）
-  - `POST /snapshots/record` 靜默觸發的重算
-- **驗證**：呼叫以上 API 後 `GET /tags` 回傳的 `dynamicRisk` 與三個 preset 均應為最多兩位小數
+> 暫無待辦
 
 ---
 
@@ -26,6 +18,19 @@
 ---
 
 ## 已完成
+
+### Tag 觸發方向欄位（triggerDirection）
+
+- `TriggerDirection = 'both' | 'upper_only' | 'lower_only'` 型別新增於 `Tag.ts`
+- `tags` collection 新增 `trigger_direction` 欄位，預設 `'both'`；舊資料 deserialize fallback `'both'`
+- `GET /tags` 每筆 Tag 回傳含 `triggerDirection`
+- `POST /tags` / `PUT /tags/:id`：接收 `triggerDirection`（選填），驗證三選一
+
+### 動態風險數值統一四捨五入至小數後兩位
+
+- `tagRiskService.ts`：`riskOn` / `riskOff` / `liquidityDry` / `dynamicRisk` 計算後呼叫 `r2()` (`parseFloat(v.toFixed(2))`) 再存 DB
+- `tagsController.ts` `validatePresets()`：接收 `marketStatePresets` 時對每個值套用 `Math.round(v * 100) / 100`
+- 影響端點：`POST /tags/recalculate-dynamic-risk`、`POST /tags`、`PUT /tags/:id`、`POST /snapshots/record` 靜默觸發
 
 ### Tag 動態風險自動計算 API + 每日排程
 

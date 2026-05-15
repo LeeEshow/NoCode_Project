@@ -364,6 +364,8 @@ export type FallbackBehavior = 'hold' | 'exclude';
 
 export type MarketState = 'neutral' | 'risk-on' | 'risk-off' | 'liquidity-dry';
 
+export type TriggerDirection = 'both' | 'upper_only' | 'lower_only';
+
 export interface TagDTO {
   id:               string;
   name:             string;
@@ -371,6 +373,7 @@ export interface TagDTO {
   dynamicRisk:      number;
   targetWeight:     number | null;
   fallbackBehavior: FallbackBehavior;
+  triggerDirection: TriggerDirection;
   marketStatePresets?: {
     riskOn:       number;
     riskOff:      number;
@@ -383,6 +386,7 @@ export interface CreateTagPayload {
   baseRisk:          number;
   targetWeight?:     number | null;
   fallbackBehavior?: FallbackBehavior;
+  triggerDirection?: TriggerDirection;
   marketStatePresets?: {
     riskOn?:       number;
     riskOff?:      number;

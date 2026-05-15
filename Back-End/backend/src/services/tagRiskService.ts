@@ -13,6 +13,10 @@ function clamp(v: number): number {
   return Math.max(0, Math.min(3, v));
 }
 
+function r2(v: number): number {
+  return parseFloat(v.toFixed(2));
+}
+
 function popStd(values: number[]): number {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
@@ -112,15 +116,16 @@ export async function recalculateDynamicRisk(
     }
 
     const { baseRisk } = tag;
-    const riskOn       = clamp(baseRisk * 1.3 * volRatio);
-    const riskOff      = clamp(baseRisk * 1.8 * volRatio);
-    const liquidityDry = clamp(baseRisk * 2.5 * volRatio);
+    const riskOn       = r2(clamp(baseRisk * 1.3 * volRatio));
+    const riskOff      = r2(clamp(baseRisk * 1.8 * volRatio));
+    const liquidityDry = r2(clamp(baseRisk * 2.5 * volRatio));
 
-    const dynamicRisk =
+    const dynamicRisk = r2(
       marketState === 'risk-on'       ? riskOn       :
       marketState === 'risk-off'      ? riskOff      :
       marketState === 'liquidity-dry' ? liquidityDry :
-      clamp(baseRisk * volRatio); // neutral
+      clamp(baseRisk * volRatio) // neutral
+    );
 
     updates.push({ id: tag.id, dynamicRisk, marketStatePresets: { riskOn, riskOff, liquidityDry } });
   }

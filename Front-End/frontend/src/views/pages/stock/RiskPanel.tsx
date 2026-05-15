@@ -216,22 +216,51 @@ export default function RiskPanel({
     const pad = (n: number) => String(n).padStart(2, '0');
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
+    const tagMap = new Map(tags.map(t => [t.name, t]));
+
+    function dirLabel(dir: string | undefined): string {
+      if (dir === 'upper_only') return '僅上限↓';
+      if (dir === 'lower_only') return '僅下限↑';
+      return '雙向±';
+    }
+
     const lines: string[] = [
       '=== 風險 / 再平衡配置報告 ===',
       `產生時間：${timestamp}`,
       '',
       '【Tag 標籤配置】',
-      '標籤名稱\t當前配比\t目標配置\t偏差\t狀態',
+      '標籤名稱\t當前配比\t目標配置\t觸發限制\t偏差\t狀態',
     ];
 
     for (const s of tagStats) {
       const actual = `${s.actualWeight.toFixed(1)}%`;
       const target = s.targetWeight != null ? `${s.targetWeight.toFixed(1)}%` : '—';
+      const dir    = dirLabel(tagMap.get(s.tagName)?.triggerDirection);
       const delta  = s.targetWeight != null
         ? `${s.delta >= 0 ? '+' : ''}${s.delta.toFixed(1)}%`
         : '—';
       const status = s.targetWeight == null ? '無目標' : s.triggered ? '⚠ 偏差觸發' : '正常';
-      lines.push(`${s.tagName}\t${actual}\t${target}\t${delta}\t${status}`);
+      lines.push(`${s.tagName}\t${actual}\t${target}\t${dir}\t${delta}\t${status}`);
+    }
+
+    /* 相關性矩陣 */
+    if (tags.length >= 2) {
+      lines.push('', '【Tag 相關性矩陣（ρ）】');
+
+      const header = '\t' + tags.map(t => t.name).join('\t');
+      lines.push(header);
+
+      for (const ta of tags) {
+        const cells = tags.map(tb => {
+          if (ta.name === tb.name) return '1.00';
+          const entry = correlationMatrix.find(
+            e => (e.tagA === ta.name && e.tagB === tb.name) ||
+                 (e.tagA === tb.name && e.tagB === ta.name)
+          );
+          return entry != null ? entry.rho.toFixed(2) : '—';
+        });
+        lines.push(`${ta.name}\t${cells.join('\t')}`);
+      }
     }
 
     lines.push('', '【股票 Tag 配置】', '代碼\t名稱\t標籤（持股權重%）');
@@ -517,7 +546,7 @@ export default function RiskPanel({
 
                 {/* 基礎偏離門檻 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span id="lbl-risk-threshold" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', width: 80 }}>
+                  <span id="lbl-risk-threshold" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 104, flexShrink: 0 }}>
                     基礎偏離門檻
                     <SettingTooltip content="Tag 實際配置偏離目標幾 % 才觸發再平衡建議。設越小越敏感，設越大表示容忍更多偏差" />
                   </span>
@@ -540,7 +569,7 @@ export default function RiskPanel({
 
                 {/* 集中度上限 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span id="lbl-conc-limit" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', width: 80 }}>
+                  <span id="lbl-conc-limit" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 104, flexShrink: 0 }}>
                     集中度上限
                     <SettingTooltip content="同性質 Tag 合計持股比例的警戒線，超過此值代表資產過度集中在同類標的" />
                   </span>
@@ -563,7 +592,7 @@ export default function RiskPanel({
 
                 {/* 流動性上限 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span id="lbl-liq-cap" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', width: 80 }}>
+                  <span id="lbl-liq-cap" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 104, flexShrink: 0 }}>
                     流動性上限
                     <SettingTooltip content="單次再平衡每檔的交易量，不超過該股平均日成交量的這個比例，避免大單衝擊市場價格" />
                   </span>
@@ -586,7 +615,7 @@ export default function RiskPanel({
 
                 {/* ADV 計算天數 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label htmlFor="adv-days" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', width: 80 }}>
+                  <label htmlFor="adv-days" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 104, flexShrink: 0 }}>
                     ADV 計算天數
                     <SettingTooltip content="計算平均日成交量時回溯幾天。天數多較平滑，天數少較貼近近期真實成交狀況" />
                   </label>

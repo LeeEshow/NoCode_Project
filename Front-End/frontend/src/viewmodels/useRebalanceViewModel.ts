@@ -82,13 +82,11 @@ export function computeRebalanceSuggestions(
     holdings.map(h => [h.stockCode, (h.currentPrice * h.shares) / totalAsset])
   );
 
-  /* 僅納入偏離超過動態門檻的 Tag */
+  /* 僅納入已觸發的 Tag（triggered 已依 triggerDirection 計算，此處直接沿用）*/
   const deltaMap = new Map<string, number>();
   for (const ts of tagStats) {
-    if (ts.fallbackBehavior === 'exclude' || ts.targetWeight == null) continue;
-    const delta = ts.delta / 100;
-    if (Math.abs(delta) <= dynamicThreshold) continue;
-    deltaMap.set(ts.tagName, delta);
+    if (ts.fallbackBehavior === 'exclude' || ts.targetWeight == null || !ts.triggered) continue;
+    deltaMap.set(ts.tagName, ts.delta / 100);
   }
 
   const suggestions: RebalanceSuggestion[] = holdings.map(h => {
