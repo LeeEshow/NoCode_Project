@@ -123,9 +123,10 @@ export default function PlanParamRow({ config, saving: _saving, onChange, onSave
         </select>
       </div>
 
-      {/* 起始年份 + 計畫年數 */}
+      {/* 30 年計畫 起始年份 */}
       <div className="plan-card" style={{ minWidth: 150, maxWidth: 150 }}>
-        <div className="plan-card__label">起始年份</div>
+        <div className="plan-card__label">30 年計畫</div>
+        <div className="plan-card__sub">起始年份</div>
         <div className="plan-year-ctrl">
           <button
             className="plan-year-btn"
@@ -148,10 +149,6 @@ export default function PlanParamRow({ config, saving: _saving, onChange, onSave
           >
             <Icon name="chevron_right" size={14} />
           </button>
-        </div>
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 6, marginTop: 2 }}>
-          <div className="plan-card__label">計畫年數</div>
-          <div className="plan-card__value">30 <span className="plan-card__sub">年</span></div>
         </div>
       </div>
 

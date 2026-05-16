@@ -14,20 +14,23 @@ import { colors, chartColors } from '../../../styles';
 echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer]);
 
 export interface ChartDayData {
-  dayIndex: number;   // 日曆相對天數（含空洞）
+  dayIndex: number;
   returnRate: number;
   totalInvested: number;
-  date: string;       // "YYYY-MM-DD"
+  date: string;
+}
+
+export interface SeriesEntry {
+  label: string;
+  data: ChartDayData[];
 }
 
 interface Props {
-  series1: ChartDayData[];
-  series2?: ChartDayData[] | null;
+  seriesList: SeriesEntry[];
   targetRate: number;
   height?: number;
 }
 
-/** 依 dayIndex 建立密集陣列，遺失天填 null */
 function buildDense(
   data: ChartDayData[],
   totalDays: number,
@@ -43,13 +46,11 @@ function buildDense(
   });
 }
 
-/** 依 dayIndex 建立日期密集陣列，遺失天填 null */
 function buildDenseDates(data: ChartDayData[], totalDays: number): (string | null)[] {
   const map = new Map(data.map(d => [d.dayIndex, d.date]));
   return Array.from({ length: totalDays }, (_, i) => map.get(i + 1) ?? null);
 }
 
-/** Y 軸標籤縮寫（僅供軸刻度） */
 function fmtAxisWan(v: number): string {
   if (v >= 10_000_000) return `${(v / 10_000_000).toFixed(1)}千萬`;
   if (v >= 1_000_000)  return `${(v / 1_000_000).toFixed(1)}百萬`;
@@ -57,10 +58,18 @@ function fmtAxisWan(v: number): string {
   return String(v);
 }
 
-export default memo(function ReportChart({ series1, series2, targetRate, height = 320 }: Props) {
-  const maxDay1 = series1.length > 0 ? series1[series1.length - 1].dayIndex : 0;
-  const maxDay2 = series2 && series2.length > 0 ? series2[series2.length - 1].dayIndex : 0;
-  const totalDays = Math.max(maxDay1, maxDay2);
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+export default memo(function ReportChart({ seriesList, targetRate, height = 320 }: Props) {
+  const totalDays = seriesList.reduce((max, s) => {
+    if (s.data.length === 0) return max;
+    return Math.max(max, s.data[s.data.length - 1].dayIndex);
+  }, 0);
 
   if (totalDays === 0) {
     return (
@@ -78,122 +87,77 @@ export default memo(function ReportChart({ series1, series2, targetRate, height 
     );
   }
 
-  const xData     = Array.from({ length: totalDays }, (_, i) => `第 ${i + 1} 日`);
-  const r1Inv     = buildDense(series1, totalDays, 'totalInvested');
-  const r1Rate    = buildDense(series1, totalDays, 'returnRate');
-  const r2Inv     = series2 ? buildDense(series2, totalDays, 'totalInvested') : null;
-  const r2Rate    = series2 ? buildDense(series2, totalDays, 'returnRate') : null;
-  const dates1    = buildDenseDates(series1, totalDays);
-  const dates2    = series2 ? buildDenseDates(series2, totalDays) : null;
-  const targetPct = parseFloat((targetRate * 100).toFixed(2));
+  const xData        = Array.from({ length: totalDays }, (_, i) => `第 ${i + 1} 日`);
+  const targetPct    = parseFloat((targetRate * 100).toFixed(2));
+  const denseInvList = seriesList.map(s => buildDense(s.data, totalDays, 'totalInvested'));
+  const denseRateList = seriesList.map(s => buildDense(s.data, totalDays, 'returnRate'));
+  const denseDateList = seriesList.map(s => buildDenseDates(s.data, totalDays));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const seriesList: any[] = [
+  const seriesOptions: any[] = [];
+  const legendData: string[] = [];
 
-    /* ── 段一 Bar：累計投入 ── */
-    {
-      name: '累計投入 (段一)',
+  seriesList.forEach((seg, i) => {
+    const color  = chartColors[i % chartColors.length];
+    const invKey = `累計投入 (${seg.label})`;
+    const ratKey = `報酬率 (${seg.label})`;
+
+    seriesOptions.push({
+      name: invKey,
       type: 'bar',
       yAxisIndex: 0,
-      data: r1Inv,
+      data: denseInvList[i],
       barMaxWidth: 14,
       barGap: '30%',
       itemStyle: {
-        color: 'rgba(106,143,181,0.20)',
-        borderColor: 'rgba(106,143,181,0.50)',
-        borderWidth: 1,
-        borderRadius: [2, 2, 0, 0],
-      },
-      z: 1,
-    },
-
-    /* ── 段一 Line：報酬率 Solid（連續段） ── */
-    {
-      name: '報酬率 (段一)',
-      type: 'line',
-      yAxisIndex: 1,
-      data: r1Rate,
-      connectNulls: false,
-      smooth: false,
-      symbol: 'none',
-      lineStyle: { color: chartColors[0], width: 1.8, type: 'solid' },
-      z: 3,
-      markLine: {
-        silent: true,
-        data: [{ yAxis: targetPct }],
-        lineStyle: { type: 'dashed', color: colors.accent, width: 1.2, opacity: 0.7 },
-        label: {
-          position: 'end',
-          formatter: `目標 ${targetPct.toFixed(1)}%`,
-          color: colors.accent,
-          fontSize: 10,
-        },
-        symbol: ['none', 'none'],
-      },
-    },
-
-    /* ── 段一 Ghost：橋接遺失日的虛線（低 z，被 Solid 覆蓋） ── */
-    {
-      name: '__gap_rate1',
-      type: 'line',
-      yAxisIndex: 1,
-      data: r1Rate,
-      connectNulls: true,
-      smooth: false,
-      symbol: 'none',
-      lineStyle: { color: chartColors[0], width: 1.4, type: 'dashed', opacity: 0.5 },
-      z: 2,
-    },
-  ];
-
-  if (r2Inv) {
-    seriesList.push({
-      name: '累計投入 (段二)',
-      type: 'bar',
-      yAxisIndex: 0,
-      data: r2Inv,
-      barMaxWidth: 14,
-      barGap: '30%',
-      itemStyle: {
-        color: 'rgba(184,122,122,0.16)',
-        borderColor: 'rgba(184,122,122,0.38)',
+        color: hexToRgba(color, 0.20),
+        borderColor: hexToRgba(color, 0.50),
         borderWidth: 1,
         borderRadius: [2, 2, 0, 0],
       },
       z: 1,
     });
-  }
-  if (r2Rate) {
-    seriesList.push(
-      {
-        name: '報酬率 (段二)',
-        type: 'line',
-        yAxisIndex: 1,
-        data: r2Rate,
-        connectNulls: false,
-        smooth: false,
-        symbol: 'none',
-        lineStyle: { color: chartColors[1], width: 1.8, type: 'solid' },
-        z: 3,
-      },
-      {
-        name: '__gap_rate2',
-        type: 'line',
-        yAxisIndex: 1,
-        data: r2Rate,
-        connectNulls: true,
-        smooth: false,
-        symbol: 'none',
-        lineStyle: { color: chartColors[1], width: 1.4, type: 'dashed', opacity: 0.5 },
-        z: 2,
-      },
-    );
-  }
+    legendData.push(invKey);
 
-  /* Legend 過濾掉 ghost 系列 */
-  const legendData = seriesList
-    .filter((s: { name: string }) => !s.name.startsWith('__'))
-    .map((s: { name: string }) => s.name);
+    seriesOptions.push({
+      name: ratKey,
+      type: 'line',
+      yAxisIndex: 1,
+      data: denseRateList[i],
+      connectNulls: false,
+      smooth: false,
+      symbol: 'none',
+      lineStyle: { color, width: 1.8, type: 'solid' },
+      z: 3,
+      ...(i === 0 ? {
+        markLine: {
+          silent: true,
+          data: [{ yAxis: targetPct }],
+          lineStyle: { type: 'dashed', color: colors.accent, width: 1.2, opacity: 0.7 },
+          label: {
+            position: 'insideEndTop',
+            formatter: `目標 ${targetPct.toFixed(1)}%`,
+            color: colors.accent,
+            fontSize: 10,
+          },
+          symbol: ['none', 'none'],
+        },
+      } : {}),
+    });
+    legendData.push(ratKey);
+
+    seriesOptions.push({
+      name: `__gap_rate_${i}`,
+      type: 'line',
+      yAxisIndex: 1,
+      data: denseRateList[i],
+      connectNulls: true,
+      smooth: false,
+      symbol: 'none',
+      lineStyle: { color, width: 1.4, type: 'dashed', opacity: 0.5 },
+      z: 2,
+    });
+  });
 
   const option = {
     animation: false,
@@ -257,15 +221,14 @@ export default memo(function ReportChart({ series1, series2, targetRate, height 
         const all = params as { seriesName: string; value: unknown; color: string; axisValue: string; dataIndex: number }[];
         const idx = all[0].dataIndex ?? 0;
 
-        /* 查出兩段的實際日期（可能為 null，即遺失日） */
-        const d1 = dates1[idx];
-        const d2 = dates2 ? dates2[idx] : null;
-        const dateStr = [
-          d1 ? (dates2 ? `段一 ${d1.replace(/-/g, '/')}` : d1.replace(/-/g, '/')) : null,
-          d2 ? `段二 ${d2.replace(/-/g, '/')}` : null,
-        ].filter(Boolean).join('　');
+        const dateStr = seriesList
+          .map((seg, i) => {
+            const d = denseDateList[i]?.[idx];
+            return d ? `${seg.label} ${d.replace(/-/g, '/')}` : null;
+          })
+          .filter(Boolean)
+          .join('　');
 
-        /* 過濾 ghost 系列，且 value 必須是有限數字（ECharts 對空值可能回傳 '-' 字串） */
         const ps = all.filter(p =>
           !p.seriesName.startsWith('__') &&
           typeof p.value === 'number' &&
@@ -293,13 +256,14 @@ export default memo(function ReportChart({ series1, series2, targetRate, height 
       itemWidth: 12,
       itemHeight: 8,
     },
-    series: seriesList,
+    series: seriesOptions,
   };
 
   return (
     <ReactECharts
       echarts={echarts}
       option={option}
+      notMerge
       style={{ width: '100%', height }}
       opts={{ renderer: 'canvas' }}
     />

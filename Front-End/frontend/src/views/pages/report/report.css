@@ -50,8 +50,14 @@
 .report-controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.report-date-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .report-range-row {
