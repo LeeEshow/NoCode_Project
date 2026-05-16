@@ -13,17 +13,13 @@ function fmtPct(n: number | null): string {
 }
 
 /* 報酬率 + 達標 badge */
-function ReturnCell({ value, pct, expectedProfit }: {
-  value:          number | null;
-  pct:            number | null;
-  expectedProfit: number;
+function ReturnCell({ value, pct }: {
+  value: number | null;
+  pct:   number | null;
 }) {
   if (value == null || pct == null) return <span className="future-cell">—</span>;
-  const isUp   = value >= 0;
-  const color  = isUp ? 'var(--up)' : 'var(--down)';
-  const diff   = value - expectedProfit;
-  const isAhead = diff >= 0;
-  const badgeSign = diff > 0 ? '+' : '';
+  const isUp  = value >= 0;
+  const color = isUp ? 'var(--up)' : 'var(--down)';
 
   return (
     <div className="plan-return-cell">
@@ -32,13 +28,6 @@ function ReturnCell({ value, pct, expectedProfit }: {
       </span>
       <span className="plan-return-pct" style={{ color }}>
         {fmtPct(pct)}
-      </span>
-      <span
-        className="plan-return-badge"
-        style={{ color: isAhead ? 'var(--accent)' : 'var(--up)' }}
-        title="相對計畫預期獲利的差額"
-      >
-        {isAhead ? '▲' : '▼'} {badgeSign}{fmt(diff)}
       </span>
     </div>
   );
@@ -168,20 +157,19 @@ export default function PlanTable({
                 </button>
               </div>
             </th>
-            <th colSpan={7} className="plan-th-group exec">執行</th>
+            <th colSpan={6} className="plan-th-group exec">執行</th>
           </tr>
           <tr>
             {showPlanDetail && <th style={{ width: 110 }}>計畫資本</th>}
             {showPlanDetail && <th style={{ width: 110 }}>計畫投入</th>}
             <th style={{ width: 110 }}>預期獲利</th>
             <th style={{ width: 130 }}>預期總額</th>
-            <th className="exec-col exec-first" style={{ width: 110 }}>累計投入</th>
-            <th className="exec-col" style={{ width: 110 }}>今年再投</th>
+            <th className="exec-col exec-first" style={{ width: 110 }}>今年再投</th>
             <th className="exec-col" style={{ width: 110 }}>股票現值</th>
             <th className="exec-col" style={{ width: 110 }}>外幣資產</th>
             <th className="exec-col" style={{ width: 110 }}>流動資金</th>
             <th className="exec-col" style={{ width: 130 }}>執行合計</th>
-            <th className="exec-col" style={{ width: 130 }}>報酬率</th>
+            <th className="exec-col" style={{ width: 130 }}>損益</th>
           </tr>
         </thead>
         <tbody>
@@ -240,16 +228,8 @@ export default function PlanTable({
                   </div>
                 </td>
 
-                {/* 累計投入 */}
-                <td className={ec('exec-first')}>
-                  {isFuture
-                    ? <span className="future-cell">—</span>
-                    : <span className="pv">{fmt(row.execCapital)}</span>
-                  }
-                </td>
-
                 {/* 今年再投 */}
-                <td className={ec('')}>
+                <td className={ec('exec-first')}>
                   {isFuture
                     ? <span className="future-cell">—</span>
                     : isCurrent
@@ -302,7 +282,6 @@ export default function PlanTable({
                     : <ReturnCell
                         value={row.returnValue}
                         pct={row.returnPct}
-                        expectedProfit={row.expectedProfit}
                       />
                   }
                 </td>

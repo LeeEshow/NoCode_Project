@@ -17,7 +17,7 @@ export const getIndices = async (
         () => MarketIndex.fetchAllWithShioaji(),
         () => MarketIndex.fetchAll(),
       ),
-      60
+      5
     );
     res.json(ApiResponse.success(data));
   } catch (err) {

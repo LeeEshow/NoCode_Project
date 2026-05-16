@@ -45,6 +45,13 @@ interface Props {
   /* 批次重算動態風險 */
   onRecalculateAll: () => Promise<void>;
   recalculating:    boolean;
+  /* 計算再平衡（從風險設定移至此） */
+  onTriggerRebalance:  () => void;
+  calculating:         boolean;
+  correlationUpdated:  boolean;
+  /* 重算相關性 ρ（從風險設定移至此） */
+  onAutoCalcRho:       () => void;
+  rhoCalcCalculating:  boolean;
 }
 
 /* ── 常數 ── */
@@ -74,6 +81,9 @@ export default function TagManagerTab({
   overlappingGroups,
   holdings, sparklines,
   onRecalculateAll, recalculating,
+  onTriggerRebalance, calculating,
+  correlationUpdated,
+  onAutoCalcRho, rhoCalcCalculating,
 }: Props) {
   const statMap = new Map(tagStats.map(s => [s.tagName, s]));
   const uid     = useId();
@@ -83,9 +93,10 @@ export default function TagManagerTab({
   const [formOpen,        setFormOpen]        = useState(false);
   const [form,            setForm]            = useState<FormState>(EMPTY_FORM);
   const [errors,          setErrors]          = useState<FormErrors>({});
-  const [deleteTarget,    setDeleteTarget]    = useState<TagDTO | null>(null);
-  const [autoCalcPending, setAutoCalcPending] = useState(false);
-  const [autoCalcing,     setAutoCalcing]     = useState(false);
+  const [deleteTarget,      setDeleteTarget]      = useState<TagDTO | null>(null);
+  const [autoCalcPending,   setAutoCalcPending]   = useState(false);
+  const [autoCalcing,       setAutoCalcing]       = useState(false);
+  const [rebalancePrompt,   setRebalancePrompt]   = useState(false);
 
   function openAdd() {
     setEditingId(null);
@@ -216,20 +227,88 @@ export default function TagManagerTab({
 
   return (
     <div>
-      {/* 操作列：批次重算 + 新增 Tag */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
+      {/* 操作列 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: rebalancePrompt ? 8 : 12 }}>
+
+        {/* 計算再平衡（最左），與右側自動計算群加大間距 */}
+        <button
+          className="btn-ghost btn-ghost--accent"
+          onClick={() => setRebalancePrompt(true)}
+          disabled={calculating || rebalancePrompt}
+          style={{ minWidth: 96, marginRight: 12 }}
+        >
+          {calculating ? spinner : '▷ 計算再平衡'}
+        </button>
+
+        {/* 自動計算群 */}
         <button
           className="btn-ghost"
           onClick={onRecalculateAll}
           disabled={recalculating || saving || tags.length === 0}
           aria-label="批次自動計算所有 Tag 動態風險"
+          title="依近期波動率自動填入各 Tag 的市場狀態風險係數"
+          style={{ fontSize: 'var(--text-sm)' }}
         >
-          {recalculating
-            ? <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--muted)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle' }} />
-            : '⟳ 批次自動計算'}
+          {recalculating ? spinner : '⟳ 批次動態風險'}
         </button>
-        <button className="btn-ghost" onClick={openAdd}>＋ 新增 Tag</button>
+        <button
+          className="btn-ghost"
+          onClick={onAutoCalcRho}
+          disabled={rhoCalcCalculating || tags.length < 2 || holdings.length === 0}
+          aria-label="自動計算 Tag 相關性矩陣"
+          title="依持股 Sparkline 計算各 Tag 間的 Pearson ρ"
+          style={{ fontSize: 'var(--text-sm)' }}
+        >
+          {rhoCalcCalculating ? spinner : '⟳ Tag 矩陣 ρ'}
+        </button>
+
+        {/* 彈性空白 */}
+        <span style={{ flex: 1 }} />
+
+        {/* 右側 */}
+        {correlationUpdated && (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--up)', whiteSpace: 'nowrap' }}
+            title="相關性矩陣已更新，建議重新計算再平衡">
+            ⚠ 相關性已更新
+          </span>
+        )}
+        <button className="btn-ghost" onClick={openAdd}>＋ 新增</button>
       </div>
+
+      {/* 計算再平衡前詢問是否先更新 Tag 矩陣 ρ */}
+      {rebalancePrompt && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '7px 12px', marginBottom: 12,
+          background: 'rgba(106,143,181,0.07)',
+          border: '1px solid var(--accent-bd)',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: 'var(--text-sm)', color: 'var(--muted)',
+        }}>
+          <span style={{ flex: 1, whiteSpace: 'nowrap' }}>先更新 Tag 矩陣 ρ 再計算？</span>
+          <button
+            className="btn-ghost"
+            style={{ fontSize: 'var(--text-xs)', padding: '2px 10px' }}
+            onClick={() => { setRebalancePrompt(false); onAutoCalcRho(); }}
+          >
+            先更新 ρ
+          </button>
+          <button
+            className="btn-ghost btn-ghost--accent"
+            style={{ fontSize: 'var(--text-xs)', padding: '2px 10px' }}
+            onClick={() => { setRebalancePrompt(false); onTriggerRebalance(); }}
+          >
+            直接計算
+          </button>
+          <button
+            className="btn-ghost"
+            style={{ fontSize: 'var(--text-xs)', padding: '2px 10px' }}
+            onClick={() => setRebalancePrompt(false)}
+          >
+            取消
+          </button>
+        </div>
+      )}
 
       {/* 清單 or 空狀態 */}
       {tags.length === 0 ? (

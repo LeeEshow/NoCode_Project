@@ -1,4 +1,6 @@
 import { useEffect, Fragment, memo } from 'react';
+import type { ReactNode } from 'react';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -19,6 +21,43 @@ import type {
 
 function fmt(n: number, decimals = 0) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function ValTooltip({ label, value, color, children }: {
+  label:    string;
+  value:    number;
+  color?:   string;
+  children: ReactNode;
+}) {
+  const sign = value > 0 ? '+' : '';
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>
+        <span style={{ cursor: 'default' }}>{children}</span>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content
+          sideOffset={6}
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border-hi)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '4px 10px',
+            fontSize: 'var(--text-sm)',
+            fontFamily: 'var(--font-mono)',
+            color: color ?? 'var(--text-value)',
+            zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+          }}
+        >
+          <span style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginRight: 6, fontFamily: 'var(--font-sans)' }}>
+            {label}
+          </span>
+          {sign}{fmt(value, 0)}
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
 }
 
 function SuggestionCell({ s }: { s: RebalanceSuggestion | undefined }) {
@@ -90,12 +129,20 @@ const HoldingRow = memo(function HoldingRow({
         </div>
       </td>
       <td className="right">
-        <span className="num-value">{fmt(h.currentPrice, 2)}</span>
+        <ValTooltip label="市值" value={h.currentValue}>
+          <span className="num-value">{fmt(h.currentPrice, 2)}</span>
+        </ValTooltip>
       </td>
       <td className="right">
-        <span className={`change-tag ${cls}`}>
-          {arrow}&nbsp;{fmt(Math.abs(h.change), 2)}&nbsp;&nbsp;{sign}{fmt(h.changePct, 2)}%
-        </span>
+        <ValTooltip
+          label="漲跌"
+          value={(h.isUp ? 1 : -1) * Math.abs(h.change) * h.shares}
+          color={h.changePct === 0 ? 'var(--dim)' : (h.isUp ? 'var(--up)' : 'var(--down)')}
+        >
+          <span className={`change-tag ${cls}`}>
+            {arrow}&nbsp;{fmt(Math.abs(h.change), 2)}&nbsp;&nbsp;{sign}{fmt(h.changePct, 2)}%
+          </span>
+        </ValTooltip>
       </td>
       <td className="center">
         {sparkline.length > 1
@@ -105,13 +152,23 @@ const HoldingRow = memo(function HoldingRow({
           : <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>—</span>
         }
       </td>
-      <td className="right num-value" style={{ color: 'var(--muted)' }}>{fmt(h.costAvg, 2)}</td>
+      <td className="right num-value" style={{ color: 'var(--muted)' }}>
+        <ValTooltip label="成本" value={h.totalCost}>
+          <span>{fmt(h.costAvg, 2)}</span>
+        </ValTooltip>
+      </td>
       <td className="right num-value" style={{ color: 'var(--muted)' }}>{fmt(h.shares, 0)}</td>
       <td className="right">
-        <span className={`mono ${h.returnPct === 0 ? 'txt-flat' : (h.returnPct > 0 ? 'txt-up' : 'txt-down')}`}
-          style={{ fontWeight: 600 }}>
-          {h.returnPct > 0 ? '+' : ''}{fmt(h.returnPct, 2)}%
-        </span>
+        <ValTooltip
+          label="損益"
+          value={h.unrealizedProfit}
+          color={h.returnPct === 0 ? undefined : (h.returnPct > 0 ? 'var(--up)' : 'var(--down)')}
+        >
+          <span className={`mono ${h.returnPct === 0 ? 'txt-flat' : (h.returnPct > 0 ? 'txt-up' : 'txt-down')}`}
+            style={{ fontWeight: 600 }}>
+            {h.returnPct > 0 ? '+' : ''}{fmt(h.returnPct, 2)}%
+          </span>
+        </ValTooltip>
       </td>
       <td className="center">
         <SuggestionCell s={suggestion} />
@@ -167,6 +224,7 @@ export default function HoldingsTable({
   const COL_COUNT = 8;
 
   return (
+    <Tooltip.Provider delayDuration={400}>
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={items.map(h => h.stockCode)} strategy={verticalListSortingStrategy}>
         <div className="ft-table-scroll">
@@ -234,5 +292,6 @@ export default function HoldingsTable({
         </div>
       </SortableContext>
     </DndContext>
+    </Tooltip.Provider>
   );
 }

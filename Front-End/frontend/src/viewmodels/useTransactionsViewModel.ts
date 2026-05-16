@@ -6,6 +6,7 @@ import {
   deleteTransaction,
 } from '../models/transactionModel';
 import { recalculateHoldings } from '../models/holdingModel';
+import { useSnapshotStore } from '../stores/snapshotStore';
 import type { TransactionDTO, CreateTransactionPayload } from '../types';
 
 export interface CostCalcResult {
@@ -69,6 +70,16 @@ export function useTransactionsViewModel(stockCode: string | null) {
       const items = await fetchTransactions(payload.stockCode);
       const calc = calcCostFromTransactions(items);
       await recalculateHoldings([{ stockCode: payload.stockCode, ...calc }]);
+
+      /* 連動流動資金：買入扣款，賣出入帳 */
+      const snap = useSnapshotStore.getState();
+      if (snap.loaded) {
+        const cashDelta = payload.type === 'buy'
+          ? -(payload.shares * payload.price + payload.fee)
+          :   payload.shares * payload.price - payload.fee;
+        await snap.update(snap.cashBalance + cashDelta);
+      }
+
       setState(s => ({ ...s, items, saving: false }));
       onSuccess?.();
     } catch (err) {

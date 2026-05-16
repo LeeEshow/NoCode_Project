@@ -19,6 +19,12 @@
 
 ## 已完成
 
+### 市場指數快取 TTL 改為 5 秒
+
+- `marketController.ts`：`getOrSet('market:indices', ..., 60)` → TTL 改為 `5`
+- 前端每 5 秒輪詢 `GET /market/indices` 現可拿到近即時大盤資料
+- 注意：Shioaji 模式才有真正即時資料；Mock 模式改 TTL 不影響資料頻率
+
 ### Tag 觸發方向欄位（triggerDirection）
 
 - `TriggerDirection = 'both' | 'upper_only' | 'lower_only'` 型別新增於 `Tag.ts`

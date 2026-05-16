@@ -147,6 +147,7 @@ export default function RiskPanel({
   const [expanded,  setExpanded]  = useState(false);
   const [activeTab, setActiveTab] = useState<'tags' | 'settings'>('tags');
   const [localRho,  setLocalRho]  = useState<Map<string, string>>(new Map());
+
   const [rhoCalc,   setRhoCalc]   = useState<RhoCalcState>({
     calculating: false, preview: null, bigDiffKeys: new Set(),
   });
@@ -156,6 +157,11 @@ export default function RiskPanel({
     correlationMatrix.forEach(e => { m.set(rhoKey(e.tagA, e.tagB), String(e.rho)); });
     setLocalRho(m);
   }, [correlationMatrix]);
+
+  /* ρ 預覽計算完成後，自動切到「風險設定」tab 讓使用者確認 */
+  useEffect(() => {
+    if (rhoCalc.preview != null) setActiveTab('settings');
+  }, [rhoCalc.preview]);
 
   function getRho(a: string, b: string): string {
     return localRho.get(rhoKey(a, b)) ?? '1';
@@ -301,10 +307,6 @@ export default function RiskPanel({
   const sliderVal = Math.round(baseThreshold * 100);
   const liqVal    = Math.round(liquidityCapRatio * 100);
   const concVal   = Math.round(concentrationLimit * 100);
-
-  const rhoSpinner = (
-    <span style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-  );
 
   return (
     <div className="ft-panel" style={{ marginBottom: 16 }}>
@@ -490,6 +492,11 @@ export default function RiskPanel({
                 sparklines={sparklines}
                 onRecalculateAll={onRecalculateAll}
                 recalculating={recalculating}
+                onTriggerRebalance={onTriggerRebalance}
+                calculating={calculating}
+                correlationUpdated={correlationUpdated}
+                onAutoCalcRho={handleAutoCalcRho}
+                rhoCalcCalculating={rhoCalc.calculating}
               />
             </div>
 
@@ -670,15 +677,6 @@ export default function RiskPanel({
                       Tag 相關性矩陣
                       <SettingTooltip content="各 Tag 之間漲跌的連動程度（ρ）。越接近 1 代表同漲同跌、分散效果差；越接近 0 代表彼此獨立" />
                     </span>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      style={{ fontSize: 'var(--text-xs)', padding: '3px 10px' }}
-                      disabled={rhoCalc.calculating || holdings.length === 0}
-                      onClick={handleAutoCalcRho}
-                    >
-                      {rhoCalc.calculating ? rhoSpinner : '重新計算 ρ'}
-                    </button>
                   </div>
 
                   {rhoCalc.preview ? (
@@ -798,26 +796,6 @@ export default function RiskPanel({
                 </div>
               )}
 
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px' }} />
-
-              {/* 計算再平衡按鈕 + 相關性更新警示 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="btn-ghost btn-ghost--accent"
-                  onClick={onTriggerRebalance}
-                  disabled={calculating || marketStateChanging}
-                  style={{ minWidth: 108 }}
-                >
-                  {calculating
-                    ? <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle' }} />
-                    : '計算再平衡'}
-                </button>
-                {correlationUpdated && (
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--up)', whiteSpace: 'nowrap' }}>
-                    ⚠ 相關性已更新，建議重新計算再平衡
-                  </span>
-                )}
-              </div>
             </div>
 
           </div>
