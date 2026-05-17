@@ -94,7 +94,9 @@
       "Bash(git *)",
       "PowerShell(pip show *)",
       "PowerShell(Get-Command *)",
-      "PowerShell(pip install *)"
+      "PowerShell(pip install *)",
+      "Skill(claude-api)",
+      "Bash(npm install *)"
     ]
   }
 }

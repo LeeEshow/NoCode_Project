@@ -11,11 +11,19 @@
 
 ## 待辦
 
-> 目前無待辦項目。
+> 暫無待辦
 
 ---
 
 ## 已完成
+
+### Phase 5 — AI 每日早報
+
+- **5-A** `types/index.ts` 新增 `AiReportDTO`、`AiReportMarketState`、`AiReportExposureAnalysis`、`AiReportStockStrategy`；`SettingsDTO` 擴充 `aiSystemPrompt` / `aiSystemPromptUpdatedAt` / `aiReportEnabled`；新增 `models/aiReportModel.ts`（`getLatestReport` / `getReportByDate`）與 `models/settingsModel.ts`（`fetchSettings` / `updateSettings`）
+- **5-B** `viewmodels/useAiReportViewModel.ts`：`loadLatest` / `loadByDate` / `loading` / `error` / `report` / `hasReport` / `availableDates`
+- **5-C** `views/components/AiReportModal/`：Market state badge（`--up`/`--down`/`--accent`）、曝險分析卡、個股策略表、風險警示列表、無資料空狀態；lazy fetch on modal open
+- **5-D** `PanelHeader` 右側加 `auto_awesome` btn-icon；`hasReport` 時 `::after` 顯示 `--accent` 小圓點；由 `settingsStore.aiReportEnabled` 控制顯示/隱藏
+- **5-E** `SettingsModal`「AI 早報」Tab：`ft-toggle` 啟用開關（`settingsStore` 同步，切換即時反映至 PanelHeader）、`TextareaInput` System Prompt（`onBlur` 500ms debounce PUT）、上次更新時間
 
 ### Bug 修正
 
@@ -28,6 +36,7 @@
 
 ### UI/UX 優化
 
+- **UI-7** SettingsModal 重構：分頁 Tab（資料管理 / AI 早報）取代三層 `ft-panel` 卡片；扁平 section rows 去除冗餘邊線（10 條 → 4 條）；固定 `80vw × 80vh`；`Modal.tsx` 新增 `className` prop；`global.css` 新增 `.ft-toggle` 可複用切換開關；`stores/settingsStore.ts` 管理 `aiReportEnabled` 跨元件同步
 - **UI-6** TagManagerTab「⟳ 批次自動計算」呼叫 `POST /tags/recalculate-dynamic-risk`，完成後 re-fetch tags，toast 顯示更新數量
 - **UI-5** Risk 收折列 56px Mini 進度條（max=2.0，四段色）；「風險/再平衡模組」改 `var(--text)` 白色
 - **UI-4** 風險設定 Tab 7 個設定項旁 `ⓘ` Tooltip（`@radix-ui/react-tooltip`，`text-sm`，220px）
