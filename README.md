@@ -85,9 +85,9 @@ GitHub Actions
 | node-cache | - | 即時報價短快取 |
 | Axios | - | 呼叫 Yahoo Finance / Shioaji |
 
-資料來源切換策略：盤中優先走 Shioaji（WebSocket 即時報價），盤外 fallback Yahoo Finance；Circuit Breaker 自動偵測服務異常。
+資料來源切換策略：盤中優先走 Shioaji（WebSocket 即時報價），盤外 fallback Yahoo Finance；Circuit Breaker 自動偵測服務異常。**未設定 `SHIOAJI_API_URL` 時全程使用 Yahoo Finance，無需部署 Python 微服務。**
 
-### Python 微服務（`Back-End/Shioaji_API/`）
+### Python 微服務（`Back-End/Shioaji_API/`，選用）
 
 | 技術 | 版本 | 用途 |
 |------|------|------|
@@ -96,7 +96,7 @@ GitHub Actions
 | Uvicorn | - | ASGI 伺服器 |
 | 永豐金 Shioaji | 1.3.x | 台股即時報價 SDK |
 
-提供個股報價、加權指數、台指期近月報價及 K 線資料，透過 WebSocket 保持持續連線。
+提供個股報價、加權指數、台指期近月報價及 K 線資料，透過 WebSocket 保持持續連線。**無永豐金帳號時可略過此服務，後端自動以 Yahoo Finance 替代。**
 
 ---
 
@@ -205,7 +205,7 @@ npm run lint
 | `GOOGLE_APPLICATION_CREDENTIALS` | Service Account JSON 路徑（本機） |
 | `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Service Account JSON 內容（Azure 部署） |
 | `PORT` | 監聽 port（預設 `3001`） |
-| `SHIOAJI_API_URL` | Python 微服務 URL（預設 `http://localhost:8000`） |
+| `SHIOAJI_API_URL` | Python 微服務 URL（**選填**；未設定則全程使用 Yahoo Finance） |
 
 ### Python 微服務（`Back-End/Shioaji_API/.env`）
 
@@ -218,7 +218,7 @@ npm run lint
 
 ## 部署（Azure）
 
-詳見 [`Docs/Azure-Deployment.md`](Docs/Azure-Deployment.md)。
+完整部署步驟、環境變數設定、CI/CD 設定與常見除錯紀錄詳見 [`Docs/Azure-Deployment.md`](Docs/Azure-Deployment.md)。
 
 | 服務 | 方案 | 月費 |
 |------|------|------|
@@ -227,6 +227,10 @@ npm run lint
 | Firebase Firestore | Spark（免費） | $0 |
 
 **CI/CD**：推送至 `main` 分支自動觸發對應 GitHub Actions workflow 部署。
+
+### 無永豐金帳號（Yahoo-only）
+
+不需部署 `finance-shioaji` Python 服務，**只需在 `finance-backend` 的環境變數中省略 `SHIOAJI_API_URL`**，後端即自動切換為 Yahoo Finance 模式。詳細步驟見 [`Docs/Azure-Deployment.md` 第五節](Docs/Azure-Deployment.md#五yahoo-only-部署無永豐金帳號)。
 
 ---
 

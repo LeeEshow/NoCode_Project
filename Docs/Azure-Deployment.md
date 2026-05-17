@@ -1,7 +1,8 @@
 # Azure 部署文件
 
-> 最後更新：2026-05-02  
-> 架構：Azure Static Web Apps（前端）+ Azure App Service Plan B1（後端雙服務）
+> 最後更新：2026-05-17  
+> 架構：Azure Static Web Apps（前端）+ Azure App Service Plan B1（後端雙服務）  
+> Shioaji 為**選用**服務：未設定 `SHIOAJI_API_URL` 時，後端自動以 Yahoo Finance 全程替代，詳見第五節。
 
 ---
 
@@ -303,3 +304,78 @@ az webapp restart --name finance-shioaji --resource-group finance-app-rg
 **解法**：Python 改用 port 8000：
 - 啟動命令：`python3 -m uvicorn main:app --host 0.0.0.0 --port 8000`
 - 環境變數：`WEBSITES_PORT=8000`
+
+---
+
+## 五、Yahoo-only 部署（無永豐金帳號）
+
+沒有永豐金證券帳號的使用者可以跳過整個 Shioaji 服務，**只部署 `finance-backend`**，報價與歷史 K 線全程由 Yahoo Finance 提供。
+
+### 架構差異
+
+```
+（完整版）
+App Service Plan B1
+  ├─ finance-backend   → Node.js（全功能）
+  └─ finance-shioaji   → Python FastAPI + Shioaji（即時台股報價）
+
+（Yahoo-only）
+App Service Plan B1
+  └─ finance-backend   → Node.js（全功能，Yahoo Finance 替代即時報價）
+     ↳ finance-shioaji 不需建立，節省資源
+```
+
+### 部署步驟
+
+**1. 只建立 `finance-backend` Web App，不建立 `finance-shioaji`。**
+
+**2. `finance-backend` 環境變數：省略 `SHIOAJI_API_URL`**
+
+| 名稱 | 值 |
+|------|-----|
+| `PORT` | `8080` |
+| `FIRESTORE_PROJECT_ID` | `nocode-finance` |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | serviceAccountKey.json 完整 JSON 內容（單行） |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `false` |
+| `ApplicationInsightsAgent_EXTENSION_VERSION` | `disabled` |
+
+> `SHIOAJI_API_URL` **不設定**即代表停用 Shioaji，後端自動以 Yahoo Finance 全程替代，無需額外旗標。
+
+**3. 其餘部署步驟與第二節相同**（CI/CD、啟動命令、前端）。
+
+### 行為對照
+
+| 功能 | Yahoo-only | 完整版（含 Shioaji） |
+|------|-----------|---------------------|
+| 即時股價輪詢（5s） | Yahoo Finance（~15s 延遲） | Shioaji tick 即時 |
+| 歷史 K 線 | Yahoo Finance | Shioaji（盤中）/ Yahoo（盤外） |
+| 大盤 / 台指期指數 | Yahoo Finance | Shioaji（盤中）/ Yahoo（盤外） |
+| 股票搜尋 | 需先完成股票清單初始化（見下） | `POST /stocks/list/refresh` 同步 |
+| `GET /api/v1/system` | `shioajiEnabled: false` | `shioajiEnabled: true` |
+| `POST /stocks/list/refresh` | 回傳 400（需 Shioaji） | 正常 |
+
+### 股票清單初始化
+
+搜尋功能（`GET /stocks/search`）依賴 Firestore 中的股票清單（`stock_list` collection）。正常流程是呼叫 `POST /stocks/list/refresh` 從 Shioaji 同步，Yahoo-only 模式下此端點無法使用。
+
+**替代方式：從現有 Shioaji 部署匯出**
+
+若能取得已初始化的 Firestore 資料，可使用 Firebase 匯出工具或直接複製 `stock_list/data` 文件。
+
+**或是在 Firestore 手動建立測試資料**
+
+```
+Collection: stock_list
+Document ID: data
+  ├─ items: [ { code: "2330", name: "台積電", market: "TSE" }, ... ]
+  └─ count: <數量>
+```
+
+```
+Collection: stock_list
+Document ID: meta
+  ├─ count: <數量>
+  └─ updatedAt: <Timestamp>
+```
+
+> 股票清單只需初始化一次，之後搜尋與名稱解析皆從此快取取用，不影響報價與其他功能。

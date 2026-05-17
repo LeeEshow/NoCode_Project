@@ -46,12 +46,13 @@ interface Props {
   onRecalculateAll: () => Promise<void>;
   recalculating:    boolean;
   /* 計算再平衡（從風險設定移至此） */
-  onTriggerRebalance:  () => void;
-  calculating:         boolean;
-  correlationUpdated:  boolean;
+  onTriggerRebalance:         () => void;
+  calculating:                boolean;
+  correlationUpdated:         boolean;
   /* 重算相關性 ρ（從風險設定移至此） */
-  onAutoCalcRho:       () => void;
-  rhoCalcCalculating:  boolean;
+  onAutoCalcRho:              () => void;
+  onAutoCalcRhoAndRebalance:  () => void;
+  rhoCalcCalculating:         boolean;
 }
 
 /* ── 常數 ── */
@@ -83,7 +84,7 @@ export default function TagManagerTab({
   onRecalculateAll, recalculating,
   onTriggerRebalance, calculating,
   correlationUpdated,
-  onAutoCalcRho, rhoCalcCalculating,
+  onAutoCalcRho, onAutoCalcRhoAndRebalance, rhoCalcCalculating,
 }: Props) {
   const statMap = new Map(tagStats.map(s => [s.tagName, s]));
   const uid     = useId();
@@ -93,10 +94,10 @@ export default function TagManagerTab({
   const [formOpen,        setFormOpen]        = useState(false);
   const [form,            setForm]            = useState<FormState>(EMPTY_FORM);
   const [errors,          setErrors]          = useState<FormErrors>({});
-  const [deleteTarget,      setDeleteTarget]      = useState<TagDTO | null>(null);
-  const [autoCalcPending,   setAutoCalcPending]   = useState(false);
-  const [autoCalcing,       setAutoCalcing]       = useState(false);
-  const [rebalancePrompt,   setRebalancePrompt]   = useState(false);
+  const [deleteTarget,       setDeleteTarget]       = useState<TagDTO | null>(null);
+  const [autoCalcPending,    setAutoCalcPending]    = useState(false);
+  const [autoCalcing,        setAutoCalcing]        = useState(false);
+  const [rebalanceModalOpen, setRebalanceModalOpen] = useState(false);
 
   function openAdd() {
     setEditingId(null);
@@ -228,13 +229,13 @@ export default function TagManagerTab({
   return (
     <div>
       {/* 操作列 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: rebalancePrompt ? 8 : 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
 
         {/* 計算再平衡（最左），與右側自動計算群加大間距 */}
         <button
           className="btn-ghost btn-ghost--accent"
-          onClick={() => setRebalancePrompt(true)}
-          disabled={calculating || rebalancePrompt}
+          onClick={() => setRebalanceModalOpen(true)}
+          disabled={calculating}
           style={{ minWidth: 96, marginRight: 12 }}
         >
           {calculating ? spinner : '▷ 計算再平衡'}
@@ -274,41 +275,6 @@ export default function TagManagerTab({
         )}
         <button className="btn-ghost" onClick={openAdd}>＋ 新增</button>
       </div>
-
-      {/* 計算再平衡前詢問是否先更新 Tag 矩陣 ρ */}
-      {rebalancePrompt && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          padding: '7px 12px', marginBottom: 12,
-          background: 'rgba(106,143,181,0.07)',
-          border: '1px solid var(--accent-bd)',
-          borderRadius: 'var(--radius-sm)',
-          fontSize: 'var(--text-sm)', color: 'var(--muted)',
-        }}>
-          <span style={{ flex: 1, whiteSpace: 'nowrap' }}>先更新 Tag 矩陣 ρ 再計算？</span>
-          <button
-            className="btn-ghost"
-            style={{ fontSize: 'var(--text-xs)', padding: '2px 10px' }}
-            onClick={() => { setRebalancePrompt(false); onAutoCalcRho(); }}
-          >
-            先更新 ρ
-          </button>
-          <button
-            className="btn-ghost btn-ghost--accent"
-            style={{ fontSize: 'var(--text-xs)', padding: '2px 10px' }}
-            onClick={() => { setRebalancePrompt(false); onTriggerRebalance(); }}
-          >
-            直接計算
-          </button>
-          <button
-            className="btn-ghost"
-            style={{ fontSize: 'var(--text-xs)', padding: '2px 10px' }}
-            onClick={() => setRebalancePrompt(false)}
-          >
-            取消
-          </button>
-        </div>
-      )}
 
       {/* 清單 or 空狀態 */}
       {tags.length === 0 ? (
@@ -574,6 +540,44 @@ export default function TagManagerTab({
           onCancel={() => setDeleteTarget(null)}
         />
       )}
+
+      {/* 計算再平衡確認 Modal */}
+      <Modal
+        open={rebalanceModalOpen}
+        onClose={() => setRebalanceModalOpen(false)}
+        title="計算再平衡"
+        size="sm"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn-ghost" onClick={() => setRebalanceModalOpen(false)}>
+              取消
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={() => { setRebalanceModalOpen(false); onAutoCalcRhoAndRebalance(); }}
+              disabled={tags.length < 2 || holdings.length === 0}
+              title={tags.length < 2 || holdings.length === 0 ? '需至少 2 個 Tag 及持股資料才能更新 ρ' : undefined}
+            >
+              更新 ρ 後計算
+            </button>
+            <button
+              className="btn-ghost btn-ghost--accent"
+              onClick={() => { setRebalanceModalOpen(false); onTriggerRebalance(); }}
+            >
+              直接計算
+            </button>
+          </div>
+        }
+      >
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
+          計算前是否先更新 Tag 相關性矩陣 ρ？
+        </p>
+        {(tags.length < 2 || holdings.length === 0) && (
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 6 }}>
+            ρ 更新需至少 2 個 Tag 及持股資料
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

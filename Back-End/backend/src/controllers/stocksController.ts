@@ -17,6 +17,9 @@ export const listRefresh = async (
   next: NextFunction
 ) => {
   try {
+    if (!process.env['SHIOAJI_API_URL']) {
+      throw new AppError(400, '未設定 SHIOAJI_API_URL，此端點需要 Shioaji 服務');
+    }
     const raw   = await sjGetAllStocks();
     const items = raw
       .filter(s =>

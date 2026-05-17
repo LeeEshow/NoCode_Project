@@ -8,6 +8,7 @@ import type {
 } from '../../../types';
 import { calcTagDailyReturnsFromSparklines, buildCorrelationEntries } from '../../../utils/correlationCalc';
 import TagManagerTab from './TagManagerTab';
+import Modal from '../../components/Modal';
 import { toast } from '../../components/Toast';
 
 interface Props {
@@ -123,9 +124,10 @@ function formatSnapDate(dateStr: string): string {
 }
 
 interface RhoCalcState {
-  calculating: boolean;
-  preview:     CorrelationEntry[] | null;
-  bigDiffKeys: Set<string>;
+  calculating:      boolean;
+  preview:          CorrelationEntry[] | null;
+  bigDiffKeys:      Set<string>;
+  pendingRebalance: boolean;
 }
 
 export default function RiskPanel({
@@ -149,7 +151,7 @@ export default function RiskPanel({
   const [localRho,  setLocalRho]  = useState<Map<string, string>>(new Map());
 
   const [rhoCalc,   setRhoCalc]   = useState<RhoCalcState>({
-    calculating: false, preview: null, bigDiffKeys: new Set(),
+    calculating: false, preview: null, bigDiffKeys: new Set(), pendingRebalance: false,
   });
 
   useEffect(() => {
@@ -157,11 +159,6 @@ export default function RiskPanel({
     correlationMatrix.forEach(e => { m.set(rhoKey(e.tagA, e.tagB), String(e.rho)); });
     setLocalRho(m);
   }, [correlationMatrix]);
-
-  /* ρ 預覽計算完成後，自動切到「風險設定」tab 讓使用者確認 */
-  useEffect(() => {
-    if (rhoCalc.preview != null) setActiveTab('settings');
-  }, [rhoCalc.preview]);
 
   function getRho(a: string, b: string): string {
     return localRho.get(rhoKey(a, b)) ?? '1';
@@ -182,13 +179,11 @@ export default function RiskPanel({
     onSaveCorrelationMatrix(entries);
   }
 
-  function handleAutoCalcRho() {
+  function runRhoCalc(pendingRebalance: boolean) {
     if (tags.length < 2 || holdings.length === 0) return;
     setRhoCalc(s => ({ ...s, calculating: true, preview: null, bigDiffKeys: new Set() }));
-
-    const tagReturns = calcTagDailyReturnsFromSparklines(holdings, sparklines);
-    const newEntries = buildCorrelationEntries(tags, tagReturns);
-
+    const tagReturns  = calcTagDailyReturnsFromSparklines(holdings, sparklines);
+    const newEntries  = buildCorrelationEntries(tags, tagReturns);
     const currentMap  = new Map(correlationMatrix.map(e => [rhoKey(e.tagA, e.tagB), e.rho]));
     const bigDiffKeys = new Set<string>();
     for (const e of newEntries) {
@@ -196,19 +191,23 @@ export default function RiskPanel({
       const oldRho = currentMap.get(k) ?? 1;
       if (Math.abs(e.rho - oldRho) > 0.2) bigDiffKeys.add(k);
     }
-
-    setRhoCalc({ calculating: false, preview: newEntries, bigDiffKeys });
+    setRhoCalc({ calculating: false, preview: newEntries, bigDiffKeys, pendingRebalance });
   }
+
+  function handleAutoCalcRho()             { runRhoCalc(false); }
+  function handleAutoCalcRhoAndRebalance() { runRhoCalc(true);  }
 
   async function handleConfirmRho() {
     if (!rhoCalc.preview) return;
     await onSaveCorrelationMatrix(rhoCalc.preview);
     if (rhoCalc.bigDiffKeys.size > 0) onCorrelationUpdated();
-    setRhoCalc({ calculating: false, preview: null, bigDiffKeys: new Set() });
+    const pending = rhoCalc.pendingRebalance;
+    setRhoCalc({ calculating: false, preview: null, bigDiffKeys: new Set(), pendingRebalance: false });
+    if (pending) onTriggerRebalance();
   }
 
   function handleCancelRho() {
-    setRhoCalc({ calculating: false, preview: null, bigDiffKeys: new Set() });
+    setRhoCalc({ calculating: false, preview: null, bigDiffKeys: new Set(), pendingRebalance: false });
   }
 
   function handleToggle() {
@@ -496,6 +495,7 @@ export default function RiskPanel({
                 calculating={calculating}
                 correlationUpdated={correlationUpdated}
                 onAutoCalcRho={handleAutoCalcRho}
+                onAutoCalcRhoAndRebalance={handleAutoCalcRhoAndRebalance}
                 rhoCalcCalculating={rhoCalc.calculating}
               />
             </div>
@@ -679,120 +679,57 @@ export default function RiskPanel({
                     </span>
                   </div>
 
-                  {rhoCalc.preview ? (
-                    <div>
-                      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 8 }}>
-                        計算完成，橘色表示與現有值差距 &gt; 0.2，請確認後儲存。
-                      </p>
-                      <div style={{ overflowX: 'auto', marginBottom: 10 }}>
-                        <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
-                          <thead>
-                            <tr>
-                              <th style={{ padding: '4px 8px', color: 'var(--dim)', fontWeight: 400 }} />
-                              {tags.map(t => (
-                                <th key={t.id} style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                  {t.name}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {tags.map((ta, i) => (
-                              <tr key={ta.id}>
-                                <td style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>{ta.name}</td>
-                                {tags.map((tb, j) => {
-                                  if (j < i) return <td key={tb.id} />;
-                                  if (j === i) return (
-                                    <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
-                                      <span style={{ color: 'var(--dim)', fontFamily: 'var(--font-mono)' }}>1.00</span>
-                                    </td>
-                                  );
-                                  const entry = rhoCalc.preview!.find(e =>
-                                    (e.tagA === ta.name && e.tagB === tb.name) ||
-                                    (e.tagA === tb.name && e.tagB === ta.name)
-                                  );
-                                  const isBig = rhoCalc.bigDiffKeys.has(rhoKey(ta.name, tb.name));
-                                  return (
-                                    <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
-                                      <span style={{
-                                        fontFamily: 'var(--font-mono)',
-                                        color: isBig ? 'var(--text)' : 'var(--muted)',
-                                        background: isBig ? 'rgba(200,140,60,0.18)' : 'transparent',
-                                        padding: isBig ? '1px 4px' : undefined,
-                                        borderRadius: isBig ? 3 : undefined,
-                                      }}>
-                                        {entry?.rho.toFixed(2) ?? '—'}
-                                      </span>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="btn-ghost btn-ghost--accent" style={{ fontSize: 'var(--text-xs)', padding: '3px 12px' }} onClick={handleConfirmRho}>
-                          確認儲存
-                        </button>
-                        <button className="btn-ghost" style={{ fontSize: 'var(--text-xs)', padding: '3px 12px' }} onClick={handleCancelRho}>
-                          取消
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)', tableLayout: 'auto' }}>
-                        <thead>
-                          <tr>
-                            <th style={{ padding: '4px 8px', color: 'var(--dim)', fontWeight: 400 }} />
-                            {tags.map(t => (
-                              <th key={t.id} style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                {t.name}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tags.map((ta, i) => (
-                            <tr key={ta.id}>
-                              <td style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>{ta.name}</td>
-                              {tags.map((tb, j) => {
-                                if (j < i) return <td key={tb.id} />;
-                                if (j === i) return (
-                                  <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
-                                    <span style={{ color: 'var(--dim)', fontFamily: 'var(--font-mono)' }}>1.00</span>
-                                  </td>
-                                );
-                                return (
-                                  <td key={tb.id} style={{ padding: '4px 6px' }}>
-                                    <input
-                                      type="number"
-                                      inputMode="decimal"
-                                      min={-1} max={1} step={0.01}
-                                      value={getRho(ta.name, tb.name)}
-                                      onChange={e => setRho(ta.name, tb.name, e.target.value)}
-                                      onBlur={handleMatrixBlur}
-                                      style={{
-                                        width: 60, textAlign: 'center',
-                                        background: 'var(--surface)', border: '1px solid var(--border)',
-                                        borderRadius: 'var(--radius-sm)', color: 'var(--text)',
-                                        fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                                        padding: '2px 4px',
-                                      }}
-                                    />
-                                  </td>
-                                );
-                              })}
-                            </tr>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)', tableLayout: 'auto' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ padding: '4px 8px', color: 'var(--dim)', fontWeight: 400 }} />
+                          {tags.map(t => (
+                            <th key={t.id} style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                              {t.name}
+                            </th>
                           ))}
-                        </tbody>
-                      </table>
-                      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 6 }}>
-                        ρ 範圍 −1 ～ 1；未填寫預設 1.0（最保守估計）。離開欄位後自動儲存。
-                      </p>
-                    </div>
-                  )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tags.map((ta, i) => (
+                          <tr key={ta.id}>
+                            <td style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>{ta.name}</td>
+                            {tags.map((tb, j) => {
+                              if (j < i) return <td key={tb.id} />;
+                              if (j === i) return (
+                                <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                  <span style={{ color: 'var(--dim)', fontFamily: 'var(--font-mono)' }}>1.00</span>
+                                </td>
+                              );
+                              return (
+                                <td key={tb.id} style={{ padding: '4px 6px' }}>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={-1} max={1} step={0.01}
+                                    value={getRho(ta.name, tb.name)}
+                                    onChange={e => setRho(ta.name, tb.name, e.target.value)}
+                                    onBlur={handleMatrixBlur}
+                                    style={{
+                                      width: 60, textAlign: 'center',
+                                      background: 'var(--surface)', border: '1px solid var(--border)',
+                                      borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+                                      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                                      padding: '2px 4px',
+                                    }}
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 6 }}>
+                      ρ 範圍 −1 ～ 1；未填寫預設 1.0（最保守估計）。離開欄位後自動儲存。
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -802,6 +739,74 @@ export default function RiskPanel({
         </Tooltip.Provider>
         </div>
       </div>
+
+      {/* ρ 計算結果預覽 Modal */}
+      <Modal
+        open={rhoCalc.preview != null}
+        onClose={handleCancelRho}
+        title="Tag 矩陣 ρ 計算結果"
+        size="md"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn-ghost" onClick={handleCancelRho}>取消</button>
+            <button className="btn-ghost btn-ghost--accent" onClick={handleConfirmRho}>
+              更新並儲存{rhoCalc.pendingRebalance ? '，並計算再平衡' : ''}
+            </button>
+          </div>
+        }
+      >
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 12 }}>
+          橘色表示與現有值差距 &gt; 0.2
+          {rhoCalc.pendingRebalance && '；確認後將自動觸發再平衡計算。'}
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
+            <thead>
+              <tr>
+                <th style={{ padding: '4px 8px', color: 'var(--dim)', fontWeight: 400 }} />
+                {tags.map(t => (
+                  <th key={t.id} style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    {t.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tags.map((ta, i) => (
+                <tr key={ta.id}>
+                  <td style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>{ta.name}</td>
+                  {tags.map((tb, j) => {
+                    if (j < i) return <td key={tb.id} />;
+                    if (j === i) return (
+                      <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                        <span style={{ color: 'var(--dim)', fontFamily: 'var(--font-mono)' }}>1.00</span>
+                      </td>
+                    );
+                    const entry = rhoCalc.preview?.find(e =>
+                      (e.tagA === ta.name && e.tagB === tb.name) ||
+                      (e.tagA === tb.name && e.tagB === ta.name)
+                    );
+                    const isBig = rhoCalc.bigDiffKeys.has(rhoKey(ta.name, tb.name));
+                    return (
+                      <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          color: isBig ? 'var(--text)' : 'var(--muted)',
+                          background: isBig ? 'rgba(200,140,60,0.18)' : 'transparent',
+                          padding: isBig ? '1px 4px' : undefined,
+                          borderRadius: isBig ? 3 : undefined,
+                        }}>
+                          {entry?.rho.toFixed(2) ?? '—'}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
     </div>
   );
 }
