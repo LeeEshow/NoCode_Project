@@ -91,7 +91,12 @@
       "Bash(not exist *)",
       "PowerShell(New-Item *)",
       "Bash(Select-Object -ExpandProperty Name)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "PowerShell(pip show *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(pip install *)",
+      "Skill(claude-api)",
+      "Bash(npm install *)"
     ]
   }
 }

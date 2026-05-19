@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Remove-Item \"E:\\\\Code\\\\NoCode_Project\\\\.firebaserc\" -Force)",
+      "Bash(Remove-Item \"E:\\\\Code\\\\NoCode_Project\\\\firebase.json\" -Force)",
+      "Bash(Write-Output \"Done\")"
+    ]
+  }
+}

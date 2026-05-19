@@ -1,7 +1,8 @@
 # Azure 部署文件
 
-> 最後更新：2026-05-01  
-> 架構：Azure Static Web Apps（前端）+ Azure App Service Plan B1（後端雙服務）
+> 最後更新：2026-05-17  
+> 架構：Azure Static Web Apps（前端）+ Azure App Service Plan B1（後端雙服務）  
+> Shioaji 為**選用**服務：未設定 `SHIOAJI_API_URL` 時，後端自動以 Yahoo Finance 全程替代，詳見第五節。
 
 ---
 
@@ -16,7 +17,8 @@
 | Node.js CI/CD（`deploy-backend.yml`） | ✅ |
 | Python CI/CD（`deploy-shioaji.yml`） | ✅ |
 | Azure Static Web Apps 前端 | ✅ 正常運行 |
-| 前端 CORS 設定 | ✅ 正常（cors() 無限制） |
+| 前端 Easy Auth（Microsoft 帳號） | ✅ |
+| 每日快照排程（`daily-snapshot.yml`） | ✅ |
 
 ---
 
@@ -27,6 +29,7 @@
 ```
 使用者瀏覽器
   └─ Azure Static Web Apps（免費）
+       ├─ Easy Auth（Microsoft 帳號登入）
        └─ React 前端（Vite build 靜態檔）
 
 Azure App Service Plan B1（~$13 USD/月）
@@ -34,6 +37,12 @@ Azure App Service Plan B1（~$13 USD/月）
   └─ Web App: finance-shioaji   → Python FastAPI + Shioaji
 
 Firebase Firestore（保留現有，不遷移）
+
+GitHub Actions
+  ├─ deploy-backend.yml         → 推送 Back-End/backend/** 自動部署
+  ├─ deploy-shioaji.yml         → 推送 Back-End/Shioaji_API/** 自動部署
+  ├─ azure-static-web-apps-*.yml → 推送 main 自動部署前端
+  └─ daily-snapshot.yml         → 每日 14:00（台灣時間）自動快照
 ```
 
 ### 費用摘要
@@ -52,17 +61,16 @@ Firebase Firestore（保留現有，不遷移）
 
 | 服務 | URL |
 |------|-----|
+| finance-frontend | `https://gray-bay-05c35e200.7.azurestaticapps.net` |
 | finance-backend | `https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net` |
 | finance-shioaji | `https://finance-shioaji-bucre4ccehejfvcf.southeastasia-01.azurewebsites.net` |
-| finance-frontend | `https://gray-bay-05c35e200.7.azurestaticapps.net` |
 
 ### 健康檢查
 
 ```bash
 curl https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/health
 curl https://finance-shioaji-bucre4ccehejfvcf.southeastasia-01.azurewebsites.net/health
-# 前端
-# 瀏覽 https://gray-bay-05c35e200.7.azurestaticapps.net
+# 前端：瀏覽 https://gray-bay-05c35e200.7.azurestaticapps.net
 ```
 
 ---
@@ -160,7 +168,46 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 
 ---
 
-## 三、後端除錯與注意事項
+### 2-3 每日快照排程
+
+**Workflow**：`.github/workflows/daily-snapshot.yml`
+
+- 每天 **14:00 台灣時間**（UTC+8 = 06:00 UTC）自動執行
+- 僅**週一至週五**（台股交易日）
+- 支援 GitHub Actions 手動觸發（測試用）
+- 呼叫端點：`POST /api/v1/snapshots/record`
+
+```yaml
+on:
+  schedule:
+    - cron: '0 6 * * 1-5'
+  workflow_dispatch:
+```
+
+---
+
+## 三、前端部署參數
+
+> URL：`https://gray-bay-05c35e200.7.azurestaticapps.net`  
+> CI/CD：`.github/workflows/azure-static-web-apps-gray-bay-05c35e200.yml`（任何 push to main 觸發）
+
+**GitHub Actions Variable**
+
+| 名稱 | 值 |
+|------|-----|
+| `VITE_API_BASE_URL` | `https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/api/v1` |
+
+**Easy Auth**（Microsoft 帳號）
+
+已設定於 `Front-End/frontend/public/staticwebapp.config.json`：未登入的使用者自動導向 Microsoft 登入頁，登入後才能進入網站。
+
+**SPA 路由**
+
+`staticwebapp.config.json` 設定 `navigationFallback`，重新整理不會 404。
+
+---
+
+## 四、後端除錯與注意事項
 
 ### SSH 診斷說明
 
@@ -171,7 +218,7 @@ Azure App Service 有兩種 SSH 入口，行為不同：
 | Azure Portal → 開發工具 → SSH | **App 容器**（可測 localhost） | 診斷 app 本身 |
 | `{app}.scm.azurewebsites.net/webssh/host` | **SCM/Kudu 容器** | 看 log、看部署狀態 |
 
-兩個容器共用 `/home/LogFiles/`，但網路隔離。從 Kudu SSH 執行 `curl localhost:8080` 不會打到 App。
+兩個容器共用 `/home/LogFiles/`，但網路隔離。從 Kudu SSH 執行 `curl localhost` 不會打到 App。
 
 **診斷用 log 路徑**
 
@@ -198,7 +245,7 @@ az webapp restart --name finance-shioaji --resource-group finance-app-rg
 
 ---
 
-### 問題記錄
+### 注意事項
 
 #### ❶ Japan East 配額不足
 **症狀**：建立 App Service Plan 時出現 `SubscriptionIsOverQuotaForSku`。  
@@ -252,53 +299,83 @@ az webapp restart --name finance-shioaji --resource-group finance-app-rg
 ---
 
 #### ❽ Python 容器 warmup probe 無限超時（Python）
-**症狀**：uvicorn 正常啟動，`/health` log 顯示初始化成功，但 230 秒後容器被殺，無限重啟。  
-**原因**：`finance-backend`（Node.js）與 `finance-shioaji`（Python）共用同一 App Service Plan 主機，Node.js 佔用 port 8080。Azure warmup probe 打 port 8080 收到 Node.js 的 `Cannot GET /`（404），判定啟動失敗。  
+**症狀**：uvicorn 正常啟動，log 顯示初始化成功，但 230 秒後容器被殺，無限重啟。  
+**原因**：`finance-backend` 與 `finance-shioaji` 共用同一 App Service Plan 主機，Node.js 佔用 port 8080。Azure warmup probe 打 port 8080 收到 Node.js 的 404，判定啟動失敗。  
 **解法**：Python 改用 port 8000：
 - 啟動命令：`python3 -m uvicorn main:app --host 0.0.0.0 --port 8000`
 - 環境變數：`WEBSITES_PORT=8000`
 
 ---
 
-## 四、前端部署參數
+## 五、Yahoo-only 部署（無永豐金帳號）
 
-> 狀態：✅ 完成  
-> URL：`https://gray-bay-05c35e200.7.azurestaticapps.net`  
-> CI/CD：`.github/workflows/azure-static-web-apps-gray-bay-05c35e200.yml`
+沒有永豐金證券帳號的使用者可以跳過整個 Shioaji 服務，**只部署 `finance-backend`**，報價與歷史 K 線全程由 Yahoo Finance 提供。
 
-### 建立 Azure Static Web Apps
+### 架構差異
 
-```bash
-az staticwebapp create \
-  --name finance-frontend \
-  --resource-group finance-app-rg \
-  --location eastasia \
-  --source "https://github.com/LeeEshow/NoCode_Project" \
-  --branch main \
-  --app-location "Front-End/frontend" \
-  --output-location "dist" \
-  --login-with-github
+```
+（完整版）
+App Service Plan B1
+  ├─ finance-backend   → Node.js（全功能）
+  └─ finance-shioaji   → Python FastAPI + Shioaji（即時台股報價）
+
+（Yahoo-only）
+App Service Plan B1
+  └─ finance-backend   → Node.js（全功能，Yahoo Finance 替代即時報價）
+     ↳ finance-shioaji 不需建立，節省資源
 ```
 
-### 環境變數（Portal → Static Web Apps → Configuration）
+### 部署步驟
+
+**1. 只建立 `finance-backend` Web App，不建立 `finance-shioaji`。**
+
+**2. `finance-backend` 環境變數：省略 `SHIOAJI_API_URL`**
 
 | 名稱 | 值 |
 |------|-----|
-| `VITE_API_BASE_URL` | `https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/api/v1` |
+| `PORT` | `8080` |
+| `FIRESTORE_PROJECT_ID` | `nocode-finance` |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | serviceAccountKey.json 完整 JSON 內容（單行） |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `false` |
+| `ApplicationInsightsAgent_EXTENSION_VERSION` | `disabled` |
 
-### SPA 路由設定
+> `SHIOAJI_API_URL` **不設定**即代表停用 Shioaji，後端自動以 Yahoo Finance 全程替代，無需額外旗標。
 
-在 `Front-End/frontend/` 建立 `staticwebapp.config.json`：
+**3. 其餘部署步驟與第二節相同**（CI/CD、啟動命令、前端）。
 
-```json
-{
-  "navigationFallback": {
-    "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/favicon.svg"]
-  }
-}
+### 行為對照
+
+| 功能 | Yahoo-only | 完整版（含 Shioaji） |
+|------|-----------|---------------------|
+| 即時股價輪詢（5s） | Yahoo Finance（~15s 延遲） | Shioaji tick 即時 |
+| 歷史 K 線 | Yahoo Finance | Shioaji（盤中）/ Yahoo（盤外） |
+| 大盤 / 台指期指數 | Yahoo Finance | Shioaji（盤中）/ Yahoo（盤外） |
+| 股票搜尋 | 需先完成股票清單初始化（見下） | `POST /stocks/list/refresh` 同步 |
+| `GET /api/v1/system` | `shioajiEnabled: false` | `shioajiEnabled: true` |
+| `POST /stocks/list/refresh` | 回傳 400（需 Shioaji） | 正常 |
+
+### 股票清單初始化
+
+搜尋功能（`GET /stocks/search`）依賴 Firestore 中的股票清單（`stock_list` collection）。正常流程是呼叫 `POST /stocks/list/refresh` 從 Shioaji 同步，Yahoo-only 模式下此端點無法使用。
+
+**替代方式：從現有 Shioaji 部署匯出**
+
+若能取得已初始化的 Firestore 資料，可使用 Firebase 匯出工具或直接複製 `stock_list/data` 文件。
+
+**或是在 Firestore 手動建立測試資料**
+
+```
+Collection: stock_list
+Document ID: data
+  ├─ items: [ { code: "2330", name: "台積電", market: "TSE" }, ... ]
+  └─ count: <數量>
 ```
 
-### CORS 設定
+```
+Collection: stock_list
+Document ID: meta
+  ├─ count: <數量>
+  └─ updatedAt: <Timestamp>
+```
 
-前端網域確認後，更新 `Back-End/backend/src/index.ts` 的 CORS allowlist，加入 Static Web Apps 網域。
+> 股票清單只需初始化一次，之後搜尋與名稱解析皆從此快取取用，不影響報價與其他功能。

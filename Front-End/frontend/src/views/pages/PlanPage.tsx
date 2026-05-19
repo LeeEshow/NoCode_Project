@@ -27,8 +27,8 @@ export default function PlanPage() {
   const latestRow = vm.rows.find(r => r.status === 'current')
     ?? [...vm.rows].reverse().find(r => r.status === 'past' && r.returnValue != null);
 
-  const hasReturn   = latestRow != null && latestRow.returnValue != null;
-  const isOnTarget  = hasReturn && latestRow!.returnValue! >= latestRow!.expectedProfit;
+  const hasReturn  = latestRow != null && latestRow.returnValue != null;
+  const isOnTarget = hasReturn && latestRow!.returnValue! >= latestRow!.expectedProfit;
   const returnColor = hasReturn
     ? (latestRow!.returnValue! >= 0 ? 'var(--up)' : 'var(--down)')
     : 'var(--dim)';
@@ -73,11 +73,11 @@ export default function PlanPage() {
                   <Icon
                     name={isOnTarget ? 'check_circle' : 'cancel'}
                     size={22}
-                    style={{ color: isOnTarget ? 'var(--down)' : 'var(--up)' }}
+                    style={{ color: isOnTarget ? 'var(--accent)' : 'var(--up)' }}
                   />
                   <span className="ph-stat__value" style={{
                     fontSize: 'var(--text-base)',
-                    color: isOnTarget ? 'var(--down)' : 'var(--up)',
+                    color: isOnTarget ? 'var(--accent)' : 'var(--up)',
                   }}>
                     {isOnTarget ? '達標' : '未達標'}
                   </span>
@@ -105,6 +105,7 @@ export default function PlanPage() {
               <PlanTable
                 rows={vm.rows}
                 saving={vm.saving}
+                startYear={vm.config?.startYear ?? new Date().getFullYear()}
                 onInvestOverride={handleInvestOverride}
                 onReinvestChange={handleReinvestChange}
               />

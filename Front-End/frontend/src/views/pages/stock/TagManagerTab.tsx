@@ -1,6 +1,6 @@
 import { useState, useId } from 'react';
 import type {
-  TagDTO, TagStat, CreateTagPayload, FallbackBehavior,
+  TagDTO, TagStat, CreateTagPayload, FallbackBehavior, TriggerDirection,
   HoldingDTO, OverlappingTagGroup,
 } from '../../../types';
 import { calcTagDailyReturnsFromSparklines, stdDev } from '../../../utils/correlationCalc';
@@ -17,6 +17,7 @@ interface FormState {
   baseRisk:         string;
   targetWeight:     string;
   fallbackBehavior: FallbackBehavior;
+  triggerDirection: TriggerDirection;
   presetRiskOn:     string;
   presetRiskOff:    string;
   presetLiqDry:     string;
@@ -44,18 +45,33 @@ interface Props {
   /* 批次重算動態風險 */
   onRecalculateAll: () => Promise<void>;
   recalculating:    boolean;
+  /* 計算再平衡（從風險設定移至此） */
+  onTriggerRebalance:         () => void;
+  calculating:                boolean;
+  correlationUpdated:         boolean;
+  /* 重算相關性 ρ（從風險設定移至此） */
+  onAutoCalcRho:              () => void;
+  onAutoCalcRhoAndRebalance:  () => void;
+  rhoCalcCalculating:         boolean;
 }
 
 /* ── 常數 ── */
 
 const EMPTY_FORM: FormState = {
   name: '', baseRisk: '', targetWeight: '', fallbackBehavior: 'hold',
+  triggerDirection: 'both',
   presetRiskOn: '', presetRiskOff: '', presetLiqDry: '',
 };
 
 const FALLBACK_OPTIONS = [
   { value: 'hold',    label: '持有' },
   { value: 'exclude', label: '排除' },
+];
+
+const TRIGGER_DIR_OPTIONS: { value: TriggerDirection; label: string; desc: string }[] = [
+  { value: 'both',       label: '雙向 ±',   desc: '超配或低配都觸發' },
+  { value: 'upper_only', label: '僅上限 ↓', desc: '超配才觸發（30%↓ 代表上限，適合衛星部位）' },
+  { value: 'lower_only', label: '僅下限 ↑', desc: '低配才觸發（30%↑ 代表下限，適合核心持倉）' },
 ];
 
 /* ── 元件 ── */
@@ -66,6 +82,9 @@ export default function TagManagerTab({
   overlappingGroups,
   holdings, sparklines,
   onRecalculateAll, recalculating,
+  onTriggerRebalance, calculating,
+  correlationUpdated,
+  onAutoCalcRho, onAutoCalcRhoAndRebalance, rhoCalcCalculating,
 }: Props) {
   const statMap = new Map(tagStats.map(s => [s.tagName, s]));
   const uid     = useId();
@@ -75,9 +94,10 @@ export default function TagManagerTab({
   const [formOpen,        setFormOpen]        = useState(false);
   const [form,            setForm]            = useState<FormState>(EMPTY_FORM);
   const [errors,          setErrors]          = useState<FormErrors>({});
-  const [deleteTarget,    setDeleteTarget]    = useState<TagDTO | null>(null);
-  const [autoCalcPending, setAutoCalcPending] = useState(false);
-  const [autoCalcing,     setAutoCalcing]     = useState(false);
+  const [deleteTarget,       setDeleteTarget]       = useState<TagDTO | null>(null);
+  const [autoCalcPending,    setAutoCalcPending]    = useState(false);
+  const [autoCalcing,        setAutoCalcing]        = useState(false);
+  const [rebalanceModalOpen, setRebalanceModalOpen] = useState(false);
 
   function openAdd() {
     setEditingId(null);
@@ -96,6 +116,7 @@ export default function TagManagerTab({
       baseRisk:         String(tag.baseRisk),
       targetWeight:     tag.targetWeight != null ? String(tag.targetWeight) : '',
       fallbackBehavior: tag.fallbackBehavior,
+      triggerDirection: tag.triggerDirection ?? 'both',
       presetRiskOn:     tag.marketStatePresets?.riskOn       != null ? String(r2(tag.marketStatePresets.riskOn))       : '',
       presetRiskOff:    tag.marketStatePresets?.riskOff      != null ? String(r2(tag.marketStatePresets.riskOff))      : '',
       presetLiqDry:     tag.marketStatePresets?.liquidityDry != null ? String(r2(tag.marketStatePresets.liquidityDry)) : '',
@@ -148,6 +169,7 @@ export default function TagManagerTab({
       baseRisk:         parseFloat(form.baseRisk),
       targetWeight:     form.targetWeight.trim() ? parseFloat(form.targetWeight) : null,
       fallbackBehavior: form.fallbackBehavior,
+      triggerDirection: form.triggerDirection,
       marketStatePresets: hasPresets ? {
         riskOn:       !isNaN(riskOn)  ? riskOn  : undefined,
         riskOff:      !isNaN(riskOff) ? riskOff : undefined,
@@ -206,19 +228,52 @@ export default function TagManagerTab({
 
   return (
     <div>
-      {/* 操作列：批次重算 + 新增 Tag */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
+      {/* 操作列 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+
+        {/* 計算再平衡（最左），與右側自動計算群加大間距 */}
+        <button
+          className="btn-ghost btn-ghost--accent"
+          onClick={() => setRebalanceModalOpen(true)}
+          disabled={calculating}
+          style={{ minWidth: 96, marginRight: 12 }}
+        >
+          {calculating ? spinner : '▷ 計算再平衡'}
+        </button>
+
+        {/* 自動計算群 */}
         <button
           className="btn-ghost"
           onClick={onRecalculateAll}
           disabled={recalculating || saving || tags.length === 0}
           aria-label="批次自動計算所有 Tag 動態風險"
+          title="依近期波動率自動填入各 Tag 的市場狀態風險係數"
+          style={{ fontSize: 'var(--text-sm)' }}
         >
-          {recalculating
-            ? <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--muted)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle' }} />
-            : '⟳ 批次自動計算'}
+          {recalculating ? spinner : '⟳ 批次動態風險'}
         </button>
-        <button className="btn-ghost" onClick={openAdd}>＋ 新增 Tag</button>
+        <button
+          className="btn-ghost"
+          onClick={onAutoCalcRho}
+          disabled={rhoCalcCalculating || tags.length < 2 || holdings.length === 0}
+          aria-label="自動計算 Tag 相關性矩陣"
+          title="依持股 Sparkline 計算各 Tag 間的 Pearson ρ"
+          style={{ fontSize: 'var(--text-sm)' }}
+        >
+          {rhoCalcCalculating ? spinner : '⟳ Tag 矩陣 ρ'}
+        </button>
+
+        {/* 彈性空白 */}
+        <span style={{ flex: 1 }} />
+
+        {/* 右側 */}
+        {correlationUpdated && (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--up)', whiteSpace: 'nowrap' }}
+            title="相關性矩陣已更新，建議重新計算再平衡">
+            ⚠ 相關性已更新
+          </span>
+        )}
+        <button className="btn-ghost" onClick={openAdd}>＋ 新增</button>
       </div>
 
       {/* 清單 or 空狀態 */}
@@ -257,7 +312,17 @@ export default function TagManagerTab({
                   }}>
                     {tag.dynamicRisk.toFixed(2)}
                   </td>
-                  <td className="center num-value">{tag.targetWeight != null ? `${tag.targetWeight}%` : '—'}</td>
+                  <td className="center num-value">
+                    {tag.targetWeight != null ? (
+                      <>
+                        {tag.targetWeight}%
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginLeft: 3 }}>
+                          {(tag.triggerDirection ?? 'both') === 'upper_only' ? '↓' :
+                           (tag.triggerDirection ?? 'both') === 'lower_only' ? '↑' : '±'}
+                        </span>
+                      </>
+                    ) : '—'}
+                  </td>
                   <td className="center">{tag.fallbackBehavior === 'hold' ? '持有' : '排除'}</td>
                   {/* 進度條 */}
                   <td className="center">
@@ -363,6 +428,47 @@ export default function TagManagerTab({
             </div>
           </div>
 
+          {/* 觸發方向 */}
+          <div className="fi-field">
+            <label className="fi-label">觸發方向</label>
+            <div role="radiogroup" aria-label="觸發方向" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {TRIGGER_DIR_OPTIONS.map(opt => (
+                <label
+                  key={opt.value}
+                  title={opt.desc}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center',
+                    padding: '4px 10px',
+                    border: `1px solid ${form.triggerDirection === opt.value ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    background: form.triggerDirection === opt.value ? 'var(--accent-bg)' : 'transparent',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    fontSize: 'var(--text-sm)', whiteSpace: 'nowrap',
+                    color: form.triggerDirection === opt.value ? 'var(--accent)' : 'var(--muted)',
+                    opacity: saving ? 0.6 : 1,
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name={`${idBase}-trigger-dir`}
+                    value={opt.value}
+                    checked={form.triggerDirection === opt.value}
+                    disabled={saving}
+                    onChange={() => setForm(f => ({ ...f, triggerDirection: opt.value }))}
+                    style={{ display: 'none' }}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            {!form.targetWeight.trim() && (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 4 }}>
+                設定目標配置後生效
+              </p>
+            )}
+          </div>
+
           {/* 行為 */}
           <div className="fi-field">
             <label className="fi-label" htmlFor={`${idBase}-fallback`}>未設定目標時的行為</label>
@@ -434,6 +540,44 @@ export default function TagManagerTab({
           onCancel={() => setDeleteTarget(null)}
         />
       )}
+
+      {/* 計算再平衡確認 Modal */}
+      <Modal
+        open={rebalanceModalOpen}
+        onClose={() => setRebalanceModalOpen(false)}
+        title="計算再平衡"
+        size="sm"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn-ghost" onClick={() => setRebalanceModalOpen(false)}>
+              取消
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={() => { setRebalanceModalOpen(false); onAutoCalcRhoAndRebalance(); }}
+              disabled={tags.length < 2 || holdings.length === 0}
+              title={tags.length < 2 || holdings.length === 0 ? '需至少 2 個 Tag 及持股資料才能更新 ρ' : undefined}
+            >
+              更新 ρ 後計算
+            </button>
+            <button
+              className="btn-ghost btn-ghost--accent"
+              onClick={() => { setRebalanceModalOpen(false); onTriggerRebalance(); }}
+            >
+              直接計算
+            </button>
+          </div>
+        }
+      >
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
+          計算前是否先更新 Tag 相關性矩陣 ρ？
+        </p>
+        {(tags.length < 2 || holdings.length === 0) && (
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 6 }}>
+            ρ 更新需至少 2 個 Tag 及持股資料
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

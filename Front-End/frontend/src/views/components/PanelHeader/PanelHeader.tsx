@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSnapshotStore } from '../../../stores/snapshotStore';
+import { useSettingsStore } from '../../../stores/settingsStore';
+import { useAiReportViewModel } from '../../../viewmodels/useAiReportViewModel';
+import AiReportModal from '../AiReportModal/AiReportModal';
+import Icon from '../Icon';
 import './PanelHeader.css';
 
 interface PanelHeaderProps {
@@ -8,9 +12,15 @@ interface PanelHeaderProps {
 
 export default function PanelHeader({ children }: PanelHeaderProps) {
   const { cashBalance, loaded, load, update } = useSnapshotStore();
+  const { aiReportEnabled, load: loadSettings } = useSettingsStore();
   const [draft, setDraft] = useState('');
+  const [isAiReportOpen, setIsAiReportOpen] = useState(false);
+
+  const aiReport = useAiReportViewModel();
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadSettings(); }, [loadSettings]);
+
   const fmtNum = (n: number) => n > 0 ? n.toLocaleString('zh-TW', { maximumFractionDigits: 0 }) : '';
 
   useEffect(() => {
@@ -27,11 +37,27 @@ export default function PanelHeader({ children }: PanelHeaderProps) {
     }
   };
 
+  function handleOpenAiReport() {
+    setIsAiReportOpen(true);
+    if (!aiReport.report && !aiReport.loading) {
+      aiReport.loadLatest();
+    }
+  }
+
   return (
     <div className="panel-header">
       <div className="panel-header__left">{children}</div>
       <div className="panel-header__sep" />
       <div className="panel-header__right">
+        {aiReportEnabled && (
+          <button
+            className={`btn-icon panel-header__ai-btn${aiReport.hasReport ? ' panel-header__ai-btn--has-report' : ''}`}
+            onClick={handleOpenAiReport}
+            aria-label="AI 每日早報"
+          >
+            <Icon name="auto_awesome" size={18} />
+          </button>
+        )}
         <span className="panel-header__cash-label">流動資金</span>
         <input
           className="panel-header__cash-input"
@@ -44,6 +70,17 @@ export default function PanelHeader({ children }: PanelHeaderProps) {
           placeholder="0"
         />
       </div>
+      {aiReportEnabled && (
+        <AiReportModal
+          open={isAiReportOpen}
+          onClose={() => setIsAiReportOpen(false)}
+          report={aiReport.report}
+          loading={aiReport.loading}
+          error={aiReport.error}
+          availableDates={aiReport.availableDates}
+          onLoadByDate={aiReport.loadByDate}
+        />
+      )}
     </div>
   );
 }

@@ -69,6 +69,40 @@
   accent-color: var(--accent);
   cursor: pointer;
   margin: 2px 0;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+}
+.plan-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.plan-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.plan-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: -5px;
+  cursor: pointer;
+}
+.plan-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  cursor: pointer;
 }
 
 /* 三段切換按鈕（通膨情境） */
@@ -192,7 +226,7 @@
 }
 .plan-table .plan-th-group.exec {
   background: rgba(106, 143, 181, 0.06);
-  border-left: 2px solid var(--accent-bd);
+  border-left: 1px solid var(--border-hi);
 }
 
 /* 欄位標題列 */
@@ -208,8 +242,9 @@
   user-select: none;
 }
 .plan-table thead th:first-child { text-align: center; }
+.plan-table thead th:last-child  { padding-right: 20px; }
 .plan-table thead th.exec-col { background: rgba(106, 143, 181, 0.06); }
-.plan-table thead th.exec-first { border-left: 2px solid var(--accent-bd); }
+.plan-table thead th.exec-first { border-left: 1px solid var(--border-hi); }
 
 /* 資料列 */
 .plan-table tbody tr {
@@ -226,18 +261,23 @@
   font-size: var(--text-md);
 }
 .plan-table tbody td:first-child { text-align: center; font-family: var(--font-mono); color: var(--dim); }
+.plan-table tbody td:last-child  { padding-right: 20px; }
 .plan-table tbody td.exec-col { background: rgba(106, 143, 181, 0.03); }
-.plan-table tbody td.exec-first { border-left: 2px solid var(--accent-bd); }
+.plan-table tbody td.exec-first { border-left: 1px solid var(--border-hi); }
 
 /* 里程碑高亮 */
 .plan-table tbody tr.milestone {
-  background: rgba(106, 143, 181, 0.06);
+  background: rgba(106, 143, 181, 0.10);
 }
 .plan-table tbody tr.milestone td:first-child { color: var(--accent); font-weight: 700; }
 
 /* 當年度列 */
 .plan-table tbody tr.current-year {
-  background: rgba(124, 168, 141, 0.05);
+  background: rgba(124, 168, 141, 0.10);
+}
+.plan-table tbody tr.current-year td:first-child {
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
 }
 
 /* 未來空值 */
@@ -247,10 +287,16 @@
 .plan-table .pv { font-family: var(--font-mono); color: var(--text-value); font-weight: 500; }
 .plan-table .pv-dim { font-family: var(--font-mono); color: var(--dim); font-size: var(--text-sm); }
 
-/* 報酬率雙行 */
+/* 報酬率雙行 + 達標 badge */
 .plan-return-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
 .plan-return-abs  { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 600; }
 .plan-return-pct  { font-family: var(--font-mono); font-size: var(--text-sm); }
+.plan-return-badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  opacity: 0.85;
+  letter-spacing: 0.01em;
+}
 
 /* inline 再投入輸入 */
 .plan-reinvest-input {

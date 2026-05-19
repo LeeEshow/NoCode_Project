@@ -49,7 +49,12 @@
       "Bash(python3 *)",
       "Bash(Get-ChildItem -Path \"D:\\\\Project\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\" -Recurse -File)",
       "Bash(Select-Object -First 50)",
-      "Bash(Format-Table Name, FullName)"
+      "Bash(Format-Table Name, FullName)",
+      "Bash(Get-ChildItem \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\src\")",
+      "PowerShell(Get-ChildItem \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\src\" -Recurse | Where-Object { $_.Name -match \"Risk|Rebalance|rebalance|risk\" } | Select-Object FullName)",
+      "PowerShell(Get-ChildItem \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\" -Recurse | Where-Object { $_.Name -match \"Risk|Rebalance|rebalance|risk\" } | Select-Object FullName)",
+      "Bash(Get-ChildItem -Recurse \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\views\\\\pages\\\\report\")",
+      "Bash(Select-Object FullName)"
     ]
   }
 }

@@ -44,14 +44,6 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
 function fmt(n: number, d = 0) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
-function pad2(n: number) { return String(n).padStart(2, '0'); }
-
-function formatLastUpdated(d: Date | null) {
-  if (!d) return { date: '—', time: '—' };
-  const date = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-  return { date, time };
-}
 
 /* ── 持股操作 Modal 狀態 ── */
 interface TxTarget { code: string; name: string; }
@@ -187,8 +179,6 @@ export default function StockOverviewPage() {
     return () => clearInterval(id);
   }, []);
 
-  const { date: dateStr, time: timeStr } = formatLastUpdated(market.lastUpdated);
-
   /* PanelHeader 財務數值 */
   const { totalCurrentValue, totalDailyAmt, totalUnrealizedProfit } = useMemo(() => ({
     totalCurrentValue:    holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 0.997, 0),
@@ -225,28 +215,7 @@ export default function StockOverviewPage() {
 
       {/* 頂部橫幅 PanelHeader */}
       <PanelHeader>
-        {/* 今日日期 */}
-        <div className="ph-stat" style={{ minWidth: 100 }}>
-          <span className="ph-stat__value" style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-sans)', fontWeight: 400, display: 'flex', flexDirection: 'column', lineHeight: 1.6 }}>
-            <span>{dateStr}</span>
-            <span>{timeStr}</span>
-          </span>
-        </div>
-
-        {/* 當天成長率：主值為百分比，tooltip 顯示金額 */}
-        <div className="ph-stat">
-          <span className="ph-stat__label">當天成長率</span>
-          <span className="ph-stat__value" style={{
-            color: totalDailyAmt > 0 ? 'var(--up)' : totalDailyAmt < 0 ? 'var(--down)' : 'var(--text)',
-          }}>
-            {totalDailyAmt > 0 ? '+' : ''}{fmt(dailyGrowthRate, 2)}%
-            <span className="ph-stat__sub">
-              {totalDailyAmt > 0 ? '+' : ''}{fmt(totalDailyAmt)}
-            </span>
-          </span>
-        </div>
-
-        {/* 股票現值（hover tooltip 顯示未實現損益） */}
+        {/* 股票現值（sub：未實現損益） */}
         <div className="ph-stat">
           <span className="ph-stat__label">股票現值</span>
           <span className="ph-stat__value" style={{
@@ -261,9 +230,22 @@ export default function StockOverviewPage() {
           </span>
         </div>
 
-        {/* 整年報酬率 — 連動投報計畫當年度 */}
+        {/* 當天成長率（sub：金額） */}
         <div className="ph-stat">
-          <span className="ph-stat__label">整年報酬率</span>
+          <span className="ph-stat__label">當天成長率</span>
+          <span className="ph-stat__value" style={{
+            color: totalDailyAmt > 0 ? 'var(--up)' : totalDailyAmt < 0 ? 'var(--down)' : 'var(--text)',
+          }}>
+            {totalDailyAmt > 0 ? '+' : ''}{fmt(dailyGrowthRate, 2)}%
+            <span className="ph-stat__sub">
+              {totalDailyAmt > 0 ? '+' : ''}{fmt(totalDailyAmt)}
+            </span>
+          </span>
+        </div>
+
+        {/* 整年損益 — 連動投報計畫當年度 */}
+        <div className="ph-stat">
+          <span className="ph-stat__label">整年損益</span>
           <span className="ph-stat__value" style={{
             color: currentYearReturnPct == null ? 'var(--dim)'
               : currentYearReturnPct >= 0 ? 'var(--up)' : 'var(--down)',

@@ -493,3 +493,48 @@ tr:hover .drag-handle { color: var(--dim); }
 }
 .rd-select-item[data-highlighted] { background: var(--accent-bg); color: var(--accent); }
 .rd-select-item[data-state="checked"] { color: var(--text); }
+
+/* ── Toggle Switch ── */
+.ft-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.ft-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.ft-toggle__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 99px;
+  background: var(--border-hi);
+  transition: background var(--trans-fast);
+  cursor: pointer;
+}
+.ft-toggle__track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform var(--trans-fast), background var(--trans-fast);
+}
+.ft-toggle input:checked + .ft-toggle__track {
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-bd);
+}
+.ft-toggle input:checked + .ft-toggle__track::after {
+  transform: translateX(16px);
+  background: var(--accent);
+}
+.ft-toggle input:focus-visible + .ft-toggle__track {
+  box-shadow: 0 0 0 2px var(--accent-bd);
+}

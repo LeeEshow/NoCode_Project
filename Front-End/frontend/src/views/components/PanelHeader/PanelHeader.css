@@ -63,6 +63,24 @@
   border-color: var(--accent);
 }
 
+/* ── AI 早報按鈕 ── */
+.panel-header__ai-btn {
+  position: relative;
+  margin-right: 4px;
+}
+
+.panel-header__ai-btn--has-report::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
+}
+
 /* ── Stat 統計項目（供各頁面內聯使用）── */
 .ph-stat {
   display: flex;

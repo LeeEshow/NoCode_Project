@@ -1,0 +1,19 @@
+name: Daily AI Report
+
+on:
+  schedule:
+    - cron: '0 22 * * 0-4'   # 台灣時間週一–週五 06:00（UTC 週日–週四 22:00）
+  workflow_dispatch:           # 支援手動觸發（測試用）
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate daily AI report
+        run: |
+          curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/ai/daily-report" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error
+          echo "AI report generated at $(date '+%Y-%m-%d %H:%M:%S UTC')"

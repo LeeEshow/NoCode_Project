@@ -1,6 +1,8 @@
 import * as admin from 'firebase-admin';
 import { db } from '../global/firebase';
 
+export type TriggerDirection = 'both' | 'upper_only' | 'lower_only';
+
 export interface MarketStatePresets {
   riskOn:       number | null;
   riskOff:      number | null;
@@ -13,6 +15,7 @@ export interface TagInput {
   targetWeight?:        number | null;
   fallbackBehavior?:    'hold' | 'exclude' | null;
   marketStatePresets?:  Partial<MarketStatePresets> | null;
+  triggerDirection?:    TriggerDirection | null;
 }
 
 export interface TagDoc {
@@ -23,6 +26,7 @@ export interface TagDoc {
   targetWeight: number | null;
   fallbackBehavior: string;
   marketStatePresets: MarketStatePresets | null;
+  triggerDirection: TriggerDirection;
 }
 
 const COL = 'tags';
@@ -46,12 +50,13 @@ export class Tag {
   static async create(input: TagInput): Promise<TagDoc> {
     const ref = db.collection(COL).doc();
     await ref.set({
-      name:              input.name,
-      base_risk:         input.baseRisk,
-      dynamic_risk:      input.baseRisk,
-      target_weight:     input.targetWeight ?? null,
-      fallback_behavior: input.fallbackBehavior ?? 'hold',
+      name:                input.name,
+      base_risk:           input.baseRisk,
+      dynamic_risk:        input.baseRisk,
+      target_weight:       input.targetWeight ?? null,
+      fallback_behavior:   input.fallbackBehavior ?? 'hold',
       market_state_presets: serializePresets(input.marketStatePresets),
+      trigger_direction:   input.triggerDirection ?? 'both',
     });
     return deserialize(await ref.get());
   }
@@ -61,11 +66,12 @@ export class Tag {
     if (!(await ref.get()).exists) return null;
 
     const patch: Record<string, unknown> = {};
-    if (input.name             !== undefined) patch.name              = input.name;
-    if (input.baseRisk         !== undefined) patch.base_risk         = input.baseRisk;
-    if ('targetWeight'    in input)           patch.target_weight     = input.targetWeight ?? null;
-    if ('fallbackBehavior' in input)          patch.fallback_behavior = input.fallbackBehavior ?? 'hold';
-    if ('marketStatePresets' in input)        patch.market_state_presets = serializePresets(input.marketStatePresets);
+    if (input.name               !== undefined) patch.name                = input.name;
+    if (input.baseRisk           !== undefined) patch.base_risk           = input.baseRisk;
+    if ('targetWeight'    in input)             patch.target_weight       = input.targetWeight ?? null;
+    if ('fallbackBehavior' in input)            patch.fallback_behavior   = input.fallbackBehavior ?? 'hold';
+    if ('marketStatePresets' in input)          patch.market_state_presets = serializePresets(input.marketStatePresets);
+    if ('triggerDirection' in input)            patch.trigger_direction   = input.triggerDirection ?? 'both';
 
     await ref.update(patch);
     return deserialize(await ref.get());
@@ -136,5 +142,6 @@ function deserialize(doc: admin.firestore.DocumentSnapshot): TagDoc {
           liquidityDry: msp['liquidity_dry'] ?? null,
         }
       : null,
+    triggerDirection: (d['trigger_direction'] as TriggerDirection) ?? 'both',
   };
 }

@@ -11,12 +11,10 @@ export default function MainLayout() {
   const toggle = useCallback(() => setExpanded(e => !e), []);
 
   const location = useLocation();
-  const isFirstRender = useRef(true);
   const [overlay, setOverlay] = useState<'hidden' | 'solid' | 'fading'>('hidden');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (isFirstRender.current) { isFirstRender.current = false; return; }
     if (timerRef.current) clearTimeout(timerRef.current);
     setOverlay('solid');
     timerRef.current = setTimeout(() => {

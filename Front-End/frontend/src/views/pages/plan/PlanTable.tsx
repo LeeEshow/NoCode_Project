@@ -12,15 +12,19 @@ function fmtPct(n: number | null): string {
   return `${sign}${(n * 100).toFixed(2)}%`;
 }
 
-function ReturnCell({ value, pct }: { value: number | null; pct: number | null }) {
+/* 報酬率 + 達標 badge */
+function ReturnCell({ value, pct }: {
+  value: number | null;
+  pct:   number | null;
+}) {
   if (value == null || pct == null) return <span className="future-cell">—</span>;
-  const isUp = value >= 0;
+  const isUp  = value >= 0;
   const color = isUp ? 'var(--up)' : 'var(--down)';
-  const sign = isUp ? '+' : '';
+
   return (
     <div className="plan-return-cell">
       <span className="plan-return-abs" style={{ color }}>
-        {sign}{fmt(value)}
+        {isUp ? '+' : ''}{fmt(value)}
       </span>
       <span className="plan-return-pct" style={{ color }}>
         {fmtPct(pct)}
@@ -29,17 +33,45 @@ function ReturnCell({ value, pct }: { value: number | null; pct: number | null }
   );
 }
 
+/* 執行合計 = 股票 + 外幣 + 流動，與預期總額（實質）對比 */
+function ExecTotalCell({ stockValue, forexValue, cashBalance, expectedTotalReal }: {
+  stockValue:       number | null;
+  forexValue:       number | null;
+  cashBalance:      number | null;
+  expectedTotalReal: number;
+}) {
+  if (stockValue == null || forexValue == null || cashBalance == null) {
+    return <span style={{ color: 'var(--dim)', opacity: 0.6 }}>—</span>;
+  }
+  const total   = stockValue + forexValue + cashBalance;
+  const diff    = total - expectedTotalReal;
+  const isAhead = diff >= 0;
+  const badgeSign = diff > 0 ? '+' : '';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+      <span className="pv">{fmt(total)}</span>
+      <span
+        className="plan-return-badge"
+        style={{ color: isAhead ? 'var(--accent)' : 'var(--up)' }}
+        title="相對計畫預期總額（實質）的差額"
+      >
+        {isAhead ? '▲' : '▼'} {badgeSign}{fmt(diff)}
+      </span>
+    </div>
+  );
+}
+
 interface InvestInputProps {
-  value:     number;
-  disabled:  boolean;
-  onCommit:  (v: number) => void;
+  value:    number;
+  disabled: boolean;
+  onCommit: (v: number) => void;
 }
 
 const fmtNum = (n: number) => n.toLocaleString('zh-TW', { maximumFractionDigits: 0 });
 
 function InvestInput({ value, disabled, onCommit }: InvestInputProps) {
   const [draft, setDraft] = useState(fmtNum(value));
-
   useEffect(() => { setDraft(fmtNum(value)); }, [value]);
 
   const commit = () => {
@@ -70,7 +102,6 @@ interface ReinvestInputProps {
 
 function ReinvestInput({ value, onCommit }: ReinvestInputProps) {
   const [draft, setDraft] = useState(fmtNum(value));
-
   useEffect(() => { setDraft(fmtNum(value)); }, [value]);
 
   const commit = () => {
@@ -94,14 +125,15 @@ function ReinvestInput({ value, onCommit }: ReinvestInputProps) {
 }
 
 export interface PlanTableProps {
-  rows:                 PlanRow[];
-  saving:               boolean;
-  onInvestOverride:     (yearIndex: number, amount: number) => void;
-  onReinvestChange:     (amount: number) => void;
+  rows:             PlanRow[];
+  saving:           boolean;
+  startYear:        number;
+  onInvestOverride: (yearIndex: number, amount: number) => void;
+  onReinvestChange: (amount: number) => void;
 }
 
 export default function PlanTable({
-  rows, saving, onInvestOverride, onReinvestChange,
+  rows, saving, startYear, onInvestOverride, onReinvestChange,
 }: PlanTableProps) {
   const [showPlanDetail, setShowPlanDetail] = useState(false);
 
@@ -110,7 +142,7 @@ export default function PlanTable({
       <table className="plan-table">
         <thead>
           <tr>
-            <th rowSpan={2} style={{ textAlign: 'center', verticalAlign: 'middle' }}>No</th>
+            <th rowSpan={2} style={{ textAlign: 'center', verticalAlign: 'middle', width: 68 }}>年份</th>
             <th colSpan={showPlanDetail ? 4 : 2} className="plan-th-group">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 計畫
@@ -125,22 +157,19 @@ export default function PlanTable({
                 </button>
               </div>
             </th>
-            <th colSpan={7} className="plan-th-group exec">執行</th>
+            <th colSpan={6} className="plan-th-group exec">執行</th>
           </tr>
           <tr>
-            {/* 計畫側 */}
-            {showPlanDetail && <th>計畫資本</th>}
-            {showPlanDetail && <th>計畫投入</th>}
-            <th>預期獲利</th>
-            <th>預期總額</th>
-            {/* 執行側 */}
-            <th className="exec-col exec-first">年份</th>
-            <th className="exec-col">執行資本</th>
-            <th className="exec-col">再投入</th>
-            <th className="exec-col">股票現值</th>
-            <th className="exec-col">外幣資產</th>
-            <th className="exec-col">流動資金</th>
-            <th className="exec-col">報酬率</th>
+            {showPlanDetail && <th style={{ width: 110 }}>計畫資本</th>}
+            {showPlanDetail && <th style={{ width: 110 }}>計畫投入</th>}
+            <th style={{ width: 110 }}>預期獲利</th>
+            <th style={{ width: 130 }}>預期總額</th>
+            <th className="exec-col exec-first" style={{ width: 110 }}>今年再投</th>
+            <th className="exec-col" style={{ width: 110 }}>股票現值</th>
+            <th className="exec-col" style={{ width: 110 }}>外幣資產</th>
+            <th className="exec-col" style={{ width: 110 }}>流動資金</th>
+            <th className="exec-col" style={{ width: 130 }}>執行合計</th>
+            <th className="exec-col" style={{ width: 130 }}>損益</th>
           </tr>
         </thead>
         <tbody>
@@ -153,11 +182,19 @@ export default function PlanTable({
             ].filter(Boolean).join(' ') || undefined;
 
             const ec = (cls: string) => `exec-col ${cls}`.trim();
+            const calYear = row.calendarYear ?? (startYear + row.yearIndex - 1);
 
             return (
               <tr key={row.yearIndex} className={trClass}>
-                {/* No */}
-                <td>{row.yearIndex}</td>
+                {/* 年份 */}
+                <td style={{
+                  color: row.isMilestone
+                    ? undefined
+                    : isFuture ? 'var(--dim)' : 'var(--muted)',
+                  fontWeight: isCurrent ? 600 : undefined,
+                }}>
+                  {calYear}
+                </td>
 
                 {/* 計畫資本 */}
                 {showPlanDetail && (
@@ -169,7 +206,7 @@ export default function PlanTable({
                   </td>
                 )}
 
-                {/* 計畫投入（可 override，過去唯讀） */}
+                {/* 計畫投入 */}
                 {showPlanDetail && (
                   <td>
                     <InvestInput
@@ -191,24 +228,8 @@ export default function PlanTable({
                   </div>
                 </td>
 
-                {/* 年份 */}
+                {/* 今年再投 */}
                 <td className={ec('exec-first')}>
-                  {isFuture
-                    ? <span className="future-cell">—</span>
-                    : <span className="pv" style={{ fontSize: 'var(--text-sm)' }}>{row.calendarYear}</span>
-                  }
-                </td>
-
-                {/* 執行資本 */}
-                <td className={ec('')}>
-                  {isFuture
-                    ? <span className="future-cell">—</span>
-                    : <span className="pv">{fmt(row.execCapital)}</span>
-                  }
-                </td>
-
-                {/* 再投入 */}
-                <td className={ec('')}>
                   {isFuture
                     ? <span className="future-cell">—</span>
                     : isCurrent
@@ -241,11 +262,27 @@ export default function PlanTable({
                   }
                 </td>
 
+                {/* 執行合計 */}
+                <td className={ec('')}>
+                  {isFuture
+                    ? <span className="future-cell">—</span>
+                    : <ExecTotalCell
+                        stockValue={row.stockValue}
+                        forexValue={row.forexValue}
+                        cashBalance={row.cashBalance}
+                        expectedTotalReal={row.expectedTotalReal}
+                      />
+                  }
+                </td>
+
                 {/* 報酬率 */}
                 <td className={ec('')}>
                   {isFuture
                     ? <span className="future-cell">—</span>
-                    : <ReturnCell value={row.returnValue} pct={row.returnPct} />
+                    : <ReturnCell
+                        value={row.returnValue}
+                        pct={row.returnPct}
+                      />
                   }
                 </td>
               </tr>

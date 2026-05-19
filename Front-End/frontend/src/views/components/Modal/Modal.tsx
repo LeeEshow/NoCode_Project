@@ -8,17 +8,18 @@ export interface ModalProps {
   onClose: () => void;
   title?: string;
   size?: 'sm' | 'md' | 'lg';
+  className?: string;
   footer?: ReactNode;
   children: ReactNode;
 }
 
-export default function Modal({ open, onClose, title, size = 'md', footer, children }: ModalProps) {
+export default function Modal({ open, onClose, title, size = 'md', className, footer, children }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={isOpen => { if (!isOpen) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="ft-modal-backdrop">
           <Dialog.Content
-            className={`ft-modal ft-modal--${size}`}
+            className={`ft-modal ft-modal--${size}${className ? ` ${className}` : ''}`}
             aria-describedby={undefined}
           >
             {title ? (

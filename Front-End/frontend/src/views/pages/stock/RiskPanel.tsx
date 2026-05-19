@@ -8,6 +8,7 @@ import type {
 } from '../../../types';
 import { calcTagDailyReturnsFromSparklines, buildCorrelationEntries } from '../../../utils/correlationCalc';
 import TagManagerTab from './TagManagerTab';
+import Modal from '../../components/Modal';
 import { toast } from '../../components/Toast';
 
 interface Props {
@@ -123,9 +124,10 @@ function formatSnapDate(dateStr: string): string {
 }
 
 interface RhoCalcState {
-  calculating: boolean;
-  preview:     CorrelationEntry[] | null;
-  bigDiffKeys: Set<string>;
+  calculating:      boolean;
+  preview:          CorrelationEntry[] | null;
+  bigDiffKeys:      Set<string>;
+  pendingRebalance: boolean;
 }
 
 export default function RiskPanel({
@@ -147,8 +149,9 @@ export default function RiskPanel({
   const [expanded,  setExpanded]  = useState(false);
   const [activeTab, setActiveTab] = useState<'tags' | 'settings'>('tags');
   const [localRho,  setLocalRho]  = useState<Map<string, string>>(new Map());
+
   const [rhoCalc,   setRhoCalc]   = useState<RhoCalcState>({
-    calculating: false, preview: null, bigDiffKeys: new Set(),
+    calculating: false, preview: null, bigDiffKeys: new Set(), pendingRebalance: false,
   });
 
   useEffect(() => {
@@ -176,13 +179,11 @@ export default function RiskPanel({
     onSaveCorrelationMatrix(entries);
   }
 
-  function handleAutoCalcRho() {
+  function runRhoCalc(pendingRebalance: boolean) {
     if (tags.length < 2 || holdings.length === 0) return;
     setRhoCalc(s => ({ ...s, calculating: true, preview: null, bigDiffKeys: new Set() }));
-
-    const tagReturns = calcTagDailyReturnsFromSparklines(holdings, sparklines);
-    const newEntries = buildCorrelationEntries(tags, tagReturns);
-
+    const tagReturns  = calcTagDailyReturnsFromSparklines(holdings, sparklines);
+    const newEntries  = buildCorrelationEntries(tags, tagReturns);
     const currentMap  = new Map(correlationMatrix.map(e => [rhoKey(e.tagA, e.tagB), e.rho]));
     const bigDiffKeys = new Set<string>();
     for (const e of newEntries) {
@@ -190,19 +191,23 @@ export default function RiskPanel({
       const oldRho = currentMap.get(k) ?? 1;
       if (Math.abs(e.rho - oldRho) > 0.2) bigDiffKeys.add(k);
     }
-
-    setRhoCalc({ calculating: false, preview: newEntries, bigDiffKeys });
+    setRhoCalc({ calculating: false, preview: newEntries, bigDiffKeys, pendingRebalance });
   }
+
+  function handleAutoCalcRho()             { runRhoCalc(false); }
+  function handleAutoCalcRhoAndRebalance() { runRhoCalc(true);  }
 
   async function handleConfirmRho() {
     if (!rhoCalc.preview) return;
     await onSaveCorrelationMatrix(rhoCalc.preview);
     if (rhoCalc.bigDiffKeys.size > 0) onCorrelationUpdated();
-    setRhoCalc({ calculating: false, preview: null, bigDiffKeys: new Set() });
+    const pending = rhoCalc.pendingRebalance;
+    setRhoCalc({ calculating: false, preview: null, bigDiffKeys: new Set(), pendingRebalance: false });
+    if (pending) onTriggerRebalance();
   }
 
   function handleCancelRho() {
-    setRhoCalc({ calculating: false, preview: null, bigDiffKeys: new Set() });
+    setRhoCalc({ calculating: false, preview: null, bigDiffKeys: new Set(), pendingRebalance: false });
   }
 
   function handleToggle() {
@@ -216,22 +221,51 @@ export default function RiskPanel({
     const pad = (n: number) => String(n).padStart(2, '0');
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
+    const tagMap = new Map(tags.map(t => [t.name, t]));
+
+    function dirLabel(dir: string | undefined): string {
+      if (dir === 'upper_only') return '僅上限↓';
+      if (dir === 'lower_only') return '僅下限↑';
+      return '雙向±';
+    }
+
     const lines: string[] = [
       '=== 風險 / 再平衡配置報告 ===',
       `產生時間：${timestamp}`,
       '',
       '【Tag 標籤配置】',
-      '標籤名稱\t當前配比\t目標配置\t偏差\t狀態',
+      '標籤名稱\t當前配比\t目標配置\t觸發限制\t偏差\t狀態',
     ];
 
     for (const s of tagStats) {
       const actual = `${s.actualWeight.toFixed(1)}%`;
       const target = s.targetWeight != null ? `${s.targetWeight.toFixed(1)}%` : '—';
+      const dir    = dirLabel(tagMap.get(s.tagName)?.triggerDirection);
       const delta  = s.targetWeight != null
         ? `${s.delta >= 0 ? '+' : ''}${s.delta.toFixed(1)}%`
         : '—';
       const status = s.targetWeight == null ? '無目標' : s.triggered ? '⚠ 偏差觸發' : '正常';
-      lines.push(`${s.tagName}\t${actual}\t${target}\t${delta}\t${status}`);
+      lines.push(`${s.tagName}\t${actual}\t${target}\t${dir}\t${delta}\t${status}`);
+    }
+
+    /* 相關性矩陣 */
+    if (tags.length >= 2) {
+      lines.push('', '【Tag 相關性矩陣（ρ）】');
+
+      const header = '\t' + tags.map(t => t.name).join('\t');
+      lines.push(header);
+
+      for (const ta of tags) {
+        const cells = tags.map(tb => {
+          if (ta.name === tb.name) return '1.00';
+          const entry = correlationMatrix.find(
+            e => (e.tagA === ta.name && e.tagB === tb.name) ||
+                 (e.tagA === tb.name && e.tagB === ta.name)
+          );
+          return entry != null ? entry.rho.toFixed(2) : '—';
+        });
+        lines.push(`${ta.name}\t${cells.join('\t')}`);
+      }
     }
 
     lines.push('', '【股票 Tag 配置】', '代碼\t名稱\t標籤（持股權重%）');
@@ -273,10 +307,6 @@ export default function RiskPanel({
   const liqVal    = Math.round(liquidityCapRatio * 100);
   const concVal   = Math.round(concentrationLimit * 100);
 
-  const rhoSpinner = (
-    <span style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-  );
-
   return (
     <div className="ft-panel" style={{ marginBottom: 16 }}>
 
@@ -292,70 +322,56 @@ export default function RiskPanel({
           onClick={handleToggle}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggle(); } }}
           style={{
-            display: 'flex', alignItems: 'center', gap: 50,
-            flex: 1, cursor: 'pointer', flexWrap: 'wrap',
+            display: 'flex', alignItems: 'center', gap: 12,
+            flex: 1, cursor: 'pointer', flexWrap: 'nowrap',
             fontSize: 'var(--text-sm)', color: 'var(--text)',
+            overflow: 'hidden', minWidth: 0,
           }}
         >
-          {/* 標題 + Risk 合併群組，兩者間距 10px */}
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: 'var(--muted)' }}>{expanded ? '▲' : '▼'}</span>
-              <span
-                onClick={handleCopyClick}
-                title="點擊複製配置報告"
-                style={{
-                  fontWeight: 500, whiteSpace: 'nowrap', color: 'var(--text)',
-                  cursor: 'copy', userSelect: 'none',
-                  borderBottom: '1px dashed var(--dim)',
-                  paddingBottom: 1,
-                }}
-              >
-                風險/再平衡模組
-              </span>
+          {/* 標題 */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <span style={{ color: 'var(--muted)' }}>{expanded ? '▲' : '▼'}</span>
+            <span
+              onClick={handleCopyClick}
+              title="點擊複製配置報告"
+              style={{
+                fontWeight: 500, whiteSpace: 'nowrap', color: 'var(--text)',
+                cursor: 'copy', userSelect: 'none',
+                borderBottom: '1px dashed var(--dim)',
+                paddingBottom: 1,
+              }}
+            >
+              風險/再平衡模組
             </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: 'var(--dim)' }}>·</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-                <span style={{ color: 'var(--muted)' }}>Risk：</span>
-                <span
-                  aria-live="polite"
-                  style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}
-                >
-                  {riskLabel}
-                </span>
-                {/* Mini 進度條（max = 2.0，超過 cap 至滿格）*/}
-                {riskBarPct > 0 && (
-                  <span
-                    aria-hidden="true"
-                    style={{ display: 'inline-flex', alignItems: 'center', width: 56, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}
-                  >
-                    <span style={{ width: `${riskBarPct}%`, height: '100%', background: riskBarColor, borderRadius: 3, transition: 'width 0.4s ease, background 0.4s ease' }} />
-                  </span>
-                )}
-              </span>
-            </span>
-          </span>{/* end 標題 + Risk 合併群組 */}
-          {/* 市場狀態 Badge */}
-          <span style={{
-            border: '1px solid var(--border)',
-            color: 'var(--muted)', borderRadius: 'var(--radius-sm)',
-            fontSize: 'var(--text-sm)', padding: '2px 10px', whiteSpace: 'nowrap',
-          }}>
-            {marketStateLabel}
           </span>
-          {/* 偏差標籤數 */}
-          {deviationCount > 0 && (
-            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
-              ⚠ {deviationCount} 標籤偏差
+          {/* {市場狀態}：進度條 {風險值} {標籤偏差說明} */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+            <span style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{marketStateLabel}：</span>
+            {riskBarPct > 0 && (
+              <span
+                aria-hidden="true"
+                style={{ display: 'inline-flex', alignItems: 'center', width: 56, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}
+              >
+                <span style={{ width: `${riskBarPct}%`, height: '100%', background: riskBarColor, borderRadius: 3, transition: 'width 0.4s ease, background 0.4s ease' }} />
+              </span>
+            )}
+            <span
+              aria-live="polite"
+              style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+            >
+              {riskLabel}
             </span>
-          )}
-          {/* 每月再平衡提醒（僅收折時顯示）*/}
-          {!expanded && needsMonthlyReminder && (
-            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
-              ⏰ 本月尚未再平衡
-            </span>
-          )}
+            {deviationCount > 0 && (
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 24 }}>
+                ⚠ {deviationCount} 標籤偏差
+              </span>
+            )}
+            {!expanded && needsMonthlyReminder && (
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
+                ⏰ 本月尚未再平衡
+              </span>
+            )}
+          </span>
         </div>
 
         {/* 右側：快照下拉（不觸發展開/收折）*/}
@@ -475,6 +491,12 @@ export default function RiskPanel({
                 sparklines={sparklines}
                 onRecalculateAll={onRecalculateAll}
                 recalculating={recalculating}
+                onTriggerRebalance={onTriggerRebalance}
+                calculating={calculating}
+                correlationUpdated={correlationUpdated}
+                onAutoCalcRho={handleAutoCalcRho}
+                onAutoCalcRhoAndRebalance={handleAutoCalcRhoAndRebalance}
+                rhoCalcCalculating={rhoCalc.calculating}
               />
             </div>
 
@@ -531,7 +553,7 @@ export default function RiskPanel({
 
                 {/* 基礎偏離門檻 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span id="lbl-risk-threshold" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', width: 80 }}>
+                  <span id="lbl-risk-threshold" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 104, flexShrink: 0 }}>
                     基礎偏離門檻
                     <SettingTooltip content="Tag 實際配置偏離目標幾 % 才觸發再平衡建議。設越小越敏感，設越大表示容忍更多偏差" />
                   </span>
@@ -554,7 +576,7 @@ export default function RiskPanel({
 
                 {/* 集中度上限 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span id="lbl-conc-limit" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', width: 80 }}>
+                  <span id="lbl-conc-limit" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 104, flexShrink: 0 }}>
                     集中度上限
                     <SettingTooltip content="同性質 Tag 合計持股比例的警戒線，超過此值代表資產過度集中在同類標的" />
                   </span>
@@ -577,7 +599,7 @@ export default function RiskPanel({
 
                 {/* 流動性上限 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span id="lbl-liq-cap" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', width: 80 }}>
+                  <span id="lbl-liq-cap" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 104, flexShrink: 0 }}>
                     流動性上限
                     <SettingTooltip content="單次再平衡每檔的交易量，不超過該股平均日成交量的這個比例，避免大單衝擊市場價格" />
                   </span>
@@ -600,7 +622,7 @@ export default function RiskPanel({
 
                 {/* ADV 計算天數 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label htmlFor="adv-days" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', width: 80 }}>
+                  <label htmlFor="adv-days" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 104, flexShrink: 0 }}>
                     ADV 計算天數
                     <SettingTooltip content="計算平均日成交量時回溯幾天。天數多較平滑，天數少較貼近近期真實成交狀況" />
                   </label>
@@ -655,160 +677,136 @@ export default function RiskPanel({
                       Tag 相關性矩陣
                       <SettingTooltip content="各 Tag 之間漲跌的連動程度（ρ）。越接近 1 代表同漲同跌、分散效果差；越接近 0 代表彼此獨立" />
                     </span>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      style={{ fontSize: 'var(--text-xs)', padding: '3px 10px' }}
-                      disabled={rhoCalc.calculating || holdings.length === 0}
-                      onClick={handleAutoCalcRho}
-                    >
-                      {rhoCalc.calculating ? rhoSpinner : '重新計算 ρ'}
-                    </button>
                   </div>
 
-                  {rhoCalc.preview ? (
-                    <div>
-                      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 8 }}>
-                        計算完成，橘色表示與現有值差距 &gt; 0.2，請確認後儲存。
-                      </p>
-                      <div style={{ overflowX: 'auto', marginBottom: 10 }}>
-                        <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
-                          <thead>
-                            <tr>
-                              <th style={{ padding: '4px 8px', color: 'var(--dim)', fontWeight: 400 }} />
-                              {tags.map(t => (
-                                <th key={t.id} style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                  {t.name}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {tags.map((ta, i) => (
-                              <tr key={ta.id}>
-                                <td style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>{ta.name}</td>
-                                {tags.map((tb, j) => {
-                                  if (j < i) return <td key={tb.id} />;
-                                  if (j === i) return (
-                                    <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
-                                      <span style={{ color: 'var(--dim)', fontFamily: 'var(--font-mono)' }}>1.00</span>
-                                    </td>
-                                  );
-                                  const entry = rhoCalc.preview!.find(e =>
-                                    (e.tagA === ta.name && e.tagB === tb.name) ||
-                                    (e.tagA === tb.name && e.tagB === ta.name)
-                                  );
-                                  const isBig = rhoCalc.bigDiffKeys.has(rhoKey(ta.name, tb.name));
-                                  return (
-                                    <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
-                                      <span style={{
-                                        fontFamily: 'var(--font-mono)',
-                                        color: isBig ? 'var(--text)' : 'var(--muted)',
-                                        background: isBig ? 'rgba(200,140,60,0.18)' : 'transparent',
-                                        padding: isBig ? '1px 4px' : undefined,
-                                        borderRadius: isBig ? 3 : undefined,
-                                      }}>
-                                        {entry?.rho.toFixed(2) ?? '—'}
-                                      </span>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="btn-ghost btn-ghost--accent" style={{ fontSize: 'var(--text-xs)', padding: '3px 12px' }} onClick={handleConfirmRho}>
-                          確認儲存
-                        </button>
-                        <button className="btn-ghost" style={{ fontSize: 'var(--text-xs)', padding: '3px 12px' }} onClick={handleCancelRho}>
-                          取消
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)', tableLayout: 'auto' }}>
-                        <thead>
-                          <tr>
-                            <th style={{ padding: '4px 8px', color: 'var(--dim)', fontWeight: 400 }} />
-                            {tags.map(t => (
-                              <th key={t.id} style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                {t.name}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tags.map((ta, i) => (
-                            <tr key={ta.id}>
-                              <td style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>{ta.name}</td>
-                              {tags.map((tb, j) => {
-                                if (j < i) return <td key={tb.id} />;
-                                if (j === i) return (
-                                  <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
-                                    <span style={{ color: 'var(--dim)', fontFamily: 'var(--font-mono)' }}>1.00</span>
-                                  </td>
-                                );
-                                return (
-                                  <td key={tb.id} style={{ padding: '4px 6px' }}>
-                                    <input
-                                      type="number"
-                                      inputMode="decimal"
-                                      min={-1} max={1} step={0.01}
-                                      value={getRho(ta.name, tb.name)}
-                                      onChange={e => setRho(ta.name, tb.name, e.target.value)}
-                                      onBlur={handleMatrixBlur}
-                                      style={{
-                                        width: 60, textAlign: 'center',
-                                        background: 'var(--surface)', border: '1px solid var(--border)',
-                                        borderRadius: 'var(--radius-sm)', color: 'var(--text)',
-                                        fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                                        padding: '2px 4px',
-                                      }}
-                                    />
-                                  </td>
-                                );
-                              })}
-                            </tr>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)', tableLayout: 'auto' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ padding: '4px 8px', color: 'var(--dim)', fontWeight: 400 }} />
+                          {tags.map(t => (
+                            <th key={t.id} style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                              {t.name}
+                            </th>
                           ))}
-                        </tbody>
-                      </table>
-                      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 6 }}>
-                        ρ 範圍 −1 ～ 1；未填寫預設 1.0（最保守估計）。離開欄位後自動儲存。
-                      </p>
-                    </div>
-                  )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tags.map((ta, i) => (
+                          <tr key={ta.id}>
+                            <td style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>{ta.name}</td>
+                            {tags.map((tb, j) => {
+                              if (j < i) return <td key={tb.id} />;
+                              if (j === i) return (
+                                <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                  <span style={{ color: 'var(--dim)', fontFamily: 'var(--font-mono)' }}>1.00</span>
+                                </td>
+                              );
+                              return (
+                                <td key={tb.id} style={{ padding: '4px 6px' }}>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={-1} max={1} step={0.01}
+                                    value={getRho(ta.name, tb.name)}
+                                    onChange={e => setRho(ta.name, tb.name, e.target.value)}
+                                    onBlur={handleMatrixBlur}
+                                    style={{
+                                      width: 60, textAlign: 'center',
+                                      background: 'var(--surface)', border: '1px solid var(--border)',
+                                      borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+                                      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                                      padding: '2px 4px',
+                                    }}
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 6 }}>
+                      ρ 範圍 −1 ～ 1；未填寫預設 1.0（最保守估計）。離開欄位後自動儲存。
+                    </p>
+                  </div>
                 </div>
               )}
 
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 16px' }} />
-
-              {/* 計算再平衡按鈕 + 相關性更新警示 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="btn-ghost btn-ghost--accent"
-                  onClick={onTriggerRebalance}
-                  disabled={calculating || marketStateChanging}
-                  style={{ minWidth: 108 }}
-                >
-                  {calculating
-                    ? <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle' }} />
-                    : '計算再平衡'}
-                </button>
-                {correlationUpdated && (
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--up)', whiteSpace: 'nowrap' }}>
-                    ⚠ 相關性已更新，建議重新計算再平衡
-                  </span>
-                )}
-              </div>
             </div>
 
           </div>
         </Tooltip.Provider>
         </div>
       </div>
+
+      {/* ρ 計算結果預覽 Modal */}
+      <Modal
+        open={rhoCalc.preview != null}
+        onClose={handleCancelRho}
+        title="Tag 矩陣 ρ 計算結果"
+        size="md"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn-ghost" onClick={handleCancelRho}>取消</button>
+            <button className="btn-ghost btn-ghost--accent" onClick={handleConfirmRho}>
+              更新並儲存{rhoCalc.pendingRebalance ? '，並計算再平衡' : ''}
+            </button>
+          </div>
+        }
+      >
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 12 }}>
+          橘色表示與現有值差距 &gt; 0.2
+          {rhoCalc.pendingRebalance && '；確認後將自動觸發再平衡計算。'}
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
+            <thead>
+              <tr>
+                <th style={{ padding: '4px 8px', color: 'var(--dim)', fontWeight: 400 }} />
+                {tags.map(t => (
+                  <th key={t.id} style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    {t.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tags.map((ta, i) => (
+                <tr key={ta.id}>
+                  <td style={{ padding: '4px 8px', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>{ta.name}</td>
+                  {tags.map((tb, j) => {
+                    if (j < i) return <td key={tb.id} />;
+                    if (j === i) return (
+                      <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                        <span style={{ color: 'var(--dim)', fontFamily: 'var(--font-mono)' }}>1.00</span>
+                      </td>
+                    );
+                    const entry = rhoCalc.preview?.find(e =>
+                      (e.tagA === ta.name && e.tagB === tb.name) ||
+                      (e.tagA === tb.name && e.tagB === ta.name)
+                    );
+                    const isBig = rhoCalc.bigDiffKeys.has(rhoKey(ta.name, tb.name));
+                    return (
+                      <td key={tb.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          color: isBig ? 'var(--text)' : 'var(--muted)',
+                          background: isBig ? 'rgba(200,140,60,0.18)' : 'transparent',
+                          padding: isBig ? '1px 4px' : undefined,
+                          borderRadius: isBig ? 3 : undefined,
+                        }}>
+                          {entry?.rho.toFixed(2) ?? '—'}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
     </div>
   );
 }

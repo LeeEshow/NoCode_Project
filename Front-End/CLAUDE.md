@@ -56,6 +56,27 @@ src/
 - **ViewModel**：`useState` + `useCallback`，暴露 `loading / saving / error` 及 CRUD 方法。每個頁面自行 instantiate，不跨頁共用。
 - **View**：不直接呼叫 API，所有副作用透過 ViewModel。
 
+### ViewModel 清單
+
+| Hook | 頁面 / 用途 |
+|------|------------|
+| `useHoldingsViewModel` | 持股 CRUD、樂觀排序、即時報價輪詢 |
+| `useWatchlistViewModel` | 關注清單 CRUD、樂觀排序 |
+| `useTagViewModel` | Tag CRUD、AssetTag、MarketState、相關性矩陣、批次重算動態風險 |
+| `useRebalanceRulesViewModel` | 再平衡規則 CRUD |
+| `useRebalanceSnapshotViewModel` | 再平衡快照（建立 / 列表 / 選取） |
+| `useTransactionsViewModel` | 交易紀錄 CRUD（含持股展開列） |
+| `useStockListViewModel` | 股票搜尋 / 市場指數 |
+| `useMarketViewModel` | 法人籌碼、基本面等市場資料 |
+| `useAssetsViewModel` | 外幣 / 債券 / 海外股資產 CRUD |
+| `usePlanViewModel` | 年度投報計畫 CRUD |
+| `useReportViewModel` | 績效快照查詢（含日期範圍、分段） |
+| `usePreferencesViewModel` | 使用者偏好雙層持久化（localStorage + 後端） |
+| `useEnsurePlanStore` | 初始化 `planStore`（每頁掛載一次） |
+| `useRiskViewModel` | **純計算**：riskTotal、tagStats 偏差、重疊群組 |
+| `useRebalanceViewModel` | **純計算**：volatilityFactor、dynamicThreshold、再平衡建議 |
+| `useAiReportViewModel` | AI 每日早報：`loadLatest` / `loadByDate`、`report` / `hasReport` / `availableDates` / `loading` / `error`；由 `PanelHeader` instantiate，資料向下傳入 `AiReportModal` |
+
 ### 純計算 ViewModel（副作用為零）
 
 這類 hook 不 fetch、不持有 `loading/error`，完全以 `useMemo` 從傳入參數計算，可在元件內多次呼叫無副作用：
@@ -83,6 +104,7 @@ src/
 |-------|------|
 | `planStore` | 當年度原始輸入：`execCapital / reinvest / forexValue / liveStockValue`。由 `useEnsurePlanStore` 初始化一次；`StockOverviewPage` 在 `holdings.items` 變動後呼叫 `updateStockValue()` 同步。整年報酬率以 `useMemo` 在 `StockOverviewPage` 計算，**不存於 store** |
 | `snapshotStore` | 流動資金 `cashBalance`，今日快照優先，無則 fallback 最近一筆。`PanelHeader` 掛載時自動呼叫 `load()`，含 `PanelHeader` 的頁面無需另行觸發 |
+| `settingsStore` | `aiReportEnabled`（布林）：控制 AI 早報按鈕在 `PanelHeader` 的顯示與否。`PanelHeader` 掛載時呼叫 `load()`（已載入則跳過）；`SettingsModal` 的 toggle 呼叫 `setAiReportEnabled(value)`（樂觀更新 + PUT /settings，失敗自動 rollback）。兩端訂閱同一 store，切換後立即反映，無需重新整理 |
 
 ### 使用者偏好（`usePreferencesViewModel`）
 
@@ -125,6 +147,7 @@ useEffect(() => {
 - **全局 Tag（TagDTO）** 由 `useTagViewModel` 管理，包含 CRUD（`/tags`）、AssetTag、MarketState 切換、相關性矩陣、`recalculateDynamicRisk`。
 - **Risk 計算**：`useRiskViewModel` 依 `correlationEntries` 建 ρ 查找表，未設定 pair 預設 ρ=1.0。`dynamicRisk` 優先，`targetWeight` 為 null 的 Tag 不計算 delta/triggered。
 - **相關性矩陣**：`utils/correlationCalc.ts` 提供 `calcTagDailyReturnsFromSparklines`（sparklines→日報酬序列）與 `buildCorrelationEntries`（計算 Pearson ρ）；`stdDev` 也從此處 export。
+- **交易時段判斷**：`utils/tradingHours.ts` 的 `isTradingHours()` 回傳目前是否為台股盤中（週一至五 09:00–13:30 台灣時間）；報價輪詢 callback 內必須呼叫此函式，不可在外層判斷（stale closure 問題）。
 
 ### 頁面切換動畫（ECGLoader + Overlay）
 
@@ -135,10 +158,12 @@ useEffect(() => {
 - 700ms 後以 300ms 淡出，新頁面才顯露
 - 新頁面元件在背景靜默 mount + fetch，遮罩提供視覺緩衝
 
-**2. ECG 心電圖動畫（`views/components/ECGLoader/ECGLoader.tsx`）**
+**2. 股價折線動畫（`views/components/ECGLoader/ECGLoader.tsx`）**
 - 固定定位於頁面正中央（z-index 9999），顯示在遮罩上方
-- PQRST 波形 SVG 以 `clip-path: inset(0 100% 0 0)` → `inset(0 0% 0 0)` 做左→右展開
-- 掃描頭（金色豎線）同步右移
+- xorshift32 偽隨機 + 動量衰減 + 均值回歸，在 module 載入時生成 300 點股價走勢路徑（固定 seed，結果一致）
+- SVG 以 `clip-path: inset(0 100% 0 0)` → `inset(0 0% 0 0)` 左→右展開；路徑下方有半透明漸層填色
+- 紅色發光圓點（`.ecg-loader__dot`）跟隨趨勢從左下往右上移動，模擬行情頭燈
+- 底部有刻度點（每 40 SVG 單位一個），同步隨 clip-path 顯現
 - 總時長：500ms 展開 + 200ms 淡出 = 700ms
 - 首次 mount 不觸發（`isFirstRender` ref guard）
 - **注意**：使用 `useLocation()`，不可改用 `useNavigation()`（需 data router，本專案用 `<BrowserRouter>`）
@@ -195,6 +220,7 @@ useEffect(() => {
 | `.txt-up / .txt-down / .txt-flat` | 漲跌色 utility |
 | `.stock-code / .stock-name` | 代碼（粗體）/ 名稱（小字 muted） |
 | `.drag-handle` | 拖拉控點 |
+| `.ft-toggle` / `.ft-toggle__track` | CSS-only toggle switch（hidden checkbox + label trick）；`input:checked` 時 track 變 `--accent-bg`，thumb 平移 16px |
 
 Icon：`<Icon name="edit" size={18} />` 包裝 Material Symbols Rounded。
 
@@ -204,7 +230,7 @@ Icon：`<Icon name="edit" size={18} />` 包裝 Material Symbols Rounded。
 
 | Primitive | 使用位置 | CSS class |
 |-----------|----------|-----------|
-| `@radix-ui/react-dialog` | `Modal.tsx` | `.ft-modal-backdrop` / `.ft-modal` / `.ft-modal--{sm,md,lg}` / `.ft-modal__header` / `.ft-modal__body` / `.ft-modal__footer` |
+| `@radix-ui/react-dialog` | `Modal.tsx` | `.ft-modal-backdrop` / `.ft-modal` / `.ft-modal--{sm,md,lg}` / `.ft-modal__header` / `.ft-modal__body` / `.ft-modal__footer`；接受可選 `className` prop 可附加自訂 class（如 `SettingsModal` 的 `settings-modal` 覆寫固定 80vw×80vh） |
 | `@radix-ui/react-slider` | `RiskPanel.tsx` | `.rd-slider` / `.rd-slider__track` / `.rd-slider__range` / `.rd-slider__thumb` |
 | `@radix-ui/react-select` | `RiskPanel.tsx` | `.rd-select-trigger` / `.rd-select-content` / `.rd-select-item` |
 | `@radix-ui/react-tooltip` | `RiskPanel.tsx` | inline style，`appendTo: document.body` |
@@ -228,7 +254,8 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 
 | 元件 | 用途 |
 |------|------|
-| `PanelHeader` | 各頁頂部橫幅；掛載時自動呼叫 `snapshotStore.load()` |
+| `PanelHeader` | 各頁頂部橫幅；掛載時自動呼叫 `snapshotStore.load()` 與 `settingsStore.load()`；`settingsStore.aiReportEnabled` 為 true 時顯示 AI 早報按鈕 |
+| `AiReportModal` | AI 每日早報 Modal（size="lg"）；由 `PanelHeader` 持有開關狀態與 ViewModel，Modal 為純展示層接受 props。**重要**：Radix Dialog 關閉動畫期間元件仍 rendered，關閉時清空的 state 禁止用非空斷言（`!`），一律用可選串鏈（`?.`），否則會 crash 造成黑畫面 |
 | `ECGLoader` | 頁面切換心電圖動畫，位於 `views/components/ECGLoader/`，由 `MainLayout` 掛載 |
 | `StockExpandPanel` | 持股 / 關注清單展開列，含 K線 / 法人基本面 / 交易紀錄 / 標籤設定 四個 Tab |
 | `Modal` | Radix Dialog 封裝（sm/md/lg，ESC 關閉，backdrop blur 動畫） |
@@ -241,6 +268,8 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 | `MultiLineChart` | 多系列折線圖（ECharts），`color: chartColors` 全域調色板 |
 | `MarketIndicesRow` | 頁頂市場指數橫列 |
 | `RiskPanel` | 風險再平衡模組（可收折），使用 Radix Slider / Select，設定區採 2 欄 CSS Grid |
+
+**SettingsModal 佈局**：採分頁 Tab（資料管理 / AI 早報），內容用 `.settings-section` / `.settings-row` 扁平 rows，**不使用 `.ft-panel`**。CSS 定義於 `views/layout/SettingsModal.css`；tab panel 用 HTML `hidden` 屬性切換（非條件渲染），確保 textarea 內容在切換 tab 時不遺失。
 
 **ReportPage 圖表**（非共用元件，位於 `pages/report/ReportChart.tsx`，已加 `React.memo`）：Bar（累計投入）+ Line（報酬率）混合 ECharts 圖，雙 Y 軸，支援雙段比較，含 markLine 目標線。
 
