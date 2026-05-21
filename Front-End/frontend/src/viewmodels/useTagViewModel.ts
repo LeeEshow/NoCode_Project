@@ -52,7 +52,7 @@ export function useTagViewModel() {
     Promise.all([fetchTags(), fetchAssetTags(), fetchMarketState()])
       .then(([tags, assetTags, { current: marketState }]) => {
         if (cancelled) return;
-        setState({ tags, assetTags, correlationMatrix: [], marketState, loading: false, saving: false, marketStateChanging: false, error: null });
+        setState({ tags, assetTags, correlationMatrix: [], marketState, loading: false, correlationLoading: false, saving: false, marketStateChanging: false, error: null });
       })
       .catch(err => {
         if (cancelled) return;
