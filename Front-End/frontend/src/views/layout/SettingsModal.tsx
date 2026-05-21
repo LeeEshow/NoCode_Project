@@ -1,11 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Modal from '../components/Modal/Modal';
 import Icon from '../components/Icon';
-import { TextareaInput } from '../components/FormInputs';
 import { useStockListViewModel } from '../../viewmodels/useStockListViewModel';
 import { fetchSnapshot, triggerSnapshotRecord } from '../../models/snapshotModel';
-import { fetchSettings, updateSettings } from '../../models/settingsModel';
-import { useSettingsStore } from '../../stores/settingsStore';
 import { toast } from '../components/Toast';
 import type { DailySnapshotDTO } from '../../types';
 import './SettingsModal.css';
@@ -61,9 +58,9 @@ function StockListSection() {
 }
 
 function SnapshotSection() {
-  const [snapshot, setSnapshot]     = useState<DailySnapshotDTO | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [recording, setRecording]   = useState(false);
+  const [snapshot, setSnapshot]   = useState<DailySnapshotDTO | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [recording, setRecording] = useState(false);
 
   const loadToday = useCallback(async () => {
     setLoading(true);
@@ -120,132 +117,16 @@ function SnapshotSection() {
   );
 }
 
-function AiSystemPromptSection() {
-  const { aiReportEnabled, setAiReportEnabled } = useSettingsStore();
-  const [prompt, setPrompt]       = useState('');
-  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const debounceRef               = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchSettings()
-      .then(s => {
-        setPrompt(s.aiSystemPrompt ?? '');
-        setUpdatedAt(s.aiSystemPromptUpdatedAt ?? null);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleBlur = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      setSaving(true);
-      try {
-        const updated = await updateSettings({ aiSystemPrompt: prompt });
-        setUpdatedAt(updated.aiSystemPromptUpdatedAt ?? null);
-      } catch {
-        toast.error('儲存失敗，請稍後再試');
-      } finally {
-        setSaving(false);
-      }
-    }, 500);
-  }, [prompt]);
-
-  return (
-    <div className="settings-section">
-      <div className="settings-row">
-        <label htmlFor="ai-report-enabled" style={{ flex: 1, fontSize: 'var(--text-sm)', color: 'var(--text)', cursor: 'pointer' }}>
-          啟用 AI 每日早報
-        </label>
-        {saving && (
-          <Icon name="progress_activity" size={13} style={{ animation: 'spin 1s linear infinite', color: 'var(--dim)' }} />
-        )}
-        <label className="ft-toggle">
-          <input
-            id="ai-report-enabled"
-            type="checkbox"
-            checked={aiReportEnabled}
-            onChange={e => setAiReportEnabled(e.target.checked)}
-          />
-          <span className="ft-toggle__track" />
-        </label>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <div className="settings-prompt-label">System Prompt</div>
-        <TextareaInput
-          rows={10}
-          value={loading ? '' : prompt}
-          disabled={loading || !aiReportEnabled}
-          onChange={e => setPrompt(e.target.value)}
-          onBlur={handleBlur}
-          placeholder="輸入 AI 早報的 System Prompt…"
-          aria-label="AI 早報 System Prompt"
-        />
-        <div className="settings-prompt-meta">
-          上次更新：{formatDateTime(updatedAt)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type SettingsTab = 'data' | 'ai';
-
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
 }
 
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('data');
-
   return (
     <Modal open={open} onClose={onClose} title="設定" size="md" className="settings-modal">
-      <div role="tablist" aria-label="設定分類" className="settings-tabs">
-        <button
-          id="tab-data"
-          role="tab"
-          aria-selected={activeTab === 'data'}
-          aria-controls="panel-data"
-          className="settings-tab"
-          onClick={() => setActiveTab('data')}
-        >
-          資料管理
-        </button>
-        <button
-          id="tab-ai"
-          role="tab"
-          aria-selected={activeTab === 'ai'}
-          aria-controls="panel-ai"
-          className="settings-tab"
-          onClick={() => setActiveTab('ai')}
-        >
-          AI 早報
-        </button>
-      </div>
-
-      <div
-        id="panel-data"
-        role="tabpanel"
-        aria-labelledby="tab-data"
-        hidden={activeTab !== 'data'}
-      >
-        <StockListSection />
-        <SnapshotSection />
-      </div>
-
-      <div
-        id="panel-ai"
-        role="tabpanel"
-        aria-labelledby="tab-ai"
-        hidden={activeTab !== 'ai'}
-      >
-        <AiSystemPromptSection />
-      </div>
+      <StockListSection />
+      <SnapshotSection />
     </Modal>
   );
 }

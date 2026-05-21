@@ -351,6 +351,8 @@ export interface DailySnapshotDTO {
   note?:            string;
   recordedAt?:      string;
   holdings?:        SnapshotHoldingDTO[];
+  vix?:             number | null;
+  marketStateAuto?: MarketState | null;
 }
 
 export interface UpdateSnapshotPayload {
@@ -453,42 +455,9 @@ export interface UpdateAssetTagPayload {
 export type CostMethod = 'profit-return' | 'cost-retain';
 
 export interface SettingsDTO {
-  costMethod:                CostMethod;
-  defaultCurrency?:          string;
-  startYear?:                number;
-  aiReportEnabled?:          boolean;
-  aiSystemPrompt?:           string;
-  aiSystemPromptUpdatedAt?:  string | null;
-}
-
-/* ── AI 每日早報（Phase 5）──────────────────────────────────── */
-
-export type AiReportMarketState = 'Risk-On' | 'Neutral' | 'Risk-Off';
-
-export interface AiReportExposureAnalysis {
-  currentRatio:  number;
-  suggestedRatio: number;
-  action:        string;
-}
-
-export interface AiReportStockStrategy {
-  stockId:    string;
-  stockName:  string;
-  action:     string;
-  entryPrice: number | null;
-  exitPrice:  number | null;
-  timing:     string;
-  reason:     string;
-}
-
-export interface AiReportDTO {
-  reportDate:       string;
-  marketState:      AiReportMarketState;
-  summary:          string;
-  exposureAnalysis: AiReportExposureAnalysis;
-  stockStrategies:  AiReportStockStrategy[];
-  riskWarnings:     string[];
-  generatedAt:      string;
+  costMethod:       CostMethod;
+  defaultCurrency?: string;
+  startYear?:       number;
 }
 
 /* ── 使用者偏好設定 ──────────────────────────────────────────── */

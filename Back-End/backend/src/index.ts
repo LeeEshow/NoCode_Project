@@ -22,7 +22,6 @@ import tagCorrelationMatrixRouter  from './routes/tagCorrelationMatrix';
 import rebalanceRulesRouter        from './routes/rebalanceRules';
 import marketStateRouter           from './routes/marketState';
 import rebalanceSnapshotsRouter    from './routes/rebalanceSnapshots';
-import aiRouter                    from './routes/ai';
 
 // ── 診斷 log（寫入 Azure LogFiles + stdout）──────────────────────────────
 const LOG = '/home/LogFiles/node_app.log';
@@ -84,7 +83,6 @@ app.use(`${api}/tag-correlation-matrix`,   tagCorrelationMatrixRouter);
 app.use(`${api}/rebalance-rules`,          rebalanceRulesRouter);
 app.use(`${api}/market-state`,             marketStateRouter);
 app.use(`${api}/rebalance-snapshots`,      rebalanceSnapshotsRouter);
-app.use(`${api}/ai`,                       aiRouter);
 
 // 健康探測端點（Azure warm-up probe 用）
 app.get('/health', (_req, res) => {

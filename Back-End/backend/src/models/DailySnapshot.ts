@@ -24,6 +24,8 @@ export interface DailySnapshotInput {
   unrealizedProfit: number;   // Σ(currentPrice - costAvg) × shares
   note?:            string;
   holdings?:        SnapshotHolding[];
+  vix?:             number | null;
+  marketStateAuto?: 'risk-on' | 'neutral' | 'risk-off' | null;
 }
 
 export interface DailySnapshotDoc extends Required<DailySnapshotInput> {
@@ -102,16 +104,18 @@ export class DailySnapshot {
     const ref = db.collection(COL).doc(input.date);
     await ref.set(
       {
-        date:              input.date,
-        exec_capital:      input.execCapital,
-        reinvest:          input.reinvest,
-        stock_value:       input.stockValue,
-        cash_balance:      input.cashBalance,
-        forex_value:       input.forexValue,
-        unrealized_profit: input.unrealizedProfit,
-        note:              input.note ?? '',
-        holdings:          input.holdings ?? [],
-        recorded_at:       admin.firestore.FieldValue.serverTimestamp(),
+        date:               input.date,
+        exec_capital:       input.execCapital,
+        reinvest:           input.reinvest,
+        stock_value:        input.stockValue,
+        cash_balance:       input.cashBalance,
+        forex_value:        input.forexValue,
+        unrealized_profit:  input.unrealizedProfit,
+        note:               input.note ?? '',
+        holdings:           input.holdings ?? [],
+        vix:                input.vix ?? null,
+        market_state_auto:  input.marketStateAuto ?? null,
+        recorded_at:        admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -150,6 +154,8 @@ function deserialize(doc: admin.firestore.DocumentSnapshot): DailySnapshotDoc {
     unrealizedProfit: d.unrealized_profit ?? 0,
     note:             d.note ?? '',
     holdings:         Array.isArray(d.holdings) ? d.holdings : [],
+    vix:              typeof d.vix === 'number' ? d.vix : null,
+    marketStateAuto:  d.market_state_auto ?? null,
     recordedAt:       d.recorded_at instanceof admin.firestore.Timestamp
       ? d.recorded_at.toDate()
       : new Date(),

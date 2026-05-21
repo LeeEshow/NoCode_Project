@@ -10,6 +10,22 @@ import { ApiResponse } from '../global/apiResponse';
 import { AppError } from '../middleware/errorHandler';
 import { getLiveRateMap } from '../global/rateHelper';
 import { recalculateDynamicRisk } from '../services/tagRiskService';
+import { yfChart } from '../global/yahooFinance';
+
+type MarketStateAuto = 'risk-on' | 'neutral' | 'risk-off';
+
+async function fetchVix(): Promise<{ vix: number | null; marketStateAuto: MarketStateAuto | null }> {
+  try {
+    const result = await yfChart('^VIX', { interval: '1d', range: '5d' });
+    const closes: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
+    const last = closes.filter((v): v is number => typeof v === 'number').pop() ?? null;
+    if (last === null) return { vix: null, marketStateAuto: null };
+    const state: MarketStateAuto = last < 20 ? 'risk-on' : last <= 30 ? 'neutral' : 'risk-off';
+    return { vix: last, marketStateAuto: state };
+  } catch {
+    return { vix: null, marketStateAuto: null };
+  }
+}
 
 // ── 工具函式 ─────────────────────────────────────────────────────────────────
 
@@ -38,8 +54,8 @@ export const record = async (
     const today       = toTaiwanDateString(new Date());
     const currentYear = new Date().getFullYear();
 
-    // 第一批：所有獨立的 DB 讀取、匯率、PlanConfig 並行執行
-    const [holdings, currencies, bonds, latestSnap, prevYearSnap, rateMap, planConfig] = await Promise.all([
+    // 第一批：所有獨立的 DB 讀取、匯率、PlanConfig、VIX 並行執行
+    const [holdings, currencies, bonds, latestSnap, prevYearSnap, rateMap, planConfig, vixData] = await Promise.all([
       Holding.findAll(),
       ForeignCurrency.findAll(),
       Bond.findAll(),
@@ -47,6 +63,7 @@ export const record = async (
       DailySnapshot.findLastOfYear(currentYear - 1),       // 用於計算 execCapital
       getLiveRateMap(),
       PlanConfig.find(),
+      fetchVix(),                                          // 靜默失敗，不中斷主流程
     ]);
 
     // 第二批：各股報價（依賴 holdings，單筆失敗不中斷）
@@ -113,6 +130,8 @@ export const record = async (
       unrealizedProfit: Math.round(unrealizedProfit),
       note:             '',
       holdings:         snapshotHoldings,
+      vix:              vixData.vix,
+      marketStateAuto:  vixData.marketStateAuto,
     });
 
     // 快照完成後靜默觸發動態風險重算（失敗不影響主流程）

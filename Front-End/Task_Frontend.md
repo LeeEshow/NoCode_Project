@@ -17,12 +17,27 @@
 
 ## 已完成
 
+### Phase 5 移除 — AI 每日早報
+
+- **RM-F-01** 刪除：`useAiReportViewModel.ts`、`aiReportModel.ts`、`settingsStore.ts`、`AiReportModal/`；保留 `settingsModel.ts`（備未來其他設定使用）
+- **RM-F-02** `types/index.ts`：移除 `AiReportDTO`、`AiReportMarketState`、`AiReportExposureAnalysis`、`AiReportStockStrategy`；`SettingsDTO` 移除 `aiSystemPrompt`、`aiSystemPromptUpdatedAt`、`aiReportEnabled`
+- **RM-F-03** `PanelHeader`：移除 AI 按鈕、`::after` 小圓點、`settingsStore.load()`、`AiReportModal`；保留曝險比 Badge
+- **RM-F-04** `SettingsModal`：移除「AI 早報」Tab 與 `AiSystemPromptSection`；移除 tablist/tabpanel 結構（恢復單頁）；保留扁平 section rows 與 80vw×80vh 尺寸
+- **RM-F-05** `Task_Frontend.md` 已完成區塊移除 Phase 5（5-A ～ 5-E）整段記錄
+
+### Phase 6 — 曝險/流動比模組
+
+- **6-A** `types/index.ts`：`DailySnapshotDTO` 新增 `vix?: number | null`、`marketStateAuto?: MarketState | null`；`stores/snapshotStore.ts` 擴充對應欄位，`load()` 時一併取出並存入 store
+- **6-B** `PanelHeader`：流動現金欄位右側加曝險比 Badge；顯示格式 `曝 XX% ●`；輸入框寬度縮至 90px（7 位數可容納）；曝險比 = `planStore.liveStockValue ÷（liveStockValue + cashBalance）× 100%`
+- **6-C** 三色警戒色：未超過動態門檻 → `--down`；超過 → `--up`；門檻：`risk-on`=85%、`neutral`=75%、`risk-off`/`liquidity-dry`=55%；`null` fallback 75%
+- **6-D** Badge Tooltip（hover，Radix Tooltip）：「曝險比 = 台股市值 ÷ 總資產」＋ 動態門檻來源說明
+- **6-E** `RiskPanel` 收折列：`marketStateAuto` 與手動 `marketState` 不一致時顯示 `💡 系統建議：{autoState}（VIX {vix}）`
+
 ### Code Review、效能優化 ＆ 規格統一
 
 - **CR-01** `holdingModel.ts` — `RawProfile` 補齊 `revenue / grossMargin / roe / roa` 欄位，移除 `(r as any)` 強制轉型
 - **CR-02** `StockOverviewPage.tsx` — `handleWlSubmit` / `handleWlDelete` 補 `useCallback`
 - **CR-03** `useTagViewModel.ts` — 初始 `useEffect` 加 `cancelled` flag
-- **CR-04** `useAiReportViewModel.ts` — `loadLatest` / `loadByDate` 加 `reqIdRef` 並發請求防護
 - **CR-05** `useTagViewModel.ts` — `updateAssetTag` 補 `saving` 狀態與 `toast.error`
 - **CR-06** `api/axios.ts` — interceptor 加 DEV 環境 `console.error`
 - **PERF-01** `SparkLine.tsx` — 加 `React.memo` + `useMemo(option)`，防止 ECharts 5 秒輪詢無謂重繪
@@ -33,14 +48,6 @@
 - **PERF-06** `RiskPanel.tsx` — `buildRiskClipboardText` 相關性矩陣改預建 Map 查詢
 - **PERF-07** `StockOverviewPage.tsx` — `preDynamicThreshold` 改用 `useMemo`
 - **CR-07** 建立 `utils/useLatest.ts`；重構 `StockOverviewPage` / `useHoldingsViewModel` / `useWatchlistViewModel` 使用統一 hook；`Frontend-React.md` Rule 7.1 更新說明例外條件，補 Rule 7.6 完整規範
-
-### Phase 5 — AI 每日早報
-
-- **5-A** `types/index.ts` 新增 `AiReportDTO`、`AiReportMarketState`、`AiReportExposureAnalysis`、`AiReportStockStrategy`；`SettingsDTO` 擴充 `aiSystemPrompt` / `aiSystemPromptUpdatedAt` / `aiReportEnabled`；新增 `models/aiReportModel.ts`（`getLatestReport` / `getReportByDate`）與 `models/settingsModel.ts`（`fetchSettings` / `updateSettings`）
-- **5-B** `viewmodels/useAiReportViewModel.ts`：`loadLatest` / `loadByDate` / `loading` / `error` / `report` / `hasReport` / `availableDates`
-- **5-C** `views/components/AiReportModal/`：Market state badge（`--up`/`--down`/`--accent`）、曝險分析卡、個股策略表、風險警示列表、無資料空狀態；lazy fetch on modal open
-- **5-D** `PanelHeader` 右側加 `auto_awesome` btn-icon；`hasReport` 時 `::after` 顯示 `--accent` 小圓點；由 `settingsStore.aiReportEnabled` 控制顯示/隱藏
-- **5-E** `SettingsModal`「AI 早報」Tab：`ft-toggle` 啟用開關（`settingsStore` 同步，切換即時反映至 PanelHeader）、`TextareaInput` System Prompt（`onBlur` 500ms debounce PUT）、上次更新時間
 
 ### Bug 修正
 
@@ -53,7 +60,7 @@
 
 ### UI/UX 優化
 
-- **UI-7** SettingsModal 重構：分頁 Tab（資料管理 / AI 早報）取代三層 `ft-panel` 卡片；扁平 section rows 去除冗餘邊線（10 條 → 4 條）；固定 `80vw × 80vh`；`Modal.tsx` 新增 `className` prop；`global.css` 新增 `.ft-toggle` 可複用切換開關；`stores/settingsStore.ts` 管理 `aiReportEnabled` 跨元件同步
+- **UI-7** SettingsModal 重構：扁平 section rows 去除冗餘邊線（10 條 → 4 條）；固定 `80vw × 80vh`；`Modal.tsx` 新增 `className` prop；`global.css` 新增 `.ft-toggle` 可複用切換開關
 - **UI-6** TagManagerTab「⟳ 批次自動計算」呼叫 `POST /tags/recalculate-dynamic-risk`，完成後 re-fetch tags，toast 顯示更新數量
 - **UI-5** Risk 收折列 56px Mini 進度條（max=2.0，四段色）；「風險/再平衡模組」改 `var(--text)` 白色
 - **UI-4** 風險設定 Tab 7 個設定項旁 `ⓘ` Tooltip（`@radix-ui/react-tooltip`，`text-sm`，220px）

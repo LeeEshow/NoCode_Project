@@ -7,9 +7,17 @@ import type {
   HoldingDTO, OverlappingTagGroup,
 } from '../../../types';
 import { calcTagDailyReturnsFromSparklines, buildCorrelationEntries } from '../../../utils/correlationCalc';
+import { useSnapshotStore } from '../../../stores/snapshotStore';
 import TagManagerTab from './TagManagerTab';
 import Modal from '../../components/Modal';
 import { toast } from '../../components/Toast';
+
+const MARKET_STATE_AUTO_LABEL: Record<string, string> = {
+  'risk-on':       'Risk-On',
+  'risk-off':      'Risk-Off',
+  'neutral':       '中性',
+  'liquidity-dry': '流動性枯竭',
+};
 
 interface Props {
   tags:     TagDTO[];
@@ -147,6 +155,9 @@ export default function RiskPanel({
   selectedSnapshotId, onSelectSnapshot,
   onRecalculateAll, recalculating,
 }: Props) {
+  const vix             = useSnapshotStore(s => s.vix);
+  const marketStateAuto = useSnapshotStore(s => s.marketStateAuto);
+
   const [expanded,  setExpanded]  = useState(false);
   const [activeTab, setActiveTab] = useState<'tags' | 'settings'>('tags');
   const [localRho,  setLocalRho]  = useState<Map<string, string>>(new Map());
@@ -375,6 +386,11 @@ export default function RiskPanel({
             {!expanded && needsMonthlyReminder && (
               <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
                 ⏰ 本月尚未再平衡
+              </span>
+            )}
+            {marketStateAuto && marketStateAuto !== marketState && (
+              <span style={{ color: 'var(--accent)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 8 }}>
+                💡 系統建議：{MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}{vix != null ? `（VIX ${vix.toFixed(1)}）` : ''}
               </span>
             )}
           </span>

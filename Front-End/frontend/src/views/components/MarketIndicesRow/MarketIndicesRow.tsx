@@ -80,10 +80,10 @@ function getTaiwanSession(): 'day' | 'night' {
 
 /* ── 子元件 ── */
 
-function CardLink({ href, children }: { href?: string; children: React.ReactNode }) {
+function NameLink({ href, children }: { href?: string; children: React.ReactNode }) {
   if (!href) return <>{children}</>;
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="mir-card-link-wrap" draggable={false}>
+    <a href={href} target="_blank" rel="noopener noreferrer" className="mir-name-link" draggable={false}>
       {children}
     </a>
   );
@@ -93,15 +93,15 @@ function StandardCard({ idx, href }: { idx: MarketIndexDTO; href?: string }) {
   const cls = changeClass(idx.isUp, idx.change);
   const priceStr = idx.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (
-    <CardLink href={href}>
-      <div className={`mir-card${href ? ' mir-card--link' : ''}`}>
-        <div className="mir-card-label">{idx.name}</div>
-        <div className="mir-card-value">
-          <DecNum value={priceStr} />
-        </div>
-        <div className={`mir-card-change ${cls}`}><FmtChange idx={idx} /></div>
+    <div className="mir-card">
+      <div className="mir-card-label">
+        <NameLink href={href}>{idx.name}</NameLink>
       </div>
-    </CardLink>
+      <div className="mir-card-value">
+        <DecNum value={priceStr} />
+      </div>
+      <div className={`mir-card-change ${cls}`}><FmtChange idx={idx} /></div>
+    </div>
   );
 }
 
@@ -124,17 +124,16 @@ function FuturesCard({
 
   const cls = changeClass(active.isUp, active.change);
   return (
-    <CardLink href={href}>
-      <div className={`mir-card${href ? ' mir-card--link' : ''}`}>
-        <div className="mir-card-label">
-          台指期 <span className="mir-futures-session-tag">{label}</span>
-        </div>
-        <div className="mir-card-value">
-          <DecNum value={active.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
-        </div>
-        <div className={`mir-card-change ${cls}`}><FmtChange idx={active} /></div>
+    <div className="mir-card">
+      <div className="mir-card-label">
+        <NameLink href={href}>台指期</NameLink>
+        {' '}<span className="mir-futures-session-tag">{label}</span>
       </div>
-    </CardLink>
+      <div className="mir-card-value">
+        <DecNum value={active.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+      </div>
+      <div className={`mir-card-change ${cls}`}><FmtChange idx={active} /></div>
+    </div>
   );
 }
 

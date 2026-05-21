@@ -1,6 +1,6 @@
 # 個人理財雲端系統 — 後端開發任務清單
 
-> 版本：2.1（2026-05-17）
+> 版本：2.2（2026-05-21）
 > 參考文件：Back-End\CLAUDE.md
 
 ---
@@ -19,26 +19,21 @@
 
 ## 已完成
 
-### Phase 5 — AI 每日早報
+### Phase 5 移除 — AI 每日早報
 
-- **5-A** 安裝 `@anthropic-ai/sdk`；`.env.example` 新增 `ANTHROPIC_API_KEY`（本機 `.env` + Azure App Service 應用程式設定，**絕不寫入程式碼**）
-- **5-B** `Settings` Singleton Model 擴充三個欄位：
-  - `aiSystemPrompt`（string，預設 `''`）：傳入時同步更新 `aiSystemPromptUpdatedAt`
-  - `aiSystemPromptUpdatedAt`（Timestamp → ISO string，預設 `null`）
-  - `aiReportEnabled`（boolean，預設 `false`）：控制每日排程是否實際呼叫 Claude
-  - `PUT /settings` 三欄位均為選填，至少需傳其中一個；`costMethod` 同樣改為選填
-- **5-C** `src/services/aiReportService.ts`（核心邏輯）：
-  - `Promise.all` 並行讀取：最新 `daily_snapshot`、holdings、`rebalance-rules`、最近 3 筆 `rebalance-snapshots`、settings
-  - 組合 User Prompt（持股清單 + 快照數值 + 再平衡建議）
-  - 呼叫 `claude-sonnet-4-6`（`temperature: 0`，`tool_choice` 強制 JSON 回傳）
-  - 存入 `daily_ai_reports/{YYYY-MM-DD}`（冪等 `set`，同日重複呼叫安全）
-  - `ANTHROPIC_API_KEY` 未設定時延遲初始化，呼叫時回傳 HTTP 503
-- **5-D** `src/routes/ai.ts` + `src/controllers/aiController.ts`（已掛載 `/api/v1/ai`）：
-  - `POST /api/v1/ai/daily-report`：`aiReportEnabled = false` 時回傳 HTTP 200 `{ skipped: true }`，不呼叫 Claude
-  - `GET  /api/v1/ai/daily-report`：取最新一筆（`reportDate` 降冪 limit 1）
-  - `GET  /api/v1/ai/daily-report/:date`：取指定日期，date 格式驗證 `YYYY-MM-DD`
-- **5-E** `.github/workflows/daily-ai-report.yml`：cron `0 22 * * 0-4`（台灣週一–週五 06:00 = UTC 週日–週四 22:00）+ `workflow_dispatch`；Backend URL 讀自 GitHub Actions Secret `BACKEND_URL`
-- `src/models/AiReport.ts` 新增（`daily_ai_reports` collection：`save` / `findLatest` / `findByDate`）
+- **RM-B-01** 刪除整份檔案：`src/services/aiReportService.ts`、`src/routes/ai.ts`、`src/controllers/aiController.ts`、`src/models/AiReport.ts`（`.github/workflows/daily-ai-report.yml` 從未建立，略過）
+- **RM-B-02** `src/index.ts`：移除 `/api/v1/ai` 路由 import 與 `app.use()` 掛載
+- **RM-B-03** `Settings` Model 與 `settingsController.ts`：移除 `aiSystemPrompt`、`aiSystemPromptUpdatedAt`、`aiReportEnabled` 三個欄位及相關 PUT 處理邏輯
+- **RM-B-04** 移除套件：`npm uninstall @anthropic-ai/sdk`；`.env.example` 移除 `ANTHROPIC_API_KEY`
+- **RM-B-05** `Task_Backend.md` 已完成區塊移除 Phase 5（5-A ～ 5-E）整段記錄
+
+---
+
+### Phase 6 — 曝險/流動比模組
+
+- **6-A** `DailySnapshotInput` / `DailySnapshotDoc` 擴充 `vix: number | null`、`marketStateAuto: 'risk-on' | 'neutral' | 'risk-off' | null`；`record()` 寫入 `vix` / `market_state_auto`；`deserialize()` 讀回（舊文件缺欄位 fallback `null`）
+- **6-B** `snapshotsController.ts` 新增 `fetchVix()` 輔助函式（`yfChart('^VIX', interval:1d, range:5d)` 取最近收盤價），於 `POST /snapshots/record` 第一批並行中同步抓取；抓取失敗靜默回傳 `null`，不中斷主流程
+- **6-C** 所有 `GET /snapshots` 端點（`getAll` / `getByDate`）透過 `deserialize()` 自動含 `vix`、`marketStateAuto`；舊快照缺欄位回傳 `null`
 
 ---
 

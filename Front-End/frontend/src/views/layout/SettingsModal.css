@@ -8,36 +8,6 @@
 
 /* ── Settings Modal Layout ── */
 
-/* Tab bar */
-.settings-tabs {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--border);
-  margin: -16px -16px 20px;
-  padding: 0 16px;
-}
-
-.settings-tab {
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  margin-bottom: -1px;
-  outline: none;
-  padding: 9px 12px 8px;
-  transition: color var(--trans-fast), border-color var(--trans-fast);
-}
-.settings-tab:hover               { color: var(--text); }
-.settings-tab[aria-selected="true"] {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-.settings-tab:focus-visible { box-shadow: 0 0 0 2px var(--accent-bd); border-radius: var(--radius-xs); }
-
 /* Section */
 .settings-section + .settings-section {
   margin-top: 20px;
@@ -80,18 +50,3 @@
 
 .settings-row__action { margin-left: auto; }
 
-/* AI section sub-label */
-.settings-prompt-label {
-  color: var(--label);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-}
-
-.settings-prompt-meta {
-  color: var(--dim);
-  font-size: var(--text-xs);
-  margin-top: 6px;
-}

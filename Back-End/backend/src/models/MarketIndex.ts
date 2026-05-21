@@ -1,7 +1,16 @@
 import axios from 'axios';
 import https from 'https';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { randomBytes } from 'crypto';
+import * as fs from 'fs';
 import { yfChart } from '../global/yahooFinance';
 import { sjGetTwIndices } from '../global/shioajiClient';
+
+const execFileAsync = promisify(execFile);
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const _insecureAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -207,52 +216,46 @@ export class MarketIndex {
    * 取 Table 最下面那欄（最新一期）資訊，TTL 1hr
    */
   static async fetchExportIndicator(): Promise<ExportIndicator> {
+    // curl subprocess 繞過 Cloudflare TLS fingerprint 封鎖
+    // （Node.js OpenSSL JA3 fingerprint 被 NDC Cloudflare 識別為 bot；curl 使用 SChannel 可通過）
+    const cookieFile = join(tmpdir(), `ndc_${randomBytes(8).toString('hex')}.txt`);
     try {
       // Step 1: GET 頁面取得 CSRF token 與 session cookies
-      const pageRes = await axios.get(
+      const { stdout: pageHtml } = await execFileAsync('curl', [
+        '-s', '--compressed', '--max-time', '15',
+        '-c', cookieFile,
+        '-H', `User-Agent: ${BROWSER_UA}`,
+        '-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        '-H', 'Accept-Language: zh-TW,zh;q=0.9,en;q=0.8',
         'https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1',
-        {
-          timeout: 15000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-        }
-      );
+      ], { timeout: 20000 });
 
-      const html = pageRes.data as string;
-      const csrfMatch = (html as string).match(/csrf-token"\s+content="([^"]+)"/);
+      const csrfMatch = pageHtml.match(/csrf-token"\s+content="([^"]+)"/);
       if (!csrfMatch) {
         console.error('[MarketIndex] NDC 無法取得 CSRF token');
         return { period: '-', score: null, light: null, lightLabel: null };
       }
       const csrfToken = csrfMatch[1];
 
-      const setCookieHeaders: string[] = (pageRes.headers['set-cookie'] as string[] | undefined) ?? [];
-      const cookieStr = setCookieHeaders.map((c: string) => c.split(';')[0]).join('; ');
-
-      // Step 2: POST 取景氣指標資料（NDC 實際 API 端點）
-      const apiRes = await axios.post(
+      // Step 2: POST 取景氣指標資料
+      const { stdout: apiJson } = await execFileAsync('curl', [
+        '-s', '--compressed', '--max-time', '15',
+        '-b', cookieFile,
+        '-X', 'POST',
+        '-H', `User-Agent: ${BROWSER_UA}`,
+        '-H', 'Content-Type: application/json',
+        '-H', `X-CSRF-TOKEN: ${csrfToken}`,
+        '-H', 'Referer: https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1',
+        '-H', 'Accept-Language: zh-TW,zh;q=0.9,en;q=0.8',
         'https://index.ndc.gov.tw/n/json/data/eco/indicators',
-        {},
-        {
-          timeout: 15000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            'Referer': 'https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1',
-            'Cookie': cookieStr,
-          },
-        }
-      );
+      ], { timeout: 20000 });
 
       type LineItem = { code: string; data: Array<{ x: string; y: number | null }> };
-      const payload = apiRes.data as Record<string, unknown>;
+      const payload = JSON.parse(apiJson) as Record<string, unknown>;
       const lineObj = payload['line'] as Record<string, LineItem> | undefined;
 
       if (!lineObj) {
-        console.error('[MarketIndex] NDC API 回傳無 line 資料，keys:', Object.keys(payload));
+        console.error('[MarketIndex] NDC API 回傳無 line 資料');
         return { period: '-', score: null, light: null, lightLabel: null };
       }
 
@@ -271,7 +274,7 @@ export class MarketIndex {
       }
 
       const latest = validData[validData.length - 1]!;
-      const rawX = String(latest.x); // e.g. "202602"
+      const rawX = String(latest.x);
       const period = rawX.length === 6
         ? `${rawX.slice(0, 4)}-${rawX.slice(4, 6)}`
         : rawX;
@@ -282,13 +285,13 @@ export class MarketIndex {
 
       return { period, score, light, lightLabel };
     } catch (err) {
-      const axErr = err as { response?: { status: number; data: unknown } };
       console.error(
         '[MarketIndex] NDC 景氣燈號 API 失敗:',
-        err instanceof Error ? err.message : err,
-        axErr.response ? `(HTTP ${axErr.response.status})` : ''
+        err instanceof Error ? err.message : err
       );
       return { period: '-', score: null, light: null, lightLabel: null };
+    } finally {
+      fs.unlink(cookieFile, () => {});
     }
   }
 }
