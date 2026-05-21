@@ -35,6 +35,10 @@ interface RawProfile {
   fiftyTwoWeekHigh:  number;
   fiftyTwoWeekLow:   number;
   marketCap:         number | null;
+  revenue?:          number | null;
+  grossMargin?:      number | null;
+  roe?:              number | null;
+  roa?:              number | null;
 }
 
 interface RawSearchResult {
@@ -110,10 +114,10 @@ export async function fetchStockProfile(stockId: string): Promise<StockProfileDT
     pe:            r.peRatio         ?? undefined,
     dividendYield: r.dividendYield   ?? undefined,
     marketCap:     r.marketCap       ?? undefined,
-    revenue:       (r as any).revenue      ?? undefined,
-    grossMargin:   (r as any).grossMargin  ?? undefined,
-    roe:           (r as any).roe          ?? undefined,
-    roa:           (r as any).roa          ?? undefined,
+    revenue:       r.revenue      ?? undefined,
+    grossMargin:   r.grossMargin  ?? undefined,
+    roe:           r.roe          ?? undefined,
+    roa:           r.roa          ?? undefined,
   };
 }
 

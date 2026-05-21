@@ -9,12 +9,20 @@ const api = axios.create({
 api.interceptors.response.use(
   res => res,
   err => {
+    if (import.meta.env.DEV) {
+      console.error('[API Error]', err);
+    }
     const msg =
       err.response?.data?.message ??
       err.response?.data?.error ??
       err.message ??
       '請求失敗';
-    return Promise.reject(new Error(String(msg)));
+    const error = new Error(String(msg));
+    /* 無 HTTP response = timeout 或 network error，允許上層 retry */
+    if (!err.response) {
+      (error as Error & { retryable: boolean }).retryable = true;
+    }
+    return Promise.reject(error);
   }
 );
 

@@ -29,6 +29,7 @@ interface Props {
   marketState:             MarketState;
   marketStateChanging:     boolean;
   correlationMatrix:       CorrelationEntry[];
+  correlationLoading:      boolean;
   onMarketStateChange:     (s: MarketState) => void;
   onSaveCorrelationMatrix: (entries: CorrelationEntry[]) => Promise<void>;
   onExpand?:               () => void;
@@ -134,7 +135,7 @@ export default function RiskPanel({
   tags, loading, saving, onAdd, onUpdate, onRemove,
   riskTotal, tagStats, overlappingGroups,
   baseThreshold, onThresholdChange,
-  marketState, marketStateChanging, correlationMatrix,
+  marketState, marketStateChanging, correlationMatrix, correlationLoading,
   onMarketStateChange, onSaveCorrelationMatrix, onExpand,
   liquidityCapRatio, onLiquidityCapChange, onTriggerRebalance, calculating,
   volatilityFactor, dynamicThreshold,
@@ -255,14 +256,19 @@ export default function RiskPanel({
       const header = '\t' + tags.map(t => t.name).join('\t');
       lines.push(header);
 
+      /* 預建 Map，避免雙重迴圈內 O(n) find */
+      const corrMap = new Map(
+        correlationMatrix.flatMap(e => [
+          [`${e.tagA}|${e.tagB}`, e.rho],
+          [`${e.tagB}|${e.tagA}`, e.rho],
+        ])
+      );
+
       for (const ta of tags) {
         const cells = tags.map(tb => {
           if (ta.name === tb.name) return '1.00';
-          const entry = correlationMatrix.find(
-            e => (e.tagA === ta.name && e.tagB === tb.name) ||
-                 (e.tagA === tb.name && e.tagB === ta.name)
-          );
-          return entry != null ? entry.rho.toFixed(2) : '—';
+          const rho = corrMap.get(`${ta.name}|${tb.name}`);
+          return rho != null ? rho.toFixed(2) : '—';
         });
         lines.push(`${ta.name}\t${cells.join('\t')}`);
       }
@@ -679,6 +685,11 @@ export default function RiskPanel({
                     </span>
                   </div>
 
+                  {correlationLoading ? (
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', margin: '8px 0' }}>
+                      資料載入中…
+                    </p>
+                  ) : (
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ borderCollapse: 'collapse', fontSize: 'var(--text-xs)', tableLayout: 'auto' }}>
                       <thead>
@@ -730,6 +741,7 @@ export default function RiskPanel({
                       ρ 範圍 −1 ～ 1；未填寫預設 1.0（最保守估計）。離開欄位後自動儲存。
                     </p>
                   </div>
+                  )}
                 </div>
               )}
 

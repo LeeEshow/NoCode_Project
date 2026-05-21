@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { isTradingHours } from '../../utils/tradingHours';
+import { useLatest } from '../../utils/useLatest';
 import PanelHeader from '../components/PanelHeader';
 import MarketIndicesRow from '../components/MarketIndicesRow';
 import { usePlanStore } from '../../stores/planStore';
@@ -62,7 +63,10 @@ export default function StockOverviewPage() {
     () => computeVolatilityFactor(holdings.items, holdings.sparklines),
     [holdings.items, holdings.sparklines],
   );
-  const preDynamicThreshold = rulesVm.rules.baseThreshold * volatilityFactor;
+  const preDynamicThreshold = useMemo(
+    () => rulesVm.rules.baseThreshold * volatilityFactor,
+    [rulesVm.rules.baseThreshold, volatilityFactor],
+  );
 
   const risk = useRiskViewModel(
     holdings.items,
@@ -97,7 +101,7 @@ export default function StockOverviewPage() {
   const [wlEditItem,    setWlEditItem]    = useState<WatchlistItemDTO | null>(null);
 
   /* 關注清單 CRUD */
-  const handleWlSubmit = async (payload: CreateWatchlistPayload, id?: string) => {
+  const handleWlSubmit = useCallback(async (payload: CreateWatchlistPayload, id?: string) => {
     if (id) {
       await watchlist.updateItem(id, payload, () => {
         toast.success('關注清單已更新');
@@ -111,12 +115,12 @@ export default function StockOverviewPage() {
       });
     }
     if (watchlist.error) toast.error(watchlist.error);
-  };
+  }, [watchlist]);
 
-  const handleWlDelete = async (id: string) => {
+  const handleWlDelete = useCallback(async (id: string) => {
     await watchlist.removeItem(id, () => toast.success('已從關注清單移除'));
     if (watchlist.error) toast.error(watchlist.error);
-  };
+  }, [watchlist]);
 
   /* 穩定的 callback，避免 HoldingRow / WatchlistRow memo 失效 */
   const handleOpenAddTx = useCallback((code: string, name: string) => {
@@ -149,18 +153,13 @@ export default function StockOverviewPage() {
   }, [holdings.items, holdings.klines, holdings.sparklines, risk.tagStats, rulesVm.rules, tagVm.marketState]);
 
   /* 5 秒輪詢（僅盤中） */
-  const holdingsRef  = useRef(holdings);
-  const marketRef    = useRef(market);
-  const watchlistRef = useRef(watchlist);
-  holdingsRef.current  = holdings;
-  marketRef.current    = market;
-  watchlistRef.current = watchlist;
+  const holdingsRef  = useLatest(holdings);
+  const marketRef    = useLatest(market);
+  const watchlistRef = useLatest(watchlist);
 
-  /* RiskPanel 穩定 callback（vmRef 模式，空 deps，避免 inline arrow 每次 render 重建） */
-  const rulesVmRef = useRef(rulesVm);
-  const tagVmRef   = useRef(tagVm);
-  rulesVmRef.current = rulesVm;
-  tagVmRef.current   = tagVm;
+  /* RiskPanel 穩定 callback（空 deps interval，useLatest 確保讀到最新 vm） */
+  const rulesVmRef = useLatest(rulesVm);
+  const tagVmRef   = useLatest(tagVm);
 
   const handleThresholdChange         = useCallback((v: number) => rulesVmRef.current.updateRules({ baseThreshold: v }), []);
   const handleLiquidityCapChange      = useCallback((v: number) => rulesVmRef.current.updateRules({ liquidityCapRatio: v }), []);
@@ -298,6 +297,7 @@ export default function StockOverviewPage() {
           marketState={tagVm.marketState}
           marketStateChanging={tagVm.marketStateChanging}
           correlationMatrix={tagVm.correlationMatrix}
+          correlationLoading={tagVm.correlationLoading}
           onMarketStateChange={tagVm.changeMarketState}
           onSaveCorrelationMatrix={tagVm.saveCorrelationMatrix}
           liquidityCapRatio={rulesVm.rules.liquidityCapRatio}

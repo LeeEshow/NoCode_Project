@@ -17,6 +17,23 @@
 
 ## 已完成
 
+### Code Review、效能優化 ＆ 規格統一
+
+- **CR-01** `holdingModel.ts` — `RawProfile` 補齊 `revenue / grossMargin / roe / roa` 欄位，移除 `(r as any)` 強制轉型
+- **CR-02** `StockOverviewPage.tsx` — `handleWlSubmit` / `handleWlDelete` 補 `useCallback`
+- **CR-03** `useTagViewModel.ts` — 初始 `useEffect` 加 `cancelled` flag
+- **CR-04** `useAiReportViewModel.ts` — `loadLatest` / `loadByDate` 加 `reqIdRef` 並發請求防護
+- **CR-05** `useTagViewModel.ts` — `updateAssetTag` 補 `saving` 狀態與 `toast.error`
+- **CR-06** `api/axios.ts` — interceptor 加 DEV 環境 `console.error`
+- **PERF-01** `SparkLine.tsx` — 加 `React.memo` + `useMemo(option)`，防止 ECharts 5 秒輪詢無謂重繪
+- **PERF-02** `useHoldingsViewModel.ts` — `refreshPrices` 無變動時回傳同一 state reference
+- **PERF-03** `HoldingsTable.tsx` — `handleDragEnd` 改 `useCallback`
+- **PERF-04** `StockExpandPanel.tsx` — `ChipChart` 加 `React.memo` + `useMemo(option)`，修正硬碼色值改 CSS token
+- **PERF-05** `useWatchlistViewModel.ts` — `addItem` / `updateItem` 改 optimistic update，只補載新 item sparkline
+- **PERF-06** `RiskPanel.tsx` — `buildRiskClipboardText` 相關性矩陣改預建 Map 查詢
+- **PERF-07** `StockOverviewPage.tsx` — `preDynamicThreshold` 改用 `useMemo`
+- **CR-07** 建立 `utils/useLatest.ts`；重構 `StockOverviewPage` / `useHoldingsViewModel` / `useWatchlistViewModel` 使用統一 hook；`Frontend-React.md` Rule 7.1 更新說明例外條件，補 Rule 7.6 完整規範
+
 ### Phase 5 — AI 每日早報
 
 - **5-A** `types/index.ts` 新增 `AiReportDTO`、`AiReportMarketState`、`AiReportExposureAnalysis`、`AiReportStockStrategy`；`SettingsDTO` 擴充 `aiSystemPrompt` / `aiSystemPromptUpdatedAt` / `aiReportEnabled`；新增 `models/aiReportModel.ts`（`getLatestReport` / `getReportByDate`）與 `models/settingsModel.ts`（`fetchSettings` / `updateSettings`）

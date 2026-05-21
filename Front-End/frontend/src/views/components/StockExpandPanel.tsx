@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts/core';
 import { BarChart } from 'echarts/charts';
@@ -100,58 +100,59 @@ function KLineSection({ data }: { data: KLineDTO[] }) {
 
 /* ── Tab：法人 & 基本面 ── */
 
-function ChipChart({ chips }: { chips: ChipDTO[] }) {
-  const recent  = chips.slice(-20);
-  const dates   = recent.map(c => parseChipDate(c.date));
-  const foreign = recent.map(c => c.foreign);
-  const trust   = recent.map(c => c.trust);
-  const dealer  = recent.map(c => c.dealer);
-
-  const option = {
-    backgroundColor: 'transparent',
-    textStyle: { fontFamily: 'var(--font-sans)', color: '#8888aa' },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: '#1a1a2e',
-      borderColor: '#333',
-      textStyle: { color: '#ccc', fontSize: 12 },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      formatter: (params: any[]) => {
-        const idx  = params[0]?.dataIndex ?? 0;
-        const date = recent[idx]?.date ?? '';
-        return `<b>${date}</b><br/>` + params.map((p: { seriesName: string; value: number }) =>
-          `${p.seriesName}：${p.value > 0 ? '+' : ''}${p.value.toLocaleString()} 張`
-        ).join('<br/>');
+const ChipChart = memo(function ChipChart({ chips }: { chips: ChipDTO[] }) {
+  const option = useMemo(() => {
+    const recent  = chips.slice(-20);
+    const dates   = recent.map(c => parseChipDate(c.date));
+    const foreign = recent.map(c => c.foreign);
+    const trust   = recent.map(c => c.trust);
+    const dealer  = recent.map(c => c.dealer);
+    return {
+      backgroundColor: 'transparent',
+      textStyle: { fontFamily: 'var(--font-sans)', color: 'var(--muted)' },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'var(--surface)',
+        borderColor: 'var(--border)',
+        textStyle: { color: 'var(--text)', fontSize: 12 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        formatter: (params: any[]) => {
+          const idx  = params[0]?.dataIndex ?? 0;
+          const date = recent[idx]?.date ?? '';
+          return `<b>${date}</b><br/>` + params.map((p: { seriesName: string; value: number }) =>
+            `${p.seriesName}：${p.value > 0 ? '+' : ''}${p.value.toLocaleString()} 張`
+          ).join('<br/>');
+        },
       },
-    },
-    legend: { top: 4, right: 8, textStyle: { color: '#8888aa', fontSize: 11 } },
-    grid: { top: 36, bottom: 44, left: 52, right: 8 },
-    xAxis: {
-      type: 'category',
-      data: dates,
-      axisLabel: { color: '#666', fontSize: 9, rotate: 35 },
-      axisLine: { lineStyle: { color: '#333' } },
-    },
-    yAxis: {
-      type: 'value',
-      axisLabel: {
-        color: '#666', fontSize: 10,
-        formatter: (v: number) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v),
+      legend: { top: 4, right: 8, textStyle: { color: 'var(--muted)', fontSize: 11 } },
+      grid: { top: 36, bottom: 44, left: 52, right: 8 },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: { color: 'var(--dim)', fontSize: 9, rotate: 35 },
+        axisLine: { lineStyle: { color: 'var(--border)' } },
       },
-      splitLine: { lineStyle: { color: '#222' } },
-    },
-    series: [
-      { name: '外資',   type: 'bar', stack: 'chip', data: foreign,
-        itemStyle: { color: (p: { value: number }) => p.value >= 0 ? '#B87A7A' : '#7CA88D' } },
-      { name: '投信',   type: 'bar', stack: 'chip', data: trust,
-        itemStyle: { color: (p: { value: number }) => p.value >= 0 ? '#C4956A' : '#6A9EC4' } },
-      { name: '自營商', type: 'bar', stack: 'chip', data: dealer,
-        itemStyle: { color: (p: { value: number }) => p.value >= 0 ? '#A87AC4' : '#7AC4B8' } },
-    ],
-  };
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          color: 'var(--dim)', fontSize: 10,
+          formatter: (v: number) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v),
+        },
+        splitLine: { lineStyle: { color: 'var(--border)' } },
+      },
+      series: [
+        { name: '外資',   type: 'bar', stack: 'chip', data: foreign,
+          itemStyle: { color: (p: { value: number }) => p.value >= 0 ? 'var(--up)' : 'var(--down)' } },
+        { name: '投信',   type: 'bar', stack: 'chip', data: trust,
+          itemStyle: { color: (p: { value: number }) => p.value >= 0 ? '#C4956A' : '#6A9EC4' } },
+        { name: '自營商', type: 'bar', stack: 'chip', data: dealer,
+          itemStyle: { color: (p: { value: number }) => p.value >= 0 ? '#A87AC4' : '#7AC4B8' } },
+      ],
+    };
+  }, [chips]);
 
   return <ReactECharts option={option} style={{ height: 310, width: '100%' }} />;
-}
+});
 
 function ProfileGrid({ profile }: { profile: StockProfileDTO }) {
   const pct = (v: number | undefined) => v != null ? `${fmt(v * 100, 2)}%` : undefined;

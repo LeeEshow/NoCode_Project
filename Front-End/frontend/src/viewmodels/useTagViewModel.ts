@@ -31,6 +31,7 @@ interface State {
   correlationMatrix:   CorrelationEntry[];
   marketState:         MarketState;
   loading:             boolean;
+  correlationLoading:  boolean;
   saving:              boolean;
   marketStateChanging: boolean;
   error:               string | null;
@@ -39,7 +40,7 @@ interface State {
 const INIT: State = {
   tags: [], assetTags: [], correlationMatrix: [],
   marketState: 'neutral',
-  loading: true, saving: false, marketStateChanging: false, error: null,
+  loading: true, correlationLoading: true, saving: false, marketStateChanging: false, error: null,
 };
 
 export function useTagViewModel() {
@@ -47,13 +48,17 @@ export function useTagViewModel() {
 
   /* 初始載入 */
   useEffect(() => {
+    let cancelled = false;
     Promise.all([fetchTags(), fetchAssetTags(), fetchMarketState()])
       .then(([tags, assetTags, { current: marketState }]) => {
+        if (cancelled) return;
         setState({ tags, assetTags, correlationMatrix: [], marketState, loading: false, saving: false, marketStateChanging: false, error: null });
       })
       .catch(err => {
+        if (cancelled) return;
         setState(s => ({ ...s, loading: false, error: (err as Error).message }));
       });
+    return () => { cancelled = true; };
   }, []);
 
   /* 個別 reload */
@@ -79,11 +84,21 @@ export function useTagViewModel() {
 
   /* 市場狀態 */
   const loadCorrelationMatrix = useCallback(async () => {
-    try {
-      const { entries } = await fetchCorrelationMatrix();
-      setState(s => ({ ...s, correlationMatrix: entries }));
-    } catch {
-      /* 靜默：矩陣載入失敗不影響其他功能 */
+    setState(s => ({ ...s, correlationLoading: true }));
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const { entries } = await fetchCorrelationMatrix();
+        setState(s => ({ ...s, correlationMatrix: entries, correlationLoading: false }));
+        return;
+      } catch (err) {
+        const retryable = (err as Error & { retryable?: boolean }).retryable === true;
+        if (attempt < MAX_RETRIES && retryable) {
+          await new Promise(res => setTimeout(res, (attempt + 1) * 2_000));
+          continue;
+        }
+        setState(s => ({ ...s, correlationLoading: false }));
+      }
     }
   }, []);
 
@@ -183,11 +198,14 @@ export function useTagViewModel() {
   }, []);
 
   const updateAssetTag = useCallback(async (id: string, payload: UpdateAssetTagPayload) => {
+    setState(s => ({ ...s, saving: true, error: null }));
     try {
       const updated = await apiUpdateAssetTag(id, payload);
-      setState(s => ({ ...s, assetTags: s.assetTags.map(at => at.id === id ? updated : at) }));
+      setState(s => ({ ...s, assetTags: s.assetTags.map(at => at.id === id ? updated : at), saving: false }));
     } catch (err) {
-      setState(s => ({ ...s, error: (err as Error).message }));
+      const msg = (err as Error).message;
+      setState(s => ({ ...s, saving: false, error: msg }));
+      toast.error(`更新配置比例失敗：${msg}`);
     }
   }, []);
 

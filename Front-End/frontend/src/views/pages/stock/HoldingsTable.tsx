@@ -1,4 +1,4 @@
-import { useEffect, Fragment, memo } from 'react';
+import { useEffect, useCallback, Fragment, memo } from 'react';
 import type { ReactNode } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
@@ -213,13 +213,13 @@ export default function HoldingsTable({
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  function handleDragEnd(event: DragEndEvent) {
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = items.findIndex(h => h.stockCode === active.id);
     const newIndex = items.findIndex(h => h.stockCode === over.id);
     onReorder(arrayMove(items, oldIndex, newIndex));
-  }
+  }, [items, onReorder]);
 
   const COL_COUNT = 8;
 

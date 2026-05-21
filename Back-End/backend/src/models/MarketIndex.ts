@@ -1,6 +1,9 @@
 import axios from 'axios';
+import https from 'https';
 import { yfChart } from '../global/yahooFinance';
 import { sjGetTwIndices } from '../global/shioajiClient';
+
+const _insecureAgent = new https.Agent({ rejectUnauthorized: false });
 
 // ── 型別定義 ────────────────────────────────────────────────────────────────
 
@@ -103,6 +106,7 @@ export class MarketIndex {
     try {
       const res = await axios.get('https://tw.stock.yahoo.com/future/WTX%26', {
         timeout: 10000,
+        httpsAgent: _insecureAgent,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

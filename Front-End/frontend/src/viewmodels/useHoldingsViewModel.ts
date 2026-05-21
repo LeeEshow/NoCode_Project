@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLatest } from '../utils/useLatest';
 import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData, reorderHoldings, fetchHoldingPrices } from '../models/holdingModel';
 import { addHoldingTag as apiAddHoldingTag, updateHoldingTag as apiUpdateHoldingTag, deleteHoldingTag as apiDeleteHoldingTag } from '../models/tagModel';
 import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO, AddHoldingTagPayload, UpdateHoldingTagPayload } from '../types';
@@ -39,8 +40,7 @@ const INIT: State = {
 export function useHoldingsViewModel() {
   const [state, setState] = useState<State>(INIT);
   const [order, setOrder] = useState<string[]>([]);
-  const stateRef = useRef(state);
-  stateRef.current = state;
+  const stateRef = useLatest(state);
 
   const load = useCallback(async () => {
     setState(s => ({ ...s, loading: true, error: null }));
@@ -196,7 +196,7 @@ export function useHoldingsViewModel() {
             p.change       === h.change       &&
             p.changePct    === h.changePct
           ) return h;
-          const currentValue    = p.currentPrice * h.shares;
+          const currentValue     = p.currentPrice * h.shares;
           const unrealizedProfit = currentValue - h.totalCost;
           const returnPct        = h.costAvg > 0 ? ((p.currentPrice - h.costAvg) / h.costAvg) * 100 : 0;
           return {
@@ -210,6 +210,8 @@ export function useHoldingsViewModel() {
             isUp: p.changePct > 0,
           };
         });
+        /* 所有 item reference 均未變動時，回傳同一 state 避免整頁 re-render */
+        if (items.every((h, i) => h === s.items[i])) return s;
         return { ...s, items };
       });
     } catch { /* 靜默，輪詢失敗不影響 UI */ }

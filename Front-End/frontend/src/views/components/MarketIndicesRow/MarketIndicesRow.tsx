@@ -80,17 +80,28 @@ function getTaiwanSession(): 'day' | 'night' {
 
 /* ── 子元件 ── */
 
-function StandardCard({ idx }: { idx: MarketIndexDTO }) {
+function CardLink({ href, children }: { href?: string; children: React.ReactNode }) {
+  if (!href) return <>{children}</>;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="mir-card-link-wrap" draggable={false}>
+      {children}
+    </a>
+  );
+}
+
+function StandardCard({ idx, href }: { idx: MarketIndexDTO; href?: string }) {
   const cls = changeClass(idx.isUp, idx.change);
   const priceStr = idx.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (
-    <div className="mir-card">
-      <div className="mir-card-label">{idx.name}</div>
-      <div className="mir-card-value">
-        <DecNum value={priceStr} />
+    <CardLink href={href}>
+      <div className={`mir-card${href ? ' mir-card--link' : ''}`}>
+        <div className="mir-card-label">{idx.name}</div>
+        <div className="mir-card-value">
+          <DecNum value={priceStr} />
+        </div>
+        <div className={`mir-card-change ${cls}`}><FmtChange idx={idx} /></div>
       </div>
-      <div className={`mir-card-change ${cls}`}><FmtChange idx={idx} /></div>
-    </div>
+    </CardLink>
   );
 }
 
@@ -98,9 +109,11 @@ function StandardCard({ idx }: { idx: MarketIndexDTO }) {
 function FuturesCard({
   day,
   night,
+  href,
 }: {
   day:   MarketIndexDTO | undefined;
   night: MarketIndexDTO | undefined;
+  href?: string;
 }) {
   if (!day && !night) return null;
 
@@ -111,15 +124,17 @@ function FuturesCard({
 
   const cls = changeClass(active.isUp, active.change);
   return (
-    <div className="mir-card">
-      <div className="mir-card-label">
-        台指期 <span className="mir-futures-session-tag">{label}</span>
+    <CardLink href={href}>
+      <div className={`mir-card${href ? ' mir-card--link' : ''}`}>
+        <div className="mir-card-label">
+          台指期 <span className="mir-futures-session-tag">{label}</span>
+        </div>
+        <div className="mir-card-value">
+          <DecNum value={active.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+        </div>
+        <div className={`mir-card-change ${cls}`}><FmtChange idx={active} /></div>
       </div>
-      <div className="mir-card-value">
-        <DecNum value={active.price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
-      </div>
-      <div className={`mir-card-change ${cls}`}><FmtChange idx={active} /></div>
-    </div>
+    </CardLink>
   );
 }
 
@@ -175,14 +190,16 @@ export default function MarketIndicesRow({
   exportIndicator,
   loading,
 }: MarketIndicesRowProps) {
-  const rowRef   = useRef<HTMLDivElement>(null);
-  const dragRef  = useRef({ active: false, startX: 0, scrollLeft: 0 });
+  const rowRef    = useRef<HTMLDivElement>(null);
+  const dragRef   = useRef({ active: false, startX: 0, scrollLeft: 0 });
+  const didDragRef = useRef(false);
   const [dragging, setDragging] = useState(false);
 
   function onMouseDown(e: React.MouseEvent) {
     const el = rowRef.current;
     if (!el) return;
     dragRef.current = { active: true, startX: e.clientX, scrollLeft: el.scrollLeft };
+    didDragRef.current = false;
     setDragging(true);
   }
 
@@ -190,12 +207,20 @@ export default function MarketIndicesRow({
     const d = dragRef.current;
     if (!d.active || !rowRef.current) return;
     e.preventDefault();
+    if (Math.abs(e.clientX - d.startX) > 5) didDragRef.current = true;
     rowRef.current.scrollLeft = d.scrollLeft - (e.clientX - d.startX);
   }
 
   function onDragEnd() {
     dragRef.current.active = false;
     setDragging(false);
+  }
+
+  function onClickCapture(e: React.MouseEvent) {
+    if (didDragRef.current) {
+      e.preventDefault();
+      didDragRef.current = false;
+    }
   }
 
   if (loading) {
@@ -223,9 +248,10 @@ export default function MarketIndicesRow({
       onMouseMove={onMouseMove}
       onMouseUp={onDragEnd}
       onMouseLeave={onDragEnd}
+      onClickCapture={onClickCapture}
     >
-      {taiex && <StandardCard idx={taiex} />}
-      <FuturesCard day={futuresDay} night={futuresNight} />
+      {taiex && <StandardCard idx={taiex} href="https://www.wantgoo.com/stock" />}
+      <FuturesCard day={futuresDay} night={futuresNight} href="https://www.wantgoo.com/futures/wtxp&" />
       <BusinessCycleCard indicator={exportIndicator} />
 
       {(taiex || futuresDay || futuresNight) && intl.length > 0 && (

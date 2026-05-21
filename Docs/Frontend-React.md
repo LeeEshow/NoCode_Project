@@ -330,6 +330,397 @@ const ProductListPage: React.FC = () => {
 
 ---
 
+## 🪝 7. React Hook 正確性
+
+### 7.1 禁止在 Render 期間寫入 Ref（`useLatest` 除外）
+
+Ref 是跳出 React 渲染系統的逃生口。在 render 函式主體直接執行 `ref.current = value`，**一般情況下禁止**，會在 React Strict Mode 下被執行兩次，也會阻礙 React Compiler 最佳化。
+
+```typescript
+// ❌ 禁止：render 期間寫入，且在 render 路徑讀取
+const MyComponent = ({ value }: { value: number }) => {
+  const ref = useRef(0);
+  ref.current = value;
+  return <div>{ref.current}</div>; // ← render 路徑讀取，這才是真正的問題
+};
+```
+
+**例外：`useLatest` 模式**（見 7.6）——允許在 render 期間寫入，前提是 `ref.current` **只在 callback（事件、setInterval、useEffect）裡讀取，絕不在 render 路徑讀取**。
+
+```typescript
+// ✅ useLatest：render 期間寫入，但只在 callback 讀取
+const vmRef = useLatest(vm);
+useEffect(() => {
+  const id = setInterval(() => {
+    vmRef.current.refresh(); // ← callback 讀取，安全
+  }, 5000);
+  return () => clearInterval(id);
+}, []);
+```
+
+若需要在 render 路徑使用同步值，仍應用 `useEffect`：
+
+```typescript
+// ✅ 正確：render 路徑需要同步值時，透過 useEffect
+const MyComponent = ({ value }: { value: number }) => {
+  const ref = useRef(0);
+  useEffect(() => { ref.current = value; }, [value]);
+  return <div />;
+};
+```
+
+### 7.2 Effect 內的 setState 處理原則
+
+Effect 內直接呼叫 `setState` 是合法且必要的（如 Modal 開啟時初始化草稿、外部值同步），但 React 19 的 `react-hooks/set-state-in-effect` lint rule 預設會標記這類用法。解法不是移除 setState，而是加上具名 disable 說明理由：
+
+```typescript
+useEffect(() => {
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- modal open draft reset
+  if (open) setDraft(initialValue);
+}, [open]);
+```
+
+若一個 effect 內有多處 setState，改用 block 形式：
+
+```typescript
+/* eslint-disable react-hooks/set-state-in-effect -- template sync on external prop change */
+useEffect(() => {
+  if (!template) return;
+  setPrinterName(template.defaultPrinter ?? '');
+  setSpeed(template.speed ?? 4);
+}, [template]);
+/* eslint-enable react-hooks/set-state-in-effect */
+```
+
+> **長遠解法**：若 effect 只為了同步一個數字 input 的 draft 值，考慮提取為共用 Hook（見 7.4），即可從源頭消除 lint 問題。
+
+### 7.3 禁止在 Render 函式內定義子元件
+
+在 render 函式（或另一個 Component）內部以 `const Btn = () => <button>` 的形式定義元件，每次 render 都會產生新的函式參考，導致 React 無法辨識為同一個元件而做無謂的 unmount/remount。
+
+```typescript
+// ❌ 錯誤：在 render 函式內定義元件
+const Panel = () => {
+  const ActionBtn = ({ label }: { label: string }) => (
+    <button className={styles.btn}>{label}</button>
+  );
+  return <ActionBtn label="送出" />;
+};
+
+// ✅ 正確：移到 module scope（檔案頂層）
+const ActionBtn = ({ label }: { label: string }) => (
+  <button className={styles.btn}>{label}</button>
+);
+
+const Panel = () => <ActionBtn label="送出" />;
+```
+
+### 7.4 提取共用的 Input Draft 模式
+
+「本地草稿值（draft）+ useEffect 同步外部值 + blur/Enter 才提交」是數字輸入框的常見模式。當多個元件重複這套邏輯時，應提取為共用 Hook：
+
+```typescript
+// hooks/useDraftValue.ts
+export const useDraftValue = (externalValue: number, onCommit: (raw: string) => void) => {
+  const [draft, setDraft] = useState(String(externalValue));
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- sync on external value change
+  useEffect(() => { setDraft(String(externalValue)); }, [externalValue]);
+  const commit = (raw: string) => {
+    const n = parseFloat(raw);
+    if (!isNaN(n)) onCommit(raw);
+    else setDraft(String(externalValue));
+  };
+  return { draft, setDraft, commit };
+};
+
+// 使用
+const NumInput = ({ value, onChange }: { value: number; onChange: (v: string) => void }) => {
+  const { draft, setDraft, commit } = useDraftValue(value, onChange);
+  return (
+    <input value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={e => commit(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter') commit((e.target as HTMLInputElement).value); }}
+    />
+  );
+};
+```
+
+### 7.6 `useLatest`：穩定 callback 的標準模式
+
+當需要在空依賴陣列的 `useEffect`（如 `setInterval`）或 `useCallback` 中存取最新的 props / state，而又不想重建 interval 或 callback，使用 `useLatest`。
+
+**允許條件（兩者都必須成立）：**
+1. `ref.current` **只在 callback 中讀取**（事件處理、setInterval、useEffect 內部）
+2. `ref.current` **不在 render 路徑讀取**（不出現在 JSX 或 return 之前的計算）
+
+```typescript
+// utils/useLatest.ts
+export function useLatest<T>(value: T) {
+  const ref = useRef(value);
+  ref.current = value;
+  return ref;
+}
+```
+
+```typescript
+// ✅ 正確使用：空 deps interval，永遠讀到最新 vm
+const vmRef = useLatest(vm);
+useEffect(() => {
+  const id = setInterval(() => {
+    if (!isTradingHours()) return;
+    vmRef.current.refreshPrices(); // callback 讀取
+  }, 5000);
+  return () => clearInterval(id);
+}, []); // 不需要把 vm 加入 deps
+
+// ✅ 正確使用：穩定的事件 callback，讀到最新 state
+const stateRef = useLatest(state);
+const ensureData = useCallback(async (code: string) => {
+  const { klines } = stateRef.current; // callback 讀取
+  if (klines[code]) return;
+  // ...
+}, []); // 空 deps，不因 state 變動而重建
+```
+
+```typescript
+// ❌ 禁止：在 render 路徑讀取 ref（這才是 Rule 7.1 禁止的情形）
+const valueRef = useLatest(someValue);
+const doubled = valueRef.current * 2; // ← render 路徑讀取，禁止
+return <div>{doubled}</div>;
+```
+
+> **為何不用 `useEffect` 同步？** `useEffect` 同步有一個 timing gap：render 結束到 effect 執行之間，ref 仍是舊值。若 interval 在此空窗觸發，會讀到舊版本。`useLatest` 在 render 瞬間即完成同步，沒有此問題。
+
+### 7.5 React Fast Refresh：每個檔案只 export 一種類型
+
+React Fast Refresh 要求元件檔案只 export 元件（React component），不得同時 export hook 或 context object 等非元件項目，否則 HMR 會降級為完整 reload。
+
+```
+// ❌ 錯誤：同一個檔案混合 export
+export const EditorContext = createContext(...);   // context object
+export const EditorProvider: React.FC = ...;       // component
+export const useEditorContext = () => ...;          // hook
+
+// ✅ 正確：拆為三個檔案
+// contexts/EditorContext.ts    → export EditorContext（context object + 型別）
+// contexts/EditorProvider.tsx  → export EditorProvider（component）
+// contexts/useEditorContext.ts → export useEditorContext（hook）
+```
+
+---
+
+## 🔄 8. 非同步可靠性
+
+### 8.1 防止 Stale Response（過時回應覆蓋）
+
+當使用者快速觸發 API 請求（如快速搜尋、切換分頁），先發的請求可能比後發的請求更晚回來，導致舊資料覆蓋新資料。
+
+**模式一：Request ID（適用 ViewModel 的 load 函式）**
+
+```typescript
+const reqIdRef = useRef(0);
+
+const load = useCallback(async (query: string) => {
+  const id = ++reqIdRef.current;
+  setLoading(true);
+  try {
+    const data = await fetchData(query);
+    if (id !== reqIdRef.current) return; // 已被新請求取代，丟棄
+    setData(data);
+  } catch (err) {
+    if (id !== reqIdRef.current) return;
+    setError(err instanceof Error ? err.message : '載入失敗');
+  } finally {
+    if (id === reqIdRef.current) setLoading(false);
+  }
+}, []);
+```
+
+**模式二：Cancelled Flag（適用 useEffect mount 請求）**
+
+```typescript
+useEffect(() => {
+  let cancelled = false;
+  fetchOptions().then(list => {
+    if (cancelled) return;
+    setOptions(list);
+  }).catch(() => {});
+  return () => { cancelled = true; };
+}, []);
+```
+
+### 8.2 錯誤訊息對使用者友善，不洩漏技術細節
+
+API 錯誤的技術細節（URL、status code、stack trace）不應出現在 production 環境的 console 或 UI 中。
+
+```typescript
+// api/axios.ts
+apiClient.interceptors.response.use(
+  response => response,
+  error => {
+    // ✅ 技術細節只在開發環境輸出
+    if (import.meta.env.DEV) {
+      console.error('[API Error]', error);
+    }
+    // ✅ 使用者看到的是語意化訊息，由 ViewModel 以 Toast 呈現
+    return Promise.reject(new Error(extractUserMessage(error)));
+  }
+);
+```
+
+### 8.3 多步驟操作的部分失敗處理
+
+需要 A → B 兩步才完成的操作（如：建立新版本 → 刪除舊版本），B 失敗不應讓 A 的成果消失，也不應對使用者沉默。
+
+```typescript
+const save = async (): Promise<{ result: T; warning?: string } | false> => {
+  try {
+    const result = await create(newData);
+    let warning: string | undefined;
+    try {
+      await delete(oldId);
+    } catch {
+      warning = '新版本已建立，舊版本刪除失敗，請手動清除';
+    }
+    return { result, warning };
+  } catch {
+    return false;
+  }
+};
+
+// 呼叫端
+const outcome = await vm.save();
+if (outcome) {
+  if (outcome.warning) showToast(outcome.warning, 'error');
+  showToast('儲存成功', 'success');
+}
+```
+
+---
+
+## ⚡ 9. 效能優化模式
+
+### 9.1 高頻事件（mousemove / scroll）禁止 setState
+
+在 `mousemove`、`scroll`、`pointermove` 等高頻事件中呼叫 setState，每次移動都會觸發完整的 re-render tree，元素多時導致明顯卡頓。正確做法是：**在事件期間直接操作 DOM，只在結束時（mouseup / pointerup）提交 state**。
+
+```typescript
+// ❌ 錯誤：mousemove 中 setState
+const onMouseMove = (e: MouseEvent) => {
+  setPosition({ x: e.clientX, y: e.clientY }); // 每次移動都 re-render
+};
+
+// ✅ 正確：mousemove 直接操作 DOM，mouseup 才 setState
+const elementRef = useRef<HTMLDivElement>(null);
+const dragStartRef = useRef<{ startX: number; startY: number } | null>(null);
+
+const onMouseMove = useCallback((e: MouseEvent) => {
+  if (!dragStartRef.current || !elementRef.current) return;
+  const dx = e.clientX - dragStartRef.current.startX;
+  const dy = e.clientY - dragStartRef.current.startY;
+  elementRef.current.style.transform = `translate(${dx}px, ${dy}px)`; // 直接 DOM
+}, []); // 空 deps — 完全透過 ref 讀值
+
+const onMouseUp = useCallback((e: MouseEvent) => {
+  if (!dragStartRef.current) return;
+  const finalX = computeFinalX(e); // 計算最終座標
+  setPosition({ x: finalX, y: computeFinalY(e) }); // 只在結束時 setState 一次
+  dragStartRef.current = null;
+}, []);
+```
+
+### 9.2 memoize 昂貴計算
+
+凡是根據 state/props 衍生出的複雜計算（字串拼接、陣列過濾、物件轉換），都應包在 `useMemo` 中，避免每次 render 重複執行。
+
+```typescript
+// ❌ 每次 render 都重新計算
+const previewStr = evaluateTokens(tokens, params); // 昂貴計算
+
+// ✅ 只在 deps 變化時重新計算
+const previewStr = useMemo(
+  () => evaluateTokens(tokens, params),
+  [tokens, params],
+);
+```
+
+### 9.3 Context Provider value 必須 memoize
+
+Context 的 `value` prop 若每次 render 都建立新物件，所有 consumer 都會無條件 re-render，即使資料完全相同。
+
+```typescript
+// ❌ 每次 render 都是新物件參考 → 所有 consumer re-render
+return (
+  <MyContext.Provider value={{ data, actions }}>
+    {children}
+  </MyContext.Provider>
+);
+
+// ✅ 只有 deps 變化時才產生新物件
+const value = useMemo(() => ({ data, actions }), [data, actions]);
+return (
+  <MyContext.Provider value={value}>
+    {children}
+  </MyContext.Provider>
+);
+```
+
+---
+
+## 🔒 10. 安全性規範
+
+### 10.1 禁止以 innerHTML / document.write 插入使用者資料
+
+使用者資料（API 回傳值、表單輸入）絕不能直接拼接進 HTML 字串後以 `innerHTML` 或 `document.write` 注入，即使有手動 escape 函式也容易出漏洞。
+
+```typescript
+// ❌ 危險：手動 escape 容易遺漏
+const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+win.document.write(`<td>${escHtml(userValue)}</td>`); // 萬一 escHtml 有漏洞？
+
+// ✅ 安全：DOM 操作 + textContent（瀏覽器自動 escape）
+const td = document.createElement('td');
+td.textContent = userValue; // 永遠安全，無論 userValue 包含什麼
+```
+
+**新視窗呈現資料表的正確做法**：`document.write` 只寫入靜態骨架（CSS 和空容器），再用 DOM API 填入動態資料。
+
+```typescript
+const openDataWindow = (rows: Row[]) => {
+  const win = window.open('', '_blank', 'width=800,height=600');
+  if (!win) return;
+  // 只有靜態內容（無使用者資料）→ document.write 無 XSS 風險
+  win.document.write(`<!DOCTYPE html><html><head><style>/* ... */</style></head>
+    <body><div id="root"></div></body></html>`);
+  win.document.close();
+  // 使用者資料全部透過 textContent 填入
+  const tbody = win.document.createElement('tbody');
+  for (const row of rows) {
+    const tr = win.document.createElement('tr');
+    for (const val of [row.name, row.value]) {
+      const td = win.document.createElement('td');
+      td.textContent = val; // 瀏覽器自動 escape
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+};
+```
+
+### 10.2 禁止在 React 中使用 dangerouslySetInnerHTML（除非必要）
+
+若確需渲染 HTML（如 Markdown 轉換結果），必須先以 DOMPurify 等白名單過濾器 sanitize 後再使用 `dangerouslySetInnerHTML`。
+
+```typescript
+import DOMPurify from 'dompurify';
+
+// ✅ 必要時才用，且必須 sanitize
+<div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(htmlContent) }} />
+```
+
+---
+
 ## 📐 設計原則
 
 | 層 | 職責 | 禁止事項 |

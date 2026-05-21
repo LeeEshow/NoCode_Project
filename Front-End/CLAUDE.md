@@ -125,11 +125,12 @@ src/
 
 ### 輪詢與 stale closure
 
-在 `setInterval` 內呼叫 ViewModel 方法，用 `useRef` 持有最新 instance：
+在 `setInterval` 內呼叫 ViewModel 方法，使用 `utils/useLatest.ts` 的 `useLatest` hook 持有最新 instance：
 
 ```ts
-const vmRef = useRef(vm);
-vmRef.current = vm;
+import { useLatest } from '../../utils/useLatest';
+
+const vmRef = useLatest(vm);
 useEffect(() => {
   const id = setInterval(() => {
     if (!isTradingHours()) return;   // 盤中判斷必須在 callback 內，不能在外層
@@ -139,7 +140,9 @@ useEffect(() => {
 }, []); // 空 deps，不重建 interval
 ```
 
-同樣的 `vmRef` 模式也用於 RiskPanel 的穩定 callback（`rulesVmRef`、`tagVmRef`），確保空依賴陣列下仍能存取最新 ViewModel。
+`useLatest` 在 render 階段同步更新 ref（`ref.current = value`），讓 callback 永遠能讀到最新值，不需手動維護兩行 `useRef` + 指派。**重要限制**：`ref.current` 只能在 callback（setInterval、事件處理器）內讀取，不能在 render 路徑讀取，否則違反 React 的 render 純函式原則。
+
+同樣的模式也用於 RiskPanel 的穩定 callback（`rulesVmRef`、`tagVmRef`）與 `useHoldingsViewModel` / `useWatchlistViewModel` 的展開資料讀取（`stateRef`），確保空依賴陣列下仍能存取最新 ViewModel。
 
 ### Tag 與風險模型
 

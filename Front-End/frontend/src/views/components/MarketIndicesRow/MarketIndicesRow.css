@@ -33,6 +33,23 @@
 }
 .mir-card:hover { border-color: var(--border-hi); }
 
+/* ── 可點擊卡片（有超連結）── */
+.mir-card-link-wrap {
+  display: contents;
+  text-decoration: none;
+  color: inherit;
+}
+
+.mir-card--link {
+  cursor: pointer;
+  transition: border-color var(--trans-fast), background var(--trans-fast);
+}
+
+.mir-card--link:hover {
+  border-color: var(--accent-bd);
+  background: var(--accent-bg);
+}
+
 /* ── 景氣燈號卡（120px） ── */
 .mir-card--cycle {
   flex: 0 0 120px;

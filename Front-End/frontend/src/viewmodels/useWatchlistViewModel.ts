@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLatest } from '../utils/useLatest';
 import {
   fetchWatchlist,
   createWatchlistItem,
@@ -37,8 +38,7 @@ export function useWatchlistViewModel() {
     expandedCode: null, loading: true, saving: false, error: null,
   });
   const [order, setOrder] = useState<string[]>([]);
-  const stateRef = useRef(state);
-  stateRef.current = state;
+  const stateRef = useLatest(state);
 
   const load = useCallback(async () => {
     setState(s => ({ ...s, loading: true, error: null }));
@@ -78,10 +78,14 @@ export function useWatchlistViewModel() {
   ) => {
     setState(s => ({ ...s, saving: true, error: null }));
     try {
-      await createWatchlistItem(payload);
-      const items = await fetchWatchlist();
-      const sparklines = await loadSparklines(items);
-      setState(s => ({ ...s, items, sparklines, saving: false }));
+      const newItem  = await createWatchlistItem(payload);
+      const sparkline = await fetchSparklineData(newItem.stockCode).catch(() => [] as number[]);
+      setState(s => ({
+        ...s,
+        items:     [...s.items, newItem],
+        sparklines: { ...s.sparklines, [newItem.stockCode]: sparkline },
+        saving: false,
+      }));
       onSuccess?.();
     } catch (err) {
       setState(s => ({ ...s, saving: false, error: (err as Error).message }));
@@ -95,10 +99,12 @@ export function useWatchlistViewModel() {
   ) => {
     setState(s => ({ ...s, saving: true, error: null }));
     try {
-      await updateWatchlistItem(id, payload);
-      const items = await fetchWatchlist();
-      const sparklines = await loadSparklines(items);
-      setState(s => ({ ...s, items, sparklines, saving: false }));
+      const updated = await updateWatchlistItem(id, payload);
+      setState(s => ({
+        ...s,
+        items:  s.items.map(i => i.id === id ? updated : i),
+        saving: false,
+      }));
       onSuccess?.();
     } catch (err) {
       setState(s => ({ ...s, saving: false, error: (err as Error).message }));
