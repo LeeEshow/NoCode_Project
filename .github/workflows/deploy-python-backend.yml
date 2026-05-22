@@ -14,6 +14,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies into .python_packages
+        run: |
+          pip install -r Back-End/python-backend/requirements.txt \
+            --target Back-End/python-backend/.python_packages/lib/site-packages
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
