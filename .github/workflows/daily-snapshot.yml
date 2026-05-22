@@ -2,7 +2,7 @@ name: Daily Snapshot
 
 on:
   schedule:
-    - cron: '0 6 * * *'    # 14:00 台灣時間（UTC+8）= 06:00 UTC，每天
+    - cron: '0 6 * * *'    # 14:00 台灣時間（UTC+8）= 06:00 UTC，每日
   workflow_dispatch:        # 支援手動觸發（測試用）
 
 jobs:

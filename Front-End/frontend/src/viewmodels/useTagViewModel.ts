@@ -26,21 +26,23 @@ import type {
 import { toast } from '../views/components/Toast';
 
 interface State {
-  tags:                TagDTO[];
-  assetTags:           AssetTagDTO[];
-  correlationMatrix:   CorrelationEntry[];
-  marketState:         MarketState;
-  loading:             boolean;
-  correlationLoading:  boolean;
-  saving:              boolean;
-  marketStateChanging: boolean;
-  error:               string | null;
+  tags:                 TagDTO[];
+  assetTags:            AssetTagDTO[];
+  correlationMatrix:    CorrelationEntry[];
+  marketState:          MarketState;
+  loading:              boolean;
+  correlationLoading:   boolean;
+  correlationLoadFailed: boolean;
+  saving:               boolean;
+  marketStateChanging:  boolean;
+  error:                string | null;
 }
 
 const INIT: State = {
   tags: [], assetTags: [], correlationMatrix: [],
   marketState: 'neutral',
-  loading: true, correlationLoading: true, saving: false, marketStateChanging: false, error: null,
+  loading: true, correlationLoading: true, correlationLoadFailed: false,
+  saving: false, marketStateChanging: false, error: null,
 };
 
 export function useTagViewModel() {
@@ -84,12 +86,12 @@ export function useTagViewModel() {
 
   /* 市場狀態 */
   const loadCorrelationMatrix = useCallback(async () => {
-    setState(s => ({ ...s, correlationLoading: true }));
+    setState(s => ({ ...s, correlationLoading: true, correlationLoadFailed: false }));
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         const { entries } = await fetchCorrelationMatrix();
-        setState(s => ({ ...s, correlationMatrix: entries, correlationLoading: false }));
+        setState(s => ({ ...s, correlationMatrix: entries, correlationLoading: false, correlationLoadFailed: false }));
         return;
       } catch (err) {
         const retryable = (err as Error & { retryable?: boolean }).retryable === true;
@@ -97,7 +99,7 @@ export function useTagViewModel() {
           await new Promise(res => setTimeout(res, (attempt + 1) * 2_000));
           continue;
         }
-        setState(s => ({ ...s, correlationLoading: false }));
+        setState(s => ({ ...s, correlationLoading: false, correlationLoadFailed: true }));
       }
     }
   }, []);

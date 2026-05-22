@@ -55,7 +55,9 @@
       "PowerShell(Get-ChildItem \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\" -Recurse | Where-Object { $_.Name -match \"Risk|Rebalance|rebalance|risk\" } | Select-Object FullName)",
       "Bash(Get-ChildItem -Recurse \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\views\\\\pages\\\\report\")",
       "Bash(Select-Object FullName)",
-      "Bash(Write-Output \"done\")"
+      "Bash(Write-Output \"done\")",
+      "Bash(find \"D:/Project/Backup/ex_sk_101_Semantic_Kernel_beginning\" -type f | head -50)",
+      "Bash(rm \"D:/Project/NoCode_Project/.github/workflows/daily-ai-report.yml\")"
     ]
   }
 }

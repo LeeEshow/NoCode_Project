@@ -68,6 +68,9 @@ interface Props {
   /* UI-2 */
   selectedSnapshotId: string | null;
   onSelectSnapshot:   (id: string) => void;
+  /* Phase 6 — 相關性矩陣載入失敗偵測 */
+  correlationLoadFailed:     boolean;
+  onReloadCorrelationMatrix: () => Promise<void>;
 }
 
 /* ── UI-4 Tooltip Helper ── */
@@ -154,6 +157,7 @@ export default function RiskPanel({
   snapshots, snapshotsReady,
   selectedSnapshotId, onSelectSnapshot,
   onRecalculateAll, recalculating,
+  correlationLoadFailed, onReloadCorrelationMatrix,
 }: Props) {
   const vix             = useSnapshotStore(s => s.vix);
   const marketStateAuto = useSnapshotStore(s => s.marketStateAuto);
@@ -320,6 +324,17 @@ export default function RiskPanel({
   const marketStateLabel = MARKET_STATE_OPTIONS.find(o => o.value === marketState)?.label ?? marketState;
   const deviationCount   = tagStats.filter(s => s.triggered).length;
 
+  /* 相關性矩陣未正確載入：明確失敗 OR 有 2+ Tag 但矩陣仍為空 */
+  const showMatrixAlert = tags.length >= 2 && !correlationLoading && (
+    correlationLoadFailed || correlationMatrix.length === 0
+  );
+
+  async function handleReloadMatrix(e: React.MouseEvent) {
+    e.stopPropagation();
+    await onReloadCorrelationMatrix();
+    onTriggerRebalance();
+  }
+
   const sliderVal = Math.round(baseThreshold * 100);
   const liqVal    = Math.round(liquidityCapRatio * 100);
   const concVal   = Math.round(concentrationLimit * 100);
@@ -364,7 +379,7 @@ export default function RiskPanel({
           {/* {市場狀態}：進度條 {風險值} {標籤偏差說明} */}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
             <span style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{marketStateLabel}：</span>
-            {riskBarPct > 0 && (
+            {!showMatrixAlert && riskBarPct > 0 && (
               <span
                 aria-hidden="true"
                 style={{ display: 'inline-flex', alignItems: 'center', width: 56, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}
@@ -372,12 +387,24 @@ export default function RiskPanel({
                 <span style={{ width: `${riskBarPct}%`, height: '100%', background: riskBarColor, borderRadius: 3, transition: 'width 0.4s ease, background 0.4s ease' }} />
               </span>
             )}
-            <span
-              aria-live="polite"
-              style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
-            >
-              {riskLabel}
-            </span>
+            {showMatrixAlert ? (
+              <button
+                className="btn-ghost"
+                onClick={handleReloadMatrix}
+                disabled={correlationLoading}
+                style={{ fontSize: 'var(--text-xs)', padding: '2px 10px', color: 'var(--up)', borderColor: 'var(--up-bd)', whiteSpace: 'nowrap' }}
+                aria-label="相關性矩陣未載入，點擊重新讀取並重算"
+              >
+                ⚠ 矩陣未載入，重算
+              </button>
+            ) : (
+              <span
+                aria-live="polite"
+                style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+              >
+                {riskLabel}
+              </span>
+            )}
             {deviationCount > 0 && (
               <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 24 }}>
                 ⚠ {deviationCount} 標籤偏差

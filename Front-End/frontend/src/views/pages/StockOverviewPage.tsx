@@ -320,6 +320,8 @@ export default function StockOverviewPage() {
           snapshotsReady={snapshotVm.ready}
           selectedSnapshotId={snapshotVm.selectedId}
           onSelectSnapshot={snapshotVm.selectSnapshot}
+          correlationLoadFailed={tagVm.correlationLoadFailed}
+          onReloadCorrelationMatrix={tagVm.loadCorrelationMatrix}
         />
 
         {/* ── 庫存持股 Panel（P2-12 ~ P2-16）── */}

@@ -1,8 +1,9 @@
 # Azure 部署文件
 
-> 最後更新：2026-05-17  
-> 架構：Azure Static Web Apps（前端）+ Azure App Service Plan B1（後端雙服務）  
-> Shioaji 為**選用**服務：未設定 `SHIOAJI_API_URL` 時，後端自動以 Yahoo Finance 全程替代，詳見第五節。
+> 最後更新：2026-05-22  
+> 架構：Azure Static Web Apps（前端）+ Azure App Service Plan B1（後端）  
+> 目標架構：以 `finance-backend-py`（FastAPI）取代 `finance-backend`（Node.js）與 `finance-shioaji`（Python proxy），整合為單一服務。  
+> Shioaji 為**選用**服務：未設定 `SJ_API_KEY` 時，後端自動以 Yahoo Finance 全程替代。
 
 ---
 
@@ -12,10 +13,12 @@
 |------|------|
 | 資源群組 `finance-app-rg`（Southeast Asia） | ✅ |
 | App Service Plan B1 Linux | ✅ |
-| Web App `finance-backend`（Node 22） | ✅ 正常運行 |
-| Web App `finance-shioaji`（Python 3.11） | ✅ 正常運行 |
+| Web App `finance-backend`（Node 22） | ✅ 正常運行（遷移完成後下線） |
+| Web App `finance-shioaji`（Python 3.11） | ✅ 正常運行（遷移完成後下線） |
+| Web App `finance-backend-py`（Python 3.11） | 🔲 待建立 |
 | Node.js CI/CD（`deploy-backend.yml`） | ✅ |
-| Python CI/CD（`deploy-shioaji.yml`） | ✅ |
+| Python Shioaji CI/CD（`deploy-shioaji.yml`） | ✅ |
+| **新 Python Backend CI/CD**（`deploy-python-backend.yml`） | ✅ workflow 已建立，待設定 Secret |
 | Azure Static Web Apps 前端 | ✅ 正常運行 |
 | 前端 Easy Auth（Microsoft 帳號） | ✅ |
 | 每日快照排程（`daily-snapshot.yml`） | ✅ |
@@ -33,16 +36,18 @@
        └─ React 前端（Vite build 靜態檔）
 
 Azure App Service Plan B1（~$13 USD/月）
-  ├─ Web App: finance-backend   → Node.js Express（/api/v1/*）
-  └─ Web App: finance-shioaji   → Python FastAPI + Shioaji
+  ├─ Web App: finance-backend      → Node.js Express（遷移期並行，完成後下線）
+  ├─ Web App: finance-shioaji      → Python FastAPI proxy（遷移期並行，完成後下線）
+  └─ Web App: finance-backend-py   → Python FastAPI（目標架構，整合全部功能）
 
 Firebase Firestore（保留現有，不遷移）
 
 GitHub Actions
-  ├─ deploy-backend.yml         → 推送 Back-End/backend/** 自動部署
-  ├─ deploy-shioaji.yml         → 推送 Back-End/Shioaji_API/** 自動部署
-  ├─ azure-static-web-apps-*.yml → 推送 main 自動部署前端
-  └─ daily-snapshot.yml         → 每日 14:00（台灣時間）自動快照
+  ├─ deploy-backend.yml            → 推送 Back-End/backend/** 自動部署（Node.js）
+  ├─ deploy-shioaji.yml            → 推送 Back-End/Shioaji_API/** 自動部署
+  ├─ deploy-python-backend.yml     → 推送 Back-End/python-backend/** 自動部署（新）
+  ├─ azure-static-web-apps-*.yml   → 推送 main 自動部署前端
+  └─ daily-snapshot.yml            → 每日 14:00（台灣時間）自動快照
 ```
 
 ### 費用摘要
@@ -64,6 +69,7 @@ GitHub Actions
 | finance-frontend | `https://gray-bay-05c35e200.7.azurestaticapps.net` |
 | finance-backend | `https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net` |
 | finance-shioaji | `https://finance-shioaji-bucre4ccehejfvcf.southeastasia-01.azurewebsites.net` |
+| finance-backend-py | `https://finance-backend-py-b8b2hbc4eaezd4gb.southeastasia-01.azurewebsites.net` |
 
 ### 健康檢查
 
@@ -168,7 +174,58 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 
 ---
 
-### 2-3 每日快照排程
+### 2-3 finance-backend-py（Python FastAPI，目標架構）
+
+**步驟**
+
+1. Azure Portal → App Services → 建立 → 選 Python 3.11 Linux
+2. App 名稱：`finance-backend-py`；放入現有 App Service Plan B1
+3. 下載發行設定檔，存入 GitHub Secret `AZURE_PYTHON_BACKEND_PUBLISH_PROFILE`
+
+**GitHub Actions Secret**
+
+| Secret 名稱 | 說明 |
+|-------------|------|
+| `AZURE_PYTHON_BACKEND_PUBLISH_PROFILE` | Azure Portal → finance-backend-py → 概觀 → 下載發行設定檔 |
+
+**環境變數**（Portal → finance-backend-py → 設定 → 環境變數）
+
+| 名稱 | 值 |
+|------|-----|
+| `FIRESTORE_PROJECT_ID` | `nocode-finance` |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | serviceAccountKey.json 完整 JSON 內容（單行） |
+| `SJ_API_KEY` | 永豐金 API Key（選填） |
+| `SJ_SECRET_KEY` | 永豐金 Secret Key（選填） |
+| `MCP_ACCESS_KEY` | MCP Server 存取金鑰 |
+| `SKIP_AUTH` | `false`（正式環境） |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` |
+| `WEBSITES_PORT` | `8080` |
+| `ApplicationInsightsAgent_EXTENSION_VERSION` | `disabled` |
+
+**啟動命令**（Portal → 設定 → 組態 → 一般設定）
+
+```
+python -m uvicorn main:app --host 0.0.0.0 --port 8080
+```
+
+**CI/CD 部署方式**（`deploy-python-backend.yml`）
+
+直接上傳 `Back-End/python-backend/` 原始碼，讓 Azure Oryx 在容器內執行 `pip install -r requirements.txt`：
+
+```yaml
+- name: Deploy to Azure Web App
+  uses: azure/webapps-deploy@v3
+  with:
+    app-name: finance-backend-py
+    publish-profile: ${{ secrets.AZURE_PYTHON_BACKEND_PUBLISH_PROFILE }}
+    package: Back-End/python-backend
+```
+
+> 理由同 `finance-shioaji`：`shioaji` 含 native extension，需在 Azure 容器（相同 glibc）內編譯。
+
+---
+
+### 2-4 每日快照排程
 
 **Workflow**：`.github/workflows/daily-snapshot.yml`
 
