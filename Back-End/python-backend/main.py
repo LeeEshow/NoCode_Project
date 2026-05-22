@@ -45,15 +45,6 @@ async def lifespan(app: FastAPI):
 # ── App ────────────────────────────────────────────────────────────────────────
 app = FastAPI(title="finance-backend-py", version="1.0.0", lifespan=lifespan)
 
-# CORS — 前端 Static Web Apps 同源，允許所有來源（Azure 層已有 Easy Auth 把關）
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 # ── Easy Auth Middleware ───────────────────────────────────────────────────────
 _SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"
@@ -93,7 +84,16 @@ class EasyAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+# 注意：add_middleware 後加者為最外層。
+# EasyAuth 先加（內層）→ CORS 後加（最外層），確保 401 response 也帶 CORS headers
 app.add_middleware(EasyAuthMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ── Request logging ────────────────────────────────────────────────────────────
