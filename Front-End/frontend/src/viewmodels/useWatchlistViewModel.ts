@@ -44,8 +44,11 @@ export function useWatchlistViewModel() {
     setState(s => ({ ...s, loading: true, error: null }));
     try {
       const items = await fetchWatchlist();
+      // 清單資料到手立即顯示，不等 sparkline
+      setState(s => ({ ...s, items, loading: false }));
+      // sparkline 在背景載入
       const sparklines = await loadSparklines(items);
-      setState(s => ({ ...s, items, sparklines, loading: false }));
+      setState(s => ({ ...s, sparklines }));
     } catch (err) {
       setState(s => ({ ...s, loading: false, error: (err as Error).message }));
     }

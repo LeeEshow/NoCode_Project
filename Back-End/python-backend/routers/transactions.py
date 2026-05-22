@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
 from firebase_admin import firestore as fs
+from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 
 router = APIRouter()
@@ -36,7 +37,7 @@ def deserialize_transaction(doc) -> dict:
 async def get_all(stock_id: str | None = Query(default=None, alias="stock_id")):
     db = get_db()
     col = db.collection("transactions")
-    snap = col.where("stock_id", "==", stock_id).get() if stock_id else col.get()
+    snap = col.where(filter=FieldFilter("stock_id", "==", stock_id)).get() if stock_id else col.get()
     items = [deserialize_transaction(doc) for doc in snap]
     items.sort(key=lambda x: x["date"])
     return {"success": True, "data": items}

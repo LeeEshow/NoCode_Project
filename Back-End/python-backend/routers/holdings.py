@@ -1,9 +1,12 @@
+import asyncio
+import time
 from datetime import datetime, timezone
-from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException
 from firebase_admin import firestore as fs
+from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
-from services.yahoo_finance import get_quote, get_all_stocks
+from services.yahoo_finance import get_quote
+from services.api_switch import api_switch_call
 
 router = APIRouter()
 
@@ -61,48 +64,59 @@ def deserialize_asset_tag(doc) -> dict:
 def find_all_asset_tags(stock_code: str | None = None) -> list[dict]:
     db = get_db()
     col = db.collection("asset_tags")
-    snap = col.where("stock_code", "==", stock_code).get() if stock_code else col.get()
+    snap = col.where(filter=FieldFilter("stock_code", "==", stock_code)).get() if stock_code else col.get()
     return [deserialize_asset_tag(doc) for doc in snap]
 
 
-def asset_tag_to_dto(at: dict, name_map: dict) -> dict:
-    """createForHolding 回傳的 DTO（含 stockName）"""
-    return {
-        "id":          at["id"],
-        "stockCode":   at["stockCode"],
-        "stockName":   name_map.get(at["stockCode"]),
-        "tagName":     at["tagName"],
-        "weightRatio": at["weightRatio"],
-    }
-
-
-def build_name_map() -> dict[str, str]:
-    all_stocks = get_all_stocks()
-    return {s.get("code"): s.get("name") for s in all_stocks if s.get("code")}
 
 
 # ─── GET /holdings ─────────────────────────────────────────────────────────────
 
-def _fetch_quotes_parallel(stock_ids: list[str]) -> dict[str, dict]:
-    """並行抓取多支股票報價，12 秒整體 timeout"""
+async def _fetch_quotes_switched(stock_ids: list[str]) -> dict[str, dict]:
+    """並行抓取報價：盤中走 Shioaji tick，其餘走 Yahoo v8"""
     if not stock_ids:
         return {}
-    quotes: dict[str, dict] = {}
-    pool = ThreadPoolExecutor(max_workers=min(len(stock_ids), 8))
-    futs = {pool.submit(get_quote, sid): sid for sid in stock_ids}
-    for fut, sid in futs.items():
+
+    async def fetch_one(sid: str) -> tuple[str, dict | None]:
+        async def primary():
+            from services.shioaji_manager import shioaji_manager
+            await shioaji_manager.subscribe_stock(sid)
+            fresh = shioaji_manager.get_fresh_quote(sid)
+            if fresh is None:
+                raise RuntimeError("no fresh tick")
+            return {
+                "stockId": sid, "name": sid,
+                "price":         fresh.get("price", 0),
+                "change":        fresh.get("change") or 0,
+                "changePercent": fresh.get("change_percent") or 0,
+                "high":          fresh.get("high", 0),
+                "low":           fresh.get("low", 0),
+                "volume":        fresh.get("volume", 0),
+                "marketStatus":  "TRADING",
+                "updatedAt":     int(time.time()),
+            }
+
+        async def fallback():
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, get_quote, sid)
+
         try:
-            quotes[sid] = fut.result(timeout=12)
+            q = await api_switch_call(primary, fallback)
+            return sid, q
         except Exception:
-            pass
-    pool.shutdown(wait=False)
-    return quotes
+            return sid, None
+
+    results = await asyncio.gather(*[fetch_one(sid) for sid in stock_ids])
+    return {sid: q for sid, q in results if q is not None}
 
 
 @router.get("/")
 async def get_all():
-    holdings = find_all_holdings()
-    all_asset_tags = find_all_asset_tags()
+    loop = asyncio.get_event_loop()
+    holdings, all_asset_tags = await asyncio.gather(
+        loop.run_in_executor(None, find_all_holdings),
+        loop.run_in_executor(None, find_all_asset_tags),
+    )
 
     tags_by_stock: dict[str, list] = {}
     for at in all_asset_tags:
@@ -114,17 +128,15 @@ async def get_all():
         })
 
     active_ids = [h["stockId"] for h in holdings if h["sharesHeld"] > 0]
-    quotes = _fetch_quotes_parallel(active_ids)
+    quotes = await _fetch_quotes_switched(active_ids)
 
     result = []
     for h in holdings:
         if h["sharesHeld"] > 0:
             q = quotes.get(h["stockId"], {})
-            if q:
-                h["stockName"]     = q.get("name", h["stockId"])
-                h["currentPrice"]  = q.get("price", 0)
-                h["change"]        = q.get("change", 0)
-                h["changePercent"] = q.get("changePercent", 0)
+            h["currentPrice"]  = q.get("price", 0)
+            h["change"]        = q.get("change", 0)
+            h["changePercent"] = q.get("changePercent", 0)
         h["tags"] = tags_by_stock.get(h["stockId"], [])
         result.append(h)
 
@@ -135,10 +147,10 @@ async def get_all():
 
 @router.get("/prices")
 async def get_prices():
-    holdings = find_all_holdings()
+    loop = asyncio.get_event_loop()
+    holdings = await loop.run_in_executor(None, find_all_holdings)
     active = [h for h in holdings if h["sharesHeld"] > 0]
-
-    quotes = _fetch_quotes_parallel([h["stockId"] for h in active])
+    quotes = await _fetch_quotes_switched([h["stockId"] for h in active])
 
     result = []
     for h in active:
@@ -150,7 +162,7 @@ async def get_prices():
             "stockCode":        h["stockId"],
             "currentPrice":     price,
             "change":           q.get("change", 0),
-            "changePct":        q.get("changePercent", 0),  # 注意：changePct 非 changePercent
+            "changePct":        q.get("changePercent", 0),
             "unrealizedProfit": round(price * h["sharesHeld"] - h["totalCost"]),
         })
 
@@ -165,14 +177,35 @@ async def get_by_id(stock_id: str):
     if not h:
         raise HTTPException(status_code=404, detail="庫存不存在")
     if h["sharesHeld"] > 0:
+        loop = asyncio.get_event_loop()
+
+        async def primary():
+            from services.shioaji_manager import shioaji_manager
+            await shioaji_manager.subscribe_stock(stock_id)
+            fresh = shioaji_manager.get_fresh_quote(stock_id)
+            if fresh is None:
+                raise RuntimeError("no fresh tick")
+            return {
+                "price":         fresh.get("price", 0),
+                "change":        fresh.get("change") or 0,
+                "changePercent": fresh.get("change_percent") or 0,
+            }
+
+        async def fallback():
+            q = await loop.run_in_executor(None, get_quote, stock_id)
+            return {"price": q.get("price", 0), "change": q.get("change", 0),
+                    "changePercent": q.get("changePercent", 0)}
+
         try:
-            q = get_quote(stock_id)
-            h["stockName"]    = q["name"]
-            h["currentPrice"] = q["price"]
-            h["change"]       = q["change"]
-            h["changePercent"]= q["changePercent"]
+            q = await api_switch_call(primary, fallback)
+            h["currentPrice"]  = q.get("price", 0)
+            h["change"]        = q.get("change", 0)
+            h["changePercent"] = q.get("changePercent", 0)
         except Exception:
-            pass
+            h["currentPrice"]  = 0
+            h["change"]        = 0
+            h["changePercent"] = 0
+
     return {"success": True, "data": h}
 
 
@@ -199,7 +232,6 @@ async def recalculate(body: list[dict]):
     if not body:
         raise HTTPException(status_code=400, detail="Request body 必須為非空陣列")
     db = get_db()
-    name_map = build_name_map()
     batch = db.batch()
     for h in body:
         stock_id = h.get("stockId")
@@ -215,7 +247,7 @@ async def recalculate(body: list[dict]):
             "cost_method":     h.get("costMethod", "preserve_method"),
             "updated_at":      fs.SERVER_TIMESTAMP,
         }
-        stock_name = h.get("stockName") or name_map.get(stock_id)
+        stock_name = h.get("stockName")
         if stock_name:
             payload["stock_name"] = stock_name
         batch.set(ref, payload, merge=True)
@@ -236,15 +268,16 @@ async def create_asset_tag(stock_code: str, body: dict):
         raise HTTPException(status_code=400, detail="weightRatio 必須為 0 < value ≤ 100 的數字")
 
     db = get_db()
-    tag_snap = db.collection("tags").where("name", "==", tag_name).limit(1).get()
+    tag_snap = db.collection("tags").where(filter=FieldFilter("name", "==", tag_name)).limit(1).get()
     if not list(tag_snap):
         raise HTTPException(status_code=400, detail=f'Tag "{tag_name}" 不存在')
 
     ref = db.collection("asset_tags").document()
     ref.set({"stock_code": stock_code, "tag_name": tag_name, "weight_ratio": weight_ratio})
     created = deserialize_asset_tag(ref.get())
-    name_map = build_name_map()
-    return {"success": True, "data": asset_tag_to_dto(created, name_map)}
+    holding_doc = db.collection("holdings").document(stock_code).get()
+    stock_name = holding_doc.to_dict().get("stock_name") if holding_doc.exists else None
+    return {"success": True, "data": {**created, "stockName": stock_name}}
 
 
 # ─── PUT /holdings/:stockCode/tags/:id (M2-B) ─────────────────────────────────
@@ -261,8 +294,9 @@ async def update_asset_tag(stock_code: str, tag_id: str, body: dict):
         raise HTTPException(status_code=404, detail="AssetTag 不存在")
     ref.update({"weight_ratio": weight_ratio})
     updated = deserialize_asset_tag(ref.get())
-    name_map = build_name_map()
-    return {"success": True, "data": asset_tag_to_dto(updated, name_map)}
+    holding_doc = db.collection("holdings").document(stock_code).get()
+    stock_name = holding_doc.to_dict().get("stock_name") if holding_doc.exists else None
+    return {"success": True, "data": {**updated, "stockName": stock_name}}
 
 
 # ─── DELETE /holdings/:stockCode/tags/:id (M2-B) ──────────────────────────────

@@ -1,6 +1,6 @@
 # 個人理財雲端系統 — 後端開發任務清單
 
-> 版本：3.1（2026-05-22）
+> 版本：4.0（2026-05-22）
 > 參考文件：Back-End\CLAUDE.md
 
 ---
@@ -396,8 +396,13 @@ Node.js（port 3001）與 Python（port 8000）同時運行，以比對腳本對
 
 #### M4：市場資料 ✅
 
-- **M4-A** ✅ `services/yahoo_finance.py`：yfinance 封裝；NaN 安全轉換（`_f`/`_i` helper）；市場指數（Yahoo-only 路徑，台指期爬蟲）；匯率（8 幣別）；出口燈號（NDC）；歷史 K 線；基本面；籌碼（TWSE T86）
-- **M4-B** ⏭️ Shioaji 整合跳過（Python 後端走 Yahoo-only，Shioaji 微服務為獨立服務）
+- **M4-A** ✅ `services/yahoo_finance.py`：**yfinance 已完全移除**，全改用 Yahoo v8 Chart API（`_yf_chart`）與 v10 quoteSummary（`_yf_quote_summary`）直接 HTTP 呼叫；NaN 安全轉換（`_f`/`_i` helper）；市場指數（6-worker 並發 + 台指期爬蟲）；匯率（8 幣別並發）；出口燈號（NDC）；歷史 K 線；基本面；籌碼（TWSE T86）
+- **M4-B** ✅ Shioaji 整合完成
+  - ✅ `services/shioaji_manager.py`：WebSocket tick 訂閱、quote/futures cache（120s TTL）、snapshot fallback、斷線重連
+  - ✅ `services/api_switch.py`：CircuitBreaker（CLOSED/OPEN/HALF_OPEN，失敗 3 次→冷卻 60s）；`api_switch_call(primary, fallback)` 盤中走 Shioaji、盤外走 Yahoo
+  - ✅ `utils/market_hours.py`：`is_market_open()` 台股盤中判斷（週一–五 09:00–13:30 UTC+8）
+  - ✅ Phase C：`routers/market.py / stocks.py / holdings.py / watchlist.py` 全接 `api_switch_call`
+  - ✅ Phase E：移除 `BYPASS_LIVE_PRICES` 旗標，正式啟用切換邏輯
 - **M4-C** ✅ `routers/market.py`：`GET /market/indices`（TTL=5s）、`GET /market/forex-rates`（TTL=300s）、`GET /market/export-indicator`（TTL=3600s）
 - **M4-D** ✅ `routers/stocks.py`：`GET /stocks/search?q=`、`GET /stocks/list/meta`、`GET /stocks/{id}/quote|history|profile|chip`
 - **✅ 驗證關卡** `pytest tests/test_m4_*.py` → **22/22 passed**（2026-05-22）
@@ -410,19 +415,20 @@ Node.js（port 3001）與 Python（port 8000）同時運行，以比對腳本對
 - **M5-D** ✅ `routers/preferences.py`：`GET/PUT /preferences`；Firestore 欄位直接 camelCase；PUT deep merge
 - **✅ 驗證關卡** `pytest tests/test_m5_*.py` → **17/17 passed**（2026-05-22）
 
-#### M6：MCP Server
+#### M6：MCP Server ✅
 
-- **M6-A** `routers/mcp.py`：`GET /mcp/sse`（SSE 長連線，15s ping）、`POST /mcp/message`（JSON-RPC 2.0）
-- **M6-B** `services/mcp_service.py`：8 個 Tool（同原規格）
-- **M6-C** API Key 驗證：`?key=<MCP_ACCESS_KEY>`；未設定時跳過（開發模式）
-- **✅ 驗證關卡** `pytest tests/test_m6_mcp.py` — 全通過後進入 M7
+- **M6-A** ✅ `routers/mcp.py`：`GET /mcp/sse`（SSE 長連線，15s ping）、`POST /mcp/message`（JSON-RPC 2.0）；`/api/v1/mcp/` 路由跳過 EasyAuth（改用 MCP_ACCESS_KEY）
+- **M6-B** ✅ `services/mcp_service.py`：8 個 Tool（`get_holdings / get_watchlist / get_market_indices / get_stock_quote / get_snapshots / get_tags / get_rebalance_rules / get_foreign_assets`）；回傳格式 `{"content": [{"type": "text", "text": "<JSON>"}]}`
+- **M6-C** ✅ API Key 驗證：`?key=<MCP_ACCESS_KEY>`；`MCP_ACCESS_KEY` 未設定時跳過（開發模式）
+- ✅ `main.py` 加掛 `mcp.router`；EasyAuth skip 加入 `/api/v1/mcp/` prefix
+- **✅ 驗證關卡** `pytest tests/test_m6_mcp.py` → **14/14 passed**（2026-05-22）
 
-#### M7：切換與下線
+#### M7：切換與下線 ✅
 
-- **M7-A** 前端 `VITE_API_BASE_URL` 更新指向新 Python 服務 URL；Azure Static Web Apps 環境變數同步
-- **M7-B** 全端點驗證：`pytest tests/` 全數通過；若有結構差異，視情況啟動雙後端並行比對（方案一）
-- **M7-C** 確認正常後下線 `finance-backend`（Node.js）與 `finance-shioaji`（Python proxy）
-- **M7-D** `Docs/Azure-Deployment.md` 全面更新
+- **M7-A** ✅ 前端 `VITE_API_BASE_URL` 更新指向新 Python 服務 URL；Azure Static Web Apps 環境變數同步
+- **M7-B** ✅ 全端點驗證：`pytest tests/` → **121/121 passed**（2026-05-22）
+- **M7-C** ✅ 確認正常後下線 `finance-backend`（Node.js）與 `finance-shioaji`（Python proxy）
+- **M7-D** ✅ `Docs/Azure-Deployment.md` 全面更新
 
 ---
 
@@ -440,47 +446,37 @@ Node.js（port 3001）與 Python（port 8000）同時運行，以比對腳本對
 
 ---
 
-### BUG-02：`get_quote()` 實作錯誤，導致持股 timeout ⚠️ 待修
+### BUG-02：`get_quote()` 實作錯誤，導致持股 timeout ✅ 已修
 
 **症狀**：`GET /holdings` 與 `GET /holdings/prices` timeout（前端 15000ms exceeded），持股列表無法載入。
 
 **根本原因（兩層）**：
 
-**第一層 — 選錯工具**：Python 使用 `yfinance.fast_info.last_price`，Node.js 使用 Yahoo Finance **v8 Chart API** 直接請求。
-兩者行為不同：
-- `fast_info.last_price`：依賴 `currentTradingPeriod` 欄位，**盤外會拋 `KeyError`，無法取得報價**
-- Yahoo Finance v8 Chart API `meta.regularMarketPrice`：**盤中盤外都有值**（最後成交價），與 Node.js `Stock.getQuote()` 完全一致
+**第一層 — 選錯工具**：原本使用 `yfinance.fast_info.last_price`，盤外會拋 `KeyError`，fallback 改走 `ticker.history("5d")`，每支股票耗時 5–10 秒。
 
-**第二層 — 錯誤的 fallback**：為修補 `fast_info` 盤外失效，加了 `ticker.history("5d")` 作為 fallback。
-`history()` 每次需下載 5 日 OHLCV 資料，每支股票耗時 5–10 秒，4-5 支股票即使並行也超過前端 15 秒 timeout。
+**第二層 — Bypass 路徑仍呼叫 `get_all_stocks()`**：原 bypass stub 查 Firestore `stock_list/data`（數千筆），每次 GET /holdings 都觸發，額外增加 Firestore 讀取。
 
-**正確修法（對齊 Node.js）**：
-```
-Node.js: requests.get(
-    "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
-    params={"interval": "1d", "range": "1d"},
-    timeout=10,  # 與 Node.js yfClient 一致
-)
-→ result["chart"]["result"][0]["meta"]["regularMarketPrice"]   # 最後成交價（盤外有效）
-→ result["chart"]["result"][0]["meta"]["chartPreviousClose"]   # 前日收盤
-```
-
-**現況**（待修）：`get_quote()` 仍有錯誤的 `fast_info` + `history()` fallback，`GET /holdings` 仍會 timeout。
+**修正**：
+- `get_quote()` 非 bypass 路徑改用 Yahoo v8 `_yf_chart(symbol, "1d", "1d")`，`timeout=10`，盤中盤外均有值
+- Bypass 路徑移除 `get_all_stocks()` 呼叫，直接回傳 `{..., "name": stock_id}`
+- `routers/holdings.py` 匯入 `BYPASS_LIVE_PRICES`，bypass 時完全跳過 `_fetch_quotes_parallel()`
+- `routers/watchlist.py` 同上，bypass 時跳過 `get_quote()` 迴圈
+- yfinance 套件已完全移除
 
 ---
 
-### BUG-03：`get_indices()` ThreadPoolExecutor 阻塞問題 ⚠️ 部分修正
+### BUG-03：`get_indices()` ThreadPoolExecutor 阻塞問題 ✅ 已修
 
 **症狀**：`GET /market/indices` 持續 timeout。
 
 **根本原因**：
-- **原本用法**：`with ThreadPoolExecutor(...) as pool`，context manager 的 `__exit__` 呼叫 `shutdown(wait=True)`，即使 `fut.result(timeout=12)` 已超時，仍繼續等待所有 future 執行完畢才返回
-- **部分修正**：已改為手動 `pool.shutdown(wait=False)`，不再等待未完成的 future
-- **仍有問題**：`_fetch_all_indices_batch()` 呼叫 `yf.download()` 無明確 timeout，底層連線若卡住（例如 DNS 解析慢），仍可能超過前端 15s
+- `with ThreadPoolExecutor(...) as pool` context manager 的 `__exit__` 呼叫 `shutdown(wait=True)`，`fut.result(timeout=12)` 超時後仍繼續等所有 future
+- `_fetch_all_indices_batch()` 呼叫 `yf.download()` 無明確 timeout
 
-**正確修法（對齊 Node.js）**：
-各指數也改為直接打 Yahoo Finance v8 Chart API，用 `requests.get(..., timeout=10)` 並行抓取，每個請求固定 10 秒超時。
-台指期爬蟲（`_fetch_taiwan_futures`）維持現行 `requests.get(..., timeout=10)` 不變。
+**修正**：
+- 移除 `_fetch_all_indices_batch()`，改用 `_fetch_index_card(item)` 逐一打 Yahoo v8 Chart API（`timeout=10`）
+- `get_indices()` 改為 6-worker `ThreadPoolExecutor`，台指期 + 5 個指數全並發，`pool.shutdown(wait=False)` 不阻塞
+- yfinance 套件已完全移除
 
 ---
 

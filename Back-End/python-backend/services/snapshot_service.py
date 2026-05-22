@@ -1,10 +1,10 @@
 """每日快照自動記錄服務（對應 Node.js snapshotsController.record）"""
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
-import yfinance as yf
+from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 from services.rate_helper import get_live_rate_map
-from services.yahoo_finance import get_quote, _f
+from services.yahoo_finance import get_quote, _f, _yf_chart
 
 
 def _taiwan_date_str() -> str:
@@ -14,10 +14,12 @@ def _taiwan_date_str() -> str:
 def _get_vix() -> tuple:
     """取得 VIX 並換算 marketStateAuto，失敗回傳 (None, None)"""
     try:
-        hist = yf.Ticker("^VIX").history(period="5d")
-        if hist.empty:
+        data = _yf_chart("^VIX", "1d", "5d")
+        closes = data.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+        valid = [c for c in closes if c is not None]
+        if not valid:
             return None, None
-        last = float(hist["Close"].dropna().iloc[-1])
+        last = float(valid[-1])
         if last < 20:
             state = "risk-on"
         elif last <= 30:
@@ -58,8 +60,8 @@ def record_snapshot() -> dict:
     # 取前一年最後快照（execCapital 用）
     prev_year_snap = (
         db.collection("daily_snapshots")
-        .where("date", ">=", f"{current_year - 1}-01-01")
-        .where("date", "<=", f"{current_year - 1}-12-31")
+        .where(filter=FieldFilter("date", ">=", f"{current_year - 1}-01-01"))
+        .where(filter=FieldFilter("date", "<=", f"{current_year - 1}-12-31"))
         .order_by("date", direction="DESCENDING")
         .limit(1)
         .get()

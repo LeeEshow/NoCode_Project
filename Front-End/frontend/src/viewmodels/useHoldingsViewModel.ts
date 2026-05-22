@@ -47,18 +47,16 @@ export function useHoldingsViewModel() {
     try {
       const rawItems = await fetchHoldings();
       const items = rawItems.map(h => ({ ...h, tags: h.tags ?? [] }));
+      // 持股資料到手立即顯示，不等 sparkline
+      setState(s => ({ ...s, items, loading: false }));
+      // sparkline 在背景載入，完成後更新
       const sparklineEntries = await Promise.all(
         items.map(async h => {
           const data = await fetchSparklineData(h.stockCode).catch(() => [] as number[]);
           return [h.stockCode, data] as [string, number[]];
         })
       );
-      setState(s => ({
-        ...s,
-        items,
-        sparklines: Object.fromEntries(sparklineEntries),
-        loading: false,
-      }));
+      setState(s => ({ ...s, sparklines: Object.fromEntries(sparklineEntries) }));
     } catch (err) {
       setState(s => ({ ...s, loading: false, error: (err as Error).message }));
     }

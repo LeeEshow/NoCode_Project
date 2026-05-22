@@ -50,9 +50,7 @@ interface Props {
   calculating:                boolean;
   correlationUpdated:         boolean;
   /* 重算相關性 ρ（從風險設定移至此） */
-  onAutoCalcRho:              () => void;
   onAutoCalcRhoAndRebalance:  () => void;
-  rhoCalcCalculating:         boolean;
 }
 
 /* ── 常數 ── */
@@ -84,7 +82,7 @@ export default function TagManagerTab({
   onRecalculateAll, recalculating,
   onTriggerRebalance, calculating,
   correlationUpdated,
-  onAutoCalcRho, onAutoCalcRhoAndRebalance, rhoCalcCalculating,
+  onAutoCalcRhoAndRebalance,
 }: Props) {
   const statMap = new Map(tagStats.map(s => [s.tagName, s]));
   const uid     = useId();
@@ -231,36 +229,14 @@ export default function TagManagerTab({
       {/* 操作列 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
 
-        {/* 計算再平衡（最左），與右側自動計算群加大間距 */}
+        {/* 計算再平衡（最左） */}
         <button
           className="btn-ghost btn-ghost--accent"
           onClick={() => setRebalanceModalOpen(true)}
           disabled={calculating}
-          style={{ minWidth: 96, marginRight: 12 }}
+          style={{ minWidth: 96 }}
         >
           {calculating ? spinner : '▷ 計算再平衡'}
-        </button>
-
-        {/* 自動計算群 */}
-        <button
-          className="btn-ghost"
-          onClick={onRecalculateAll}
-          disabled={recalculating || saving || tags.length === 0}
-          aria-label="批次自動計算所有 Tag 動態風險"
-          title="依近期波動率自動填入各 Tag 的市場狀態風險係數"
-          style={{ fontSize: 'var(--text-sm)' }}
-        >
-          {recalculating ? spinner : '⟳ 批次動態風險'}
-        </button>
-        <button
-          className="btn-ghost"
-          onClick={onAutoCalcRho}
-          disabled={rhoCalcCalculating || tags.length < 2 || holdings.length === 0}
-          aria-label="自動計算 Tag 相關性矩陣"
-          title="依持股 Sparkline 計算各 Tag 間的 Pearson ρ"
-          style={{ fontSize: 'var(--text-sm)' }}
-        >
-          {rhoCalcCalculating ? spinner : '⟳ Tag 矩陣 ρ'}
         </button>
 
         {/* 彈性空白 */}
@@ -273,6 +249,16 @@ export default function TagManagerTab({
             ⚠ 相關性已更新
           </span>
         )}
+        <button
+          className="btn-ghost"
+          onClick={onRecalculateAll}
+          disabled={recalculating || saving || tags.length === 0}
+          aria-label="批次自動計算所有 Tag 動態風險"
+          title="依近期波動率自動填入各 Tag 的市場狀態風險係數"
+          style={{ fontSize: 'var(--text-sm)' }}
+        >
+          {recalculating ? spinner : '⟳ 批次動態風險'}
+        </button>
         <button className="btn-ghost" onClick={openAdd}>＋ 新增</button>
       </div>
 

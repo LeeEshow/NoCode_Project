@@ -4,6 +4,7 @@ GET/POST/PUT/DELETE /api/v1/asset-tags
 """
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
+from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 from services.yahoo_finance import get_all_stocks
 
@@ -36,7 +37,7 @@ def _deserialize(doc, name_map: dict) -> dict:
 async def get_all(stockCode: str | None = Query(default=None)):
     db = get_db()
     col = db.collection("asset_tags")
-    snap = col.where("stock_code", "==", stockCode).get() if stockCode else col.get()
+    snap = col.where(filter=FieldFilter("stock_code", "==", stockCode)).get() if stockCode else col.get()
     name_map = _name_map()
     return {"success": True, "data": [_deserialize(doc, name_map) for doc in snap]}
 
@@ -57,7 +58,7 @@ async def create(body: dict):
         raise HTTPException(status_code=400, detail="weightRatio 必須為 0 < value ≤ 100 的數字")
 
     db = get_db()
-    tag_snap = db.collection("tags").where("name", "==", tag_name).limit(1).get()
+    tag_snap = db.collection("tags").where(filter=FieldFilter("name", "==", tag_name)).limit(1).get()
     if not list(tag_snap):
         raise HTTPException(status_code=400, detail=f'Tag "{tag_name}" 不存在')
 

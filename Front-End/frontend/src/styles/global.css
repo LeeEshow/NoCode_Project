@@ -255,6 +255,9 @@ tr:hover .drag-handle { color: var(--dim); }
   font-size: var(--text-sm);
   color: var(--muted);
   margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Numeric Value（提升選擇器優先度，避免被 td 的 color:var(--muted) 覆蓋）── */

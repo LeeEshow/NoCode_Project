@@ -324,15 +324,16 @@ export default function RiskPanel({
   const marketStateLabel = MARKET_STATE_OPTIONS.find(o => o.value === marketState)?.label ?? marketState;
   const deviationCount   = tagStats.filter(s => s.triggered).length;
 
-  /* 相關性矩陣未正確載入：明確失敗 OR 有 2+ Tag 但矩陣仍為空 */
+  /* 相關性矩陣未正確載入：明確失敗 OR 有 2+ Tag 但矩陣仍為空 OR 所有 ρ 都為 1（從未計算過） */
+  const allRhoAreOne = correlationMatrix.length > 0 && correlationMatrix.every(e => e.rho === 1);
   const showMatrixAlert = tags.length >= 2 && !correlationLoading && (
-    correlationLoadFailed || correlationMatrix.length === 0
+    correlationLoadFailed || correlationMatrix.length === 0 || allRhoAreOne
   );
 
   async function handleReloadMatrix(e: React.MouseEvent) {
     e.stopPropagation();
     await onReloadCorrelationMatrix();
-    onTriggerRebalance();
+    // Risk 值由 useRiskViewModel useMemo 在 correlationMatrix 更新後自動重算，不觸發再平衡
   }
 
   const sliderVal = Math.round(baseThreshold * 100);
@@ -543,9 +544,7 @@ export default function RiskPanel({
                 onTriggerRebalance={onTriggerRebalance}
                 calculating={calculating}
                 correlationUpdated={correlationUpdated}
-                onAutoCalcRho={handleAutoCalcRho}
                 onAutoCalcRhoAndRebalance={handleAutoCalcRhoAndRebalance}
-                rhoCalcCalculating={rhoCalc.calculating}
               />
             </div>
 
@@ -726,6 +725,18 @@ export default function RiskPanel({
                       Tag 相關性矩陣
                       <SettingTooltip content="各 Tag 之間漲跌的連動程度（ρ）。越接近 1 代表同漲同跌、分散效果差；越接近 0 代表彼此獨立" />
                     </span>
+                    <button
+                      className="btn-ghost"
+                      onClick={handleAutoCalcRho}
+                      disabled={rhoCalc.calculating || tags.length < 2 || holdings.length === 0}
+                      aria-label="自動計算 Tag 相關性矩陣"
+                      title="依持股 Sparkline 計算各 Tag 間的 Pearson ρ"
+                      style={{ fontSize: 'var(--text-xs)', padding: '2px 10px' }}
+                    >
+                      {rhoCalc.calculating
+                        ? <span style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle' }} />
+                        : '⟳ Tag 矩陣 ρ'}
+                    </button>
                   </div>
 
                   {correlationLoading ? (

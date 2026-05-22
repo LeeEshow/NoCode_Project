@@ -1,5 +1,6 @@
 import os
 import time
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,7 +9,21 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 預熱 Firestore gRPC 連線，避免第一個請求因 channel 初始化而延遲 2–3 秒
+    try:
+        import asyncio
+        from services.firestore import get_db
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: get_db().collection("holdings").limit(1).get())
+    except Exception:
+        pass
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 # CORS — 最外層，確保 OPTIONS preflight 可通過
 app.add_middleware(
@@ -26,7 +41,11 @@ app.add_middleware(
 @app.middleware("http")
 async def easy_auth_middleware(request: Request, call_next):
     bypass = os.getenv("EASY_AUTH_BYPASS", "").lower() in ("true", "1", "yes")
-    skip = request.url.path == "/health" or request.method == "OPTIONS"
+    skip = (
+        request.url.path == "/health"
+        or request.method == "OPTIONS"
+        or request.url.path.startswith("/api/v1/mcp/")
+    )
 
     if not bypass and not skip:
         if not request.headers.get("X-MS-CLIENT-PRINCIPAL"):
@@ -56,8 +75,9 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 from routers import holdings, watchlist, transactions, assets, plans
 from routers import tags, market_state, correlation, market, stocks
-from routers import snapshots, settings, preferences, asset_tags
+from routers import snapshots, settings, preferences, asset_tags, system
 from routers.rebalance import rules_router, snapshots_router
+from routers import mcp
 
 API = "/api/v1"
 app.include_router(holdings.router,     prefix=f"{API}/holdings")
@@ -76,6 +96,8 @@ app.include_router(snapshots.router,    prefix=f"{API}/snapshots")
 app.include_router(settings.router,     prefix=f"{API}/settings")
 app.include_router(preferences.router,  prefix=f"{API}/preferences")
 app.include_router(asset_tags.router,   prefix=f"{API}/asset-tags")
+app.include_router(system.router,       prefix=f"{API}/system")
+app.include_router(mcp.router,          prefix=f"{API}/mcp")
 
 
 # 健康探測端點（Azure warm-up probe，與 Node.js 一致）

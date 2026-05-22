@@ -1,4 +1,5 @@
 import asyncio
+import time
 from fastapi import APIRouter, HTTPException, Query
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
@@ -6,6 +7,7 @@ from services.yahoo_finance import (
     get_all_stocks, get_quote, get_full_history,
     get_profile, get_chip,
 )
+from services.api_switch import api_switch_call
 
 router = APIRouter()
 
@@ -69,8 +71,31 @@ async def stock_quote(stock_id: str):
         return {"success": True, "data": cached}
 
     loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, get_quote, stock_id)
-    cache_set(cache_key, data, 60)
+
+    async def primary():
+        from services.shioaji_manager import shioaji_manager
+        await shioaji_manager.subscribe_stock(stock_id)
+        fresh = shioaji_manager.get_fresh_quote(stock_id)
+        if fresh is None:
+            raise RuntimeError("no fresh Shioaji tick")
+        return {
+            "stockId":       stock_id,
+            "name":          stock_id,
+            "price":         fresh.get("price", 0),
+            "change":        fresh.get("change") or 0,
+            "changePercent": fresh.get("change_percent") or 0,
+            "high":          fresh.get("high", 0),
+            "low":           fresh.get("low", 0),
+            "volume":        fresh.get("volume", 0),
+            "marketStatus":  "TRADING",
+            "updatedAt":     int(time.time()),
+        }
+
+    async def fallback():
+        return await loop.run_in_executor(None, get_quote, stock_id)
+
+    data = await api_switch_call(primary, fallback)
+    cache_set(cache_key, data, 10)
     return {"success": True, "data": data}
 
 
@@ -78,8 +103,14 @@ async def stock_quote(stock_id: str):
 
 @router.get("/{stock_id}/history")
 async def stock_history(stock_id: str, days: int = Query(default=90, ge=1, le=365)):
+    cache_key = f"stock:history:{stock_id}:{days}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return {"success": True, "data": cached}
     loop = asyncio.get_event_loop()
     data = await loop.run_in_executor(None, get_full_history, stock_id, days)
+    if data:
+        cache_set(cache_key, data, 300)
     return {"success": True, "data": data}
 
 

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
+from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -98,7 +99,7 @@ async def create(body: dict):
     presets = validate_presets(presets_raw) if presets_raw is not None else None
 
     db = get_db()
-    existing = db.collection("tags").where("name", "==", name.strip()).limit(1).get()
+    existing = db.collection("tags").where(filter=FieldFilter("name", "==", name.strip())).limit(1).get()
     if list(existing):
         raise HTTPException(status_code=400, detail=f'Tag "{name.strip()}" 已存在')
 
@@ -143,7 +144,7 @@ async def update(tag_id: str, body: dict):
         if not isinstance(name, str) or not name.strip():
             raise HTTPException(status_code=400, detail="name 不可為空字串")
         # 檢查重名（排除自身）
-        dup = db.collection("tags").where("name", "==", name.strip()).limit(1).get()
+        dup = db.collection("tags").where(filter=FieldFilter("name", "==", name.strip())).limit(1).get()
         for d in dup:
             if d.id != tag_id:
                 raise HTTPException(status_code=400, detail=f'Tag "{name.strip()}" 已存在')
@@ -191,7 +192,7 @@ async def remove(tag_id: str):
         raise HTTPException(status_code=404, detail="Tag 不存在")
 
     tag_name = tag_doc.to_dict().get("name", "")
-    refs = db.collection("asset_tags").where("tag_name", "==", tag_name).limit(1).get()
+    refs = db.collection("asset_tags").where(filter=FieldFilter("tag_name", "==", tag_name)).limit(1).get()
     if list(refs):
         raise HTTPException(status_code=400, detail="此 Tag 仍有股票對應，請先移除對應後再刪除")
 

@@ -160,13 +160,13 @@ export default function WatchlistTable({
             <table className="ft-table">
               <thead>
                 <tr>
-                  <th>代號 / 名稱</th>
-                  <th className="right">即時報價</th>
-                  <th className="right">漲跌幅</th>
-                  <th className="center">90日走勢</th>
-                  <th className="right">目標價</th>
-                  <th className="center">判斷</th>
-                  <th className="center">操作</th>
+                  <th style={{ minWidth: 120 }}>代號 / 名稱</th>
+                  <th className="right" style={{ minWidth: 80 }}>即時報價</th>
+                  <th className="right" style={{ minWidth: 120 }}>漲跌幅</th>
+                  <th className="center" style={{ minWidth: 88 }}>90日走勢</th>
+                  <th className="right" style={{ minWidth: 80 }}>目標價</th>
+                  <th className="center" style={{ minWidth: 80 }}>判斷</th>
+                  <th className="center" style={{ minWidth: 72 }}>操作</th>
                 </tr>
               </thead>
               <tbody>

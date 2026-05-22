@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from firebase_admin import firestore as fs
+from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 from services.snapshot_service import record_snapshot, _deserialize_snapshot_dict
 
@@ -27,8 +28,8 @@ async def get_snapshots(year: int | None = Query(default=None)):
     db = get_db()
     snap = (
         db.collection("daily_snapshots")
-        .where("date", ">=", from_date)
-        .where("date", "<=", to_date)
+        .where(filter=FieldFilter("date", ">=", from_date))
+        .where(filter=FieldFilter("date", "<=", to_date))
         .order_by("date", direction="DESCENDING")
         .get()
     )

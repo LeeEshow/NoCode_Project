@@ -24,7 +24,21 @@
       "Bash(findstr \"/api\")",
       "Bash(python -c \"import sys; [print\\(l\\) for l in sys.stdin if '/api' in l]\")",
       "Bash(python -m pytest tests/test_m1_holdings.py tests/test_m4_market.py -q --tb=short)",
-      "Bash(python -m pytest tests/ -q --tb=short)"
+      "Bash(python -m pytest tests/ -q --tb=short)",
+      "Bash(Get-ChildItem -Path \"E:\\\\Code\\\\NoCode_Project\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"E:\\\\Code\\\\NoCode_Project\\\\Back-End\\\\backend\\\\src\" -Recurse -Filter \"*.ts\" -Name)",
+      "PowerShell(Get-ChildItem -Path \"E:\\\\Code\\\\NoCode_Project\\\\Back-End\\\\backend\\\\src\" -Recurse -File | Where-Object { $_.Name -match '\\(mcp|sse|rpc|tool\\)' } | Select-Object FullName)",
+      "PowerShell(Get-ChildItem -Path \"E:\\\\Code\\\\NoCode_Project\" -Recurse -File | Where-Object { $_.Name -match 'mcp' } | Select-Object FullName)",
+      "PowerShell(findstr *)",
+      "PowerShell(ls -Recurse \"E:\\\\Code\\\\NoCode_Project\\\\Back-End\\\\python-backend\" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'mcp' })",
+      "Bash(python -m pytest tests/test_m6_mcp.py -v --tb=short)",
+      "Bash(python -m pytest --version)",
+      "Bash(py -m pytest --version)",
+      "Bash(where pytest *)",
+      "Bash(pytest --version)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(py *)"
     ]
   }
 }

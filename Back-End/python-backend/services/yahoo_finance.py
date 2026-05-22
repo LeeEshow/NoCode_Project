@@ -2,10 +2,8 @@ import math
 import time
 import requests
 from concurrent.futures import ThreadPoolExecutor
-import yfinance as yf
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
-
 
 def _f(v, default=None):
     """安全轉 float：None / NaN / Inf 一律回傳 default"""
@@ -58,56 +56,64 @@ def resolve_symbol(stock_id: str) -> str:
     return f"{stock_id}.TW"
 
 
+_YF_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "application/json",
+}
+
+
+def _yf_chart(symbol: str, interval: str = "1d", range_: str = "1d") -> dict:
+    """Yahoo Finance v8 Chart API — 回傳 result[0]"""
+    res = requests.get(
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+        params={"interval": interval, "range": range_},
+        timeout=10,
+        headers=_YF_HEADERS,
+    )
+    res.raise_for_status()
+    result = res.json().get("chart", {}).get("result") or []
+    if not result:
+        raise ValueError(f"Yahoo v8: 無資料 {symbol}")
+    return result[0]
+
+
+def _yf_quote_summary(symbol: str, modules: str) -> dict:
+    """Yahoo Finance v10 quoteSummary API — 回傳 result[0]"""
+    res = requests.get(
+        f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}",
+        params={"modules": modules},
+        timeout=10,
+        headers=_YF_HEADERS,
+    )
+    res.raise_for_status()
+    result = res.json().get("quoteSummary", {}).get("result") or []
+    if not result:
+        raise ValueError(f"Yahoo v10: 無資料 {symbol}")
+    return result[0]
+
+
 def get_quote(stock_id: str) -> dict:
     """取得個股即時報價（與 Node.js StockQuote 結構一致）"""
-    all_stocks = get_all_stocks()
-    found = next((s for s in all_stocks if s.get("code") == stock_id), None)
-    name = found.get("name", stock_id) if found else stock_id
-
     symbol = resolve_symbol(stock_id)
-    ticker = yf.Ticker(symbol)
+    data = _yf_chart(symbol, "1d", "1d")
+    meta = data["meta"]
 
-    price = prev = high = low = 0.0
-    volume = 0
-
-    # 優先嘗試 fast_info（盤中有效），盤外 currentTradingPeriod 可能缺失
-    try:
-        fi = ticker.fast_info
-        price  = _f(fi.last_price, 0.0)
-        prev   = _f(fi.previous_close, 0.0)
-        high   = _f(getattr(fi, "day_high",    None), 0.0)
-        low    = _f(getattr(fi, "day_low",     None), 0.0)
-        volume = _i(getattr(fi, "last_volume", None))
-    except Exception:
-        pass
-
-    # fast_info 失敗或 price=0 時 fallback 用近 5 日收盤
-    if not price:
-        try:
-            hist = ticker.history(period="5d")
-            if not hist.empty:
-                closes = hist["Close"].dropna()
-                if len(closes) >= 1:
-                    price = _f(closes.iloc[-1], 0.0)
-                if len(closes) >= 2:
-                    prev = _f(closes.iloc[-2], 0.0)
-        except Exception:
-            pass
-
+    price = _f(meta.get("regularMarketPrice"), 0.0)
+    prev  = _f(meta.get("chartPreviousClose"), price)
     change     = round(price - prev, 2) if price and prev else 0.0
     change_pct = round((price - prev) / prev * 100, 2) if price and prev else 0.0
 
     return {
         "stockId":       stock_id,
-        "name":          name,
+        "name":          stock_id,
         "price":         price,
         "change":        change,
         "changePercent": change_pct,
-        "high":          high,
-        "low":           low,
-        "volume":        volume,
-        "marketStatus":  "CLOSED",
-        "updatedAt":     int(time.time()),
+        "high":          _f(meta.get("regularMarketDayHigh"), 0.0),
+        "low":           _f(meta.get("regularMarketDayLow"),  0.0),
+        "volume":        _i(meta.get("regularMarketVolume")),
+        "marketStatus":  meta.get("marketState", "CLOSED"),
+        "updatedAt":     int(meta.get("regularMarketTime") or time.time()),
     }
 
 
@@ -115,13 +121,22 @@ def get_history_closes(stock_id: str, days: int = 90) -> list[float]:
     """取得個股 N 日收盤價序列（用於動態風險計算）"""
     symbol = resolve_symbol(stock_id)
     try:
-        ticker = yf.Ticker(symbol)
-        hist = ticker.history(period="3mo")
-        if hist.empty:
-            return []
-        return [float(v) for v in hist["Close"].dropna().tolist()]
+        data = _yf_chart(symbol, "1d", "3mo")
+        closes = data.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+        return [float(c) for c in closes if c is not None]
     except Exception:
         return []
+
+
+def _fetch_forex_rate(item: dict) -> dict:
+    """Yahoo v8 Chart API 取得單一幣別匯率"""
+    try:
+        data = _yf_chart(item["symbol"], "1d", "1d")
+        rate = _f(data["meta"].get("regularMarketPrice"))
+        return {"code": item["code"], "name": item["name"],
+                "rate": round(rate, 4) if rate is not None else None}
+    except Exception:
+        return {"code": item["code"], "name": item["name"], "rate": None}
 
 
 def get_forex_rates() -> list[dict]:
@@ -129,18 +144,8 @@ def get_forex_rates() -> list[dict]:
     cached = cache_get("market:forex-rates")
     if cached is not None:
         return cached
-    results = []
-    for item in FOREX_SYMBOLS:
-        try:
-            fi = yf.Ticker(item["symbol"]).fast_info
-            rate = fi.last_price
-            results.append({
-                "code": item["code"],
-                "name": item["name"],
-                "rate": round(float(rate), 4) if rate else None,
-            })
-        except Exception:
-            results.append({"code": item["code"], "name": item["name"], "rate": None})
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(_fetch_forex_rate, FOREX_SYMBOLS))
     cache_set("market:forex-rates", results, 300)
     return results
 
@@ -156,43 +161,20 @@ INDEX_SYMBOLS = [
 ]
 
 
-def _fetch_all_indices_batch() -> list[dict]:
-    """單一批量請求取得所有指數資料（替代 5 次獨立請求）"""
-    symbols = [item["symbol"] for item in INDEX_SYMBOLS]
+def _fetch_index_card(item: dict) -> dict:
+    """Yahoo v8 Chart API 取得單一指數報價（timeout=10s）"""
     try:
-        data = yf.download(
-            tickers=symbols,
-            period="5d",
-            auto_adjust=True,
-            progress=False,
-        )
-        if data.empty:
-            raise ValueError("empty data")
-        results = []
-        for item in INDEX_SYMBOLS:
-            sym = item["symbol"]
-            try:
-                # MultiIndex columns: ("Close", sym)
-                if hasattr(data.columns, "levels"):
-                    closes = data["Close"][sym].dropna()
-                else:
-                    closes = data["Close"].dropna()
-                if len(closes) < 1:
-                    raise ValueError("no data")
-                price = _f(closes.iloc[-1])
-                prev  = _f(closes.iloc[-2]) if len(closes) >= 2 else None
-                change     = round(price - prev, 2) if price is not None and prev is not None else None
-                change_pct = round((price - prev) / prev * 100, 2) if price is not None and prev else None
-                results.append({"id": item["id"], "name": item["name"],
-                                "price": price, "change": change, "changePercent": change_pct})
-            except Exception:
-                results.append({"id": item["id"], "name": item["name"],
-                                "price": None, "change": None, "changePercent": None})
-        return results
+        data = _yf_chart(item["symbol"], "1d", "1d")
+        meta = data["meta"]
+        price = _f(meta.get("regularMarketPrice"))
+        prev  = _f(meta.get("chartPreviousClose"))
+        change     = round(price - prev, 2) if price is not None and prev is not None else None
+        change_pct = round((price - prev) / prev * 100, 2) if price is not None and prev else None
+        return {"id": item["id"], "name": item["name"],
+                "price": price, "change": change, "changePercent": change_pct}
     except Exception:
-        return [{"id": item["id"], "name": item["name"],
-                 "price": None, "change": None, "changePercent": None}
-                for item in INDEX_SYMBOLS]
+        return {"id": item["id"], "name": item["name"],
+                "price": None, "change": None, "changePercent": None}
 
 
 def _fetch_taiwan_futures() -> dict:
@@ -206,7 +188,6 @@ def _fetch_taiwan_futures() -> dict:
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "zh-TW,zh;q=0.9",
             },
-            verify=False,
         )
         html = res.text
         idx = html.find("main-1-FutureHeader-Proxy")
@@ -237,33 +218,36 @@ def _fetch_taiwan_futures() -> dict:
 
 
 def get_indices() -> list[dict]:
-    """取得 6 個市場指數，快取 5s"""
+    """取得 6 個市場指數（twii / 台指期 / nasdaq / sp500 / dji / sox），快取 5s"""
     cached = cache_get("market:indices")
     if cached is not None:
         return cached
 
-    _no_data = lambda item: {"id": item["id"], "name": item["name"],
-                              "price": None, "change": None, "changePercent": None}
+    # 5 個 Yahoo 指數 + 台指期同時並發（6 workers）
+    pool = ThreadPoolExecutor(max_workers=6)
+    fut_futures = pool.submit(_fetch_taiwan_futures)
+    futs = {item["id"]: pool.submit(_fetch_index_card, item) for item in INDEX_SYMBOLS}
 
-    # 不使用 with（context manager 的 shutdown(wait=True) 會等所有 future 結束才返回）
-    pool = ThreadPoolExecutor(max_workers=2)
-    fut_tw  = pool.submit(_fetch_taiwan_futures)
-    fut_idx = pool.submit(_fetch_all_indices_batch)
+    cards: dict[str, dict] = {}
+    for item_id, fut in futs.items():
+        try:
+            cards[item_id] = fut.result(timeout=12)
+        except Exception:
+            item = next(i for i in INDEX_SYMBOLS if i["id"] == item_id)
+            cards[item_id] = {"id": item_id, "name": item["name"],
+                              "price": None, "change": None, "changePercent": None}
     try:
-        futures_card = fut_tw.result(timeout=12)
+        futures_card = fut_futures.result(timeout=12)
     except Exception:
         futures_card = {"id": "futures", "name": "台指期",
                         "price": None, "change": None, "changePercent": None}
-    try:
-        cards = fut_idx.result(timeout=12)
-    except Exception:
-        cards = [_no_data(item) for item in INDEX_SYMBOLS]
-    pool.shutdown(wait=False)  # 不阻塞；未完成的 future 在背景繼續
+    pool.shutdown(wait=False)
 
-    # 台指期插入第二位（twii 之後）
-    cards.insert(1, futures_card)
-    cache_set("market:indices", cards, 5)
-    return cards
+    # 固定順序：twii → 台指期 → nasdaq → sp500 → dji → sox
+    ordered = [cards[item["id"]] for item in INDEX_SYMBOLS]
+    ordered.insert(1, futures_card)
+    cache_set("market:indices", ordered, 5)
+    return ordered
 
 
 # ─── 股票歷史 K 線 ─────────────────────────────────────────────────────────────
@@ -272,22 +256,27 @@ def get_full_history(stock_id: str, days: int = 90) -> list[dict]:
     """取得個股 N 日 OHLCV 資料（與 Node.js StockHistoryPoint 結構一致）"""
     symbol = resolve_symbol(stock_id)
     try:
-        period = "1mo" if days <= 35 else ("3mo" if days <= 95 else "1y")
-        hist = yf.Ticker(symbol).history(period=period)
-        if hist.empty:
-            return []
+        range_ = "1mo" if days <= 35 else ("3mo" if days <= 95 else "1y")
+        data = _yf_chart(symbol, "1d", range_)
+        timestamps = data.get("timestamp", [])
+        q = data.get("indicators", {}).get("quote", [{}])[0]
+        opens   = q.get("open",   [])
+        highs   = q.get("high",   [])
+        lows    = q.get("low",    [])
+        closes  = q.get("close",  [])
+        volumes = q.get("volume", [])
         result = []
-        for ts, row in hist.iterrows():
-            close = float(row["Close"]) if row["Close"] == row["Close"] else 0
-            if close <= 0:
+        for i, ts in enumerate(timestamps):
+            close = _f(closes[i] if i < len(closes) else None, 0.0)
+            if not close or close <= 0:
                 continue
             result.append({
-                "timestamp": int(ts.timestamp()),
-                "open":   float(row["Open"]   or 0),
-                "high":   float(row["High"]   or 0),
-                "low":    float(row["Low"]    or 0),
+                "timestamp": int(ts),
+                "open":   _f(opens[i]   if i < len(opens)   else None, 0.0),
+                "high":   _f(highs[i]   if i < len(highs)   else None, 0.0),
+                "low":    _f(lows[i]    if i < len(lows)    else None, 0.0),
                 "close":  close,
-                "volume": int(row["Volume"]   or 0),
+                "volume": _i(volumes[i] if i < len(volumes) else None),
             })
         return result[-days:] if len(result) > days else result
     except Exception:
@@ -298,47 +287,56 @@ def get_full_history(stock_id: str, days: int = 90) -> list[dict]:
 
 def get_profile(stock_id: str) -> dict:
     """取得個股基本面資料（與 Node.js StockProfile 結構一致）"""
+    _empty = {
+        "stockId": stock_id, "name": stock_id, "market": "",
+        "peRatio": None, "dividendYield": None,
+        "fiftyTwoWeekHigh": 0, "fiftyTwoWeekLow": 0,
+        "marketCap": None, "discountPremiumRate": None,
+        "revenue": None, "grossMargin": None, "roe": None, "roa": None,
+    }
     symbol = resolve_symbol(stock_id)
     try:
-        ticker = yf.Ticker(symbol)
-        fi = ticker.fast_info
-        info = ticker.info or {}
+        summary = _yf_quote_summary(
+            symbol, "summaryDetail,defaultKeyStatistics,financialData,price"
+        )
 
-        name   = info.get("longName") or info.get("shortName") or stock_id
-        market = info.get("exchange") or info.get("market") or ""
+        def _raw(d: dict, key: str):
+            v = d.get(key)
+            return v.get("raw") if isinstance(v, dict) else v
 
-        pe_ratio = info.get("trailingPE")
-        div_yield_raw = info.get("dividendYield")
-        div_yield = round(div_yield_raw * 100, 2) if div_yield_raw else None
-        market_cap = info.get("marketCap")
+        price_mod = summary.get("price", {})
+        detail    = summary.get("summaryDetail", {})
+        fin       = summary.get("financialData", {})
 
-        gross_margin_raw = info.get("grossMargins")
-        roe_raw          = info.get("returnOnEquity")
-        roa_raw          = info.get("returnOnAssets")
+        name      = price_mod.get("longName") or price_mod.get("shortName") or stock_id
+        market    = price_mod.get("exchangeName") or ""
+        pe_ratio  = _raw(detail, "trailingPE")
+        div_raw   = _raw(detail, "dividendYield")
+        div_yield = round(div_raw * 100, 2) if div_raw else None
+        market_cap  = _raw(price_mod, "marketCap")
+        week52_high = _f(_raw(detail, "fiftyTwoWeekHigh"), 0.0)
+        week52_low  = _f(_raw(detail, "fiftyTwoWeekLow"),  0.0)
+        gross_m = _raw(fin, "grossMargins")
+        roe     = _raw(fin, "returnOnEquity")
+        roa     = _raw(fin, "returnOnAssets")
 
         return {
-            "stockId":            stock_id,
-            "name":               name,
-            "market":             market,
-            "peRatio":            pe_ratio,
-            "dividendYield":      div_yield,
-            "fiftyTwoWeekHigh":   float(getattr(fi, "year_high", None) or info.get("fiftyTwoWeekHigh") or 0),
-            "fiftyTwoWeekLow":    float(getattr(fi, "year_low",  None) or info.get("fiftyTwoWeekLow")  or 0),
-            "marketCap":          market_cap,
+            "stockId":             stock_id,
+            "name":                name,
+            "market":              market,
+            "peRatio":             pe_ratio,
+            "dividendYield":       div_yield,
+            "fiftyTwoWeekHigh":    week52_high,
+            "fiftyTwoWeekLow":     week52_low,
+            "marketCap":           market_cap,
             "discountPremiumRate": None,
-            "revenue":            None,
-            "grossMargin":        round(gross_margin_raw * 100, 2) if gross_margin_raw else None,
-            "roe":                round(roe_raw * 100, 2) if roe_raw else None,
-            "roa":                round(roa_raw * 100, 2) if roa_raw else None,
+            "revenue":             None,
+            "grossMargin":         round(gross_m * 100, 2) if gross_m else None,
+            "roe":                 round(roe * 100, 2) if roe else None,
+            "roa":                 round(roa * 100, 2) if roa else None,
         }
     except Exception:
-        return {
-            "stockId": stock_id, "name": stock_id, "market": "",
-            "peRatio": None, "dividendYield": None,
-            "fiftyTwoWeekHigh": 0, "fiftyTwoWeekLow": 0,
-            "marketCap": None, "discountPremiumRate": None,
-            "revenue": None, "grossMargin": None, "roe": None, "roa": None,
-        }
+        return _empty
 
 
 # ─── 三大法人籌碼 ──────────────────────────────────────────────────────────────
@@ -413,7 +411,6 @@ def get_export_indicator() -> dict:
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "zh-TW,zh;q=0.9",
             },
-            verify=False,
         )
         import re
         csrf_m = re.search(r'csrf-token"\s+content="([^"]+)"', page.text)
@@ -432,7 +429,6 @@ def get_export_indicator() -> dict:
                 "Accept-Language": "zh-TW,zh;q=0.9",
             },
             json={},
-            verify=False,
         )
         payload = api_res.json()
         line_obj = payload.get("line", {})

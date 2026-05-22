@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from firebase_admin import firestore as fs
+from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 
 router = APIRouter()
@@ -170,7 +171,7 @@ async def get_yearly_records(asset_type: str = Query(default="tw_stock", alias="
     db = get_db()
     snap = (
         db.collection(YEARLY_RECORDS_COL)
-        .where("asset_type", "==", asset_type)
+        .where(filter=FieldFilter("asset_type", "==", asset_type))
         .get()
     )
     items = [deserialize_yearly_record(doc) for doc in snap]
