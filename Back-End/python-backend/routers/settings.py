@@ -1,61 +1,48 @@
-from __future__ import annotations
-
-import asyncio
-import logging
-from typing import Optional, Literal
-
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, model_validator
-
-from services.firestore import db
-from routers.schemas import success
+from firebase_admin import firestore as fs
+from services.firestore import get_db
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
-_DOC = ("settings", "main")
-
-_DEFAULTS = {
-    "costMethod": "preserve_method",
-}
+VALID_COST_METHODS = {"preserve_method", "return_method"}
 
 
-class UpdateSettingsPayload(BaseModel):
-    costMethod: Optional[Literal["preserve_method", "return_method"]] = None
+def deserialize_settings(doc) -> dict:
+    d = doc.to_dict()
+    ua = d.get("updated_at")
+    return {
+        "costMethod": d.get("cost_method", "preserve_method"),
+        "updatedAt":  ua.isoformat() if hasattr(ua, "isoformat") else datetime.now(timezone.utc).isoformat(),
+    }
 
-    @model_validator(mode="after")
-    def at_least_one(self):
-        if self.costMethod is None:
-            raise ValueError("至少需要提供一個欄位")
-        return self
 
+# ─── GET /settings ────────────────────────────────────────────────────────────
 
-# ── GET /settings ──────────────────────────────────────────────────────────────
-
-@router.get("")
+@router.get("/")
 async def get_settings():
-    def _read():
-        doc = db.collection(_DOC[0]).document(_DOC[1]).get()
-        if not doc.exists:
-            return _DEFAULTS.copy()
-        d = doc.to_dict() or {}
-        return {
-            "costMethod": d.get("cost_method", _DEFAULTS["costMethod"]),
-        }
-
-    return success(await asyncio.to_thread(_read))
+    db = get_db()
+    doc = db.collection("settings").document("main").get()
+    # 無資料時回傳 null（與 Node.js Settings.find() 一致）
+    data = deserialize_settings(doc) if doc.exists else None
+    return {"success": True, "data": data}
 
 
-# ── PUT /settings ──────────────────────────────────────────────────────────────
+# ─── PUT /settings ────────────────────────────────────────────────────────────
 
-@router.put("")
-async def update_settings(body: UpdateSettingsPayload):
-    updates: dict = {}
-    if body.costMethod is not None:
-        updates["cost_method"] = body.costMethod
+@router.put("/")
+async def update_settings(body: dict):
+    cost_method = body.get("costMethod")
 
-    def _write():
-        db.collection(_DOC[0]).document(_DOC[1]).set(updates, merge=True)
+    if cost_method is not None and cost_method not in VALID_COST_METHODS:
+        raise HTTPException(status_code=400,
+            detail="costMethod 必須為 preserve_method 或 return_method")
 
-    await asyncio.to_thread(_write)
-    return success({"costMethod": body.costMethod})
+    patch: dict = {"updated_at": fs.SERVER_TIMESTAMP}
+    if cost_method is not None:
+        patch["cost_method"] = cost_method
+
+    db = get_db()
+    ref = db.collection("settings").document("main")
+    ref.set(patch, merge=True)
+    return {"success": True, "data": deserialize_settings(ref.get())}

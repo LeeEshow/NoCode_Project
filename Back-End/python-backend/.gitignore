@@ -1,12 +1,10 @@
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 .env
 serviceAccountKey.json
-*.log
-.venv/
-venv/
-dist/
-build/
-*.egg-info/
 .python_packages/
+venv/
+.venv/
+.pytest_cache/
+*.log

@@ -4,7 +4,27 @@
       "Bash(Remove-Item \"E:\\\\Code\\\\NoCode_Project\\\\.firebaserc\" -Force)",
       "Bash(Remove-Item \"E:\\\\Code\\\\NoCode_Project\\\\firebase.json\" -Force)",
       "Bash(Write-Output \"Done\")",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(xargs grep -l \"api/v1\")",
+      "Bash(xargs cat)",
+      "Bash(Get-ChildItem -Recurse \"D:\\\\Project\\\\NoCode_Project\\\\Back-End\\\\python-backend\")",
+      "Bash(Select-Object FullName)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(rm -rf \"D:/Project/NoCode_Project/Back-End/python-backend/\"*)",
+      "Bash(rm -rf \"D:/Project/NoCode_Project/Back-End/python-backend/\".*)",
+      "Bash(pip install *)",
+      "Bash(python -m pytest tests/test_m1_health.py -v)",
+      "Bash(python -m pytest tests/test_m2_*.py -v)",
+      "Bash(python -m pytest tests/test_m3_tags.py tests/test_m3_market_state.py tests/test_m3_correlation.py tests/test_m3_rebalance.py -v)",
+      "Bash(python -m pytest tests/test_m4_market.py tests/test_m4_stocks.py -v)",
+      "Bash(python -m pytest tests/test_m5_snapshots.py tests/test_m5_settings.py tests/test_m5_preferences.py -v)",
+      "Bash(python -m pytest tests/ -q --tb=no)",
+      "Bash(python -m pytest tests/test_m4_market.py -v --tb=short)",
+      "Bash(python -c ' *)",
+      "Bash(findstr \"/api\")",
+      "Bash(python -c \"import sys; [print\\(l\\) for l in sys.stdin if '/api' in l]\")",
+      "Bash(python -m pytest tests/test_m1_holdings.py tests/test_m4_market.py -q --tb=short)",
+      "Bash(python -m pytest tests/ -q --tb=short)"
     ]
   }
 }

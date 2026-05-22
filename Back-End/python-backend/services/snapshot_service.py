@@ -1,119 +1,210 @@
-from __future__ import annotations
-
-import asyncio
-import logging
+"""每日快照自動記錄服務（對應 Node.js snapshotsController.record）"""
 from datetime import datetime, timezone, timedelta
-from typing import Optional
-
-from services.firestore import db
-
-logger = logging.getLogger(__name__)
-
-_TZ_TAIPEI = timezone(timedelta(hours=8))
+from concurrent.futures import ThreadPoolExecutor
+import yfinance as yf
+from services.firestore import get_db
+from services.rate_helper import get_live_rate_map
+from services.yahoo_finance import get_quote, _f
 
 
-def _vix_to_market_state(vix: Optional[float]) -> Optional[str]:
-    if vix is None:
-        return None
-    if vix < 20:
-        return "risk-on"
-    if vix <= 30:
-        return "neutral"
-    return "risk-off"
+def _taiwan_date_str() -> str:
+    return (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d")
 
 
-def _today_taipei() -> str:
-    return datetime.now(_TZ_TAIPEI).strftime("%Y-%m-%d")
-
-
-async def record_snapshot(payload: dict) -> dict:
-    """
-    並行抓 VIX + 寫入 Firestore daily_snapshots/{date}。
-    VIX 失敗靜默存 None，不阻斷主流程。
-    快照寫入後 fire-and-forget 觸發 dynamic risk 重算。
-    """
-    from services.yahoo_finance import get_vix
-    from services.tag_risk_service import recalculate_dynamic_risk
-
-    # ── 並行抓 VIX ──────────────────────────────────────────────────────────────
-    vix_result = await asyncio.gather(get_vix(), return_exceptions=True)
-    vix: Optional[float] = None
-    if not isinstance(vix_result[0], Exception):
-        vix = vix_result[0]
-    else:
-        logger.debug("VIX fetch failed: %s", vix_result[0])
-
-    market_state_auto = _vix_to_market_state(vix)
-
-    # ── 組合並寫入 Firestore（merge，冪等）───────────────────────────────────
-    date_str = payload.get("date") or _today_taipei()
-
-    doc_data = {
-        **{_camel_to_snake(k): v for k, v in payload.items()},
-        "vix": vix,
-        "market_state_auto": market_state_auto,
-    }
-
-    def _write():
-        db.collection("daily_snapshots").document(date_str).set(doc_data, merge=True)
-
-    await asyncio.to_thread(_write)
-
-    # ── fire-and-forget dynamic risk ────────────────────────────────────────────
-    current_market_state = payload.get("marketState", "neutral")
-    asyncio.create_task(_safe_recalculate(recalculate_dynamic_risk, current_market_state))
-
-    result = _snake_to_camel_dict(doc_data)
-    result["date"] = date_str
-    return result
-
-
-async def _safe_recalculate(fn, *args):
+def _get_vix() -> tuple:
+    """取得 VIX 並換算 marketStateAuto，失敗回傳 (None, None)"""
     try:
-        await fn(*args)
-    except Exception as e:
-        logger.error("fire-and-forget recalculate_dynamic_risk failed: %s", e)
+        hist = yf.Ticker("^VIX").history(period="5d")
+        if hist.empty:
+            return None, None
+        last = float(hist["Close"].dropna().iloc[-1])
+        if last < 20:
+            state = "risk-on"
+        elif last <= 30:
+            state = "neutral"
+        else:
+            state = "risk-off"
+        return last, state
+    except Exception:
+        return None, None
 
 
-# ── GET helpers ───────────────────────────────────────────────────────────────
+def record_snapshot() -> dict:
+    """計算並寫入當日快照（冪等 merge）"""
+    db = get_db()
+    today = _taiwan_date_str()
+    current_year = int(today[:4])
 
-async def get_all_snapshots() -> list:
-    def _read():
-        docs = db.collection("daily_snapshots").order_by("date", direction="DESCENDING").stream()
-        return [_deserialize(d) for d in docs]
-    return await asyncio.to_thread(_read)
+    # 讀取 holdings
+    holdings_snap = db.collection("holdings").get()
+    holdings = []
+    for doc in holdings_snap:
+        d = doc.to_dict()
+        holdings.append({
+            "stockId":    d.get("stock_id", doc.id),
+            "stockName":  d.get("stock_name", ""),
+            "sharesHeld": float(d.get("shares_held", 0)),
+            "avgCost":    float(d.get("avg_cost", 0)),
+        })
+    active = [h for h in holdings if h["sharesHeld"] > 0]
+
+    # 讀取 foreign_assets
+    assets_snap = db.collection("foreign_assets").get()
+    foreign_assets = [doc.to_dict() for doc in assets_snap]
+
+    # 取得即時匯率
+    rate_map = get_live_rate_map()
+
+    # 取前一年最後快照（execCapital 用）
+    prev_year_snap = (
+        db.collection("daily_snapshots")
+        .where("date", ">=", f"{current_year - 1}-01-01")
+        .where("date", "<=", f"{current_year - 1}-12-31")
+        .order_by("date", direction="DESCENDING")
+        .limit(1)
+        .get()
+    )
+    prev_data = prev_year_snap[0].to_dict() if prev_year_snap else {}
+    exec_capital = (
+        (prev_data.get("stock_value", 0) or 0)
+        + (prev_data.get("forex_value", 0) or 0)
+        + (prev_data.get("cash_balance", 0) or 0)
+    ) if prev_data else 0
+
+    # 取最近快照繼承 cashBalance
+    latest_snap = (
+        db.collection("daily_snapshots")
+        .order_by("date", direction="DESCENDING")
+        .limit(1)
+        .get()
+    )
+    cash_balance = latest_snap[0].to_dict().get("cash_balance", 0) if latest_snap else 0
+
+    # 取 planConfig.currentYearReinvest
+    plan_doc = db.collection("plan_config").document("main").get()
+    reinvest = float(plan_doc.to_dict().get("current_year_reinvest", 0)) if plan_doc.exists else 0
+
+    # 並行取各股報價 + VIX
+    needed_ids = [h["stockId"] for h in active]
+    quotes: dict[str, dict] = {}
+
+    def fetch_quote(stock_id):
+        return stock_id, get_quote(stock_id)
+
+    with ThreadPoolExecutor(max_workers=min(len(needed_ids) + 1, 8)) as pool:
+        vix_fut = pool.submit(_get_vix)
+        quote_futures = {pool.submit(fetch_quote, sid): sid for sid in needed_ids}
+        vix, market_state_auto = vix_fut.result()
+        for fut in quote_futures:
+            try:
+                sid, q = fut.result()
+                quotes[sid] = q
+            except Exception:
+                pass
+
+    # 計算 stockValue / unrealizedProfit
+    stock_value       = 0.0
+    unrealized_profit = 0.0
+    snapshot_holdings = []
+
+    for h in active:
+        sid = h["stockId"]
+        q = quotes.get(sid, {})
+        current_price = _f(q.get("price"), 0.0)
+        current_value = round(h["sharesHeld"] * current_price)
+        upl           = round((current_price - h["avgCost"]) * h["sharesHeld"])
+        stock_name    = q.get("name") or h.get("stockName") or sid
+
+        if current_price > 0:
+            stock_value       += h["sharesHeld"] * current_price * 0.997
+            unrealized_profit += (current_price - h["avgCost"]) * h["sharesHeld"]
+
+        snapshot_holdings.append({
+            "stockCode":       sid,
+            "stockName":       stock_name,
+            "shares":          h["sharesHeld"],
+            "costAvg":         h["avgCost"],
+            "currentPrice":    current_price,
+            "currentValue":    current_value,
+            "unrealizedProfit": upl,
+        })
+
+    # 計算 forexValue
+    forex_value = 0.0
+    for asset in foreign_assets:
+        currency = asset.get("currency", "")
+        amount   = float(asset.get("amount", 0) or 0)
+        if asset.get("use_manual_rate"):
+            rate = float(asset.get("manual_rate", 0) or 0)
+        else:
+            rate = rate_map.get(currency, 0) or 0
+        forex_value += amount * rate
+
+    # 寫入快照（merge 冪等）
+    from firebase_admin import firestore as fs
+    ref = db.collection("daily_snapshots").document(today)
+    ref.set({
+        "date":              today,
+        "exec_capital":      round(exec_capital),
+        "reinvest":          round(reinvest),
+        "stock_value":       round(stock_value),
+        "cash_balance":      cash_balance,
+        "forex_value":       round(forex_value),
+        "unrealized_profit": round(unrealized_profit),
+        "note":              "",
+        "holdings":          snapshot_holdings,
+        "vix":               vix,
+        "market_state_auto": market_state_auto,
+        "recorded_at":       fs.SERVER_TIMESTAMP,
+    }, merge=True)
+
+    updated = ref.get().to_dict()
+
+    # fire-and-forget 動態風險重算
+    try:
+        from services.tag_risk_service import recalculate_dynamic_risk
+        mstate_doc = db.collection("market_state").document("main").get()
+        mstate = mstate_doc.to_dict().get("current", "neutral") if mstate_doc.exists else "neutral"
+        recalculate_dynamic_risk(mstate)
+    except Exception:
+        pass
+
+    return _deserialize_snapshot_dict(today, updated)
 
 
-async def get_snapshot_by_date(date_str: str) -> Optional[dict]:
-    def _read():
-        doc = db.collection("daily_snapshots").document(date_str).get()
-        if not doc.exists:
-            return None
-        return _deserialize(doc)
-    return await asyncio.to_thread(_read)
+def _deserialize_snapshot_dict(date_id: str, d: dict) -> dict:
+    ra = d.get("recorded_at")
+    if hasattr(ra, "isoformat"):
+        recorded_at = ra.isoformat()
+    else:
+        recorded_at = datetime.now(timezone.utc).isoformat()
 
+    raw_holdings = d.get("holdings", [])
+    normalized_holdings = []
+    for h in raw_holdings:
+        normalized_holdings.append({
+            "stockCode":       h.get("stockCode", ""),
+            "stockName":       h.get("stockName", ""),
+            # 相容舊後端的 sharesHeld 欄位
+            "shares":          h.get("shares") if h.get("shares") is not None else h.get("sharesHeld", 0),
+            "costAvg":         h.get("costAvg", 0),
+            "currentPrice":    h.get("currentPrice", 0),
+            # 相容舊後端的 stockValue 欄位
+            "currentValue":    h.get("currentValue") if h.get("currentValue") is not None else h.get("stockValue", 0),
+            "unrealizedProfit": h.get("unrealizedProfit", 0),
+        })
 
-def _deserialize(doc) -> dict:
-    d = doc.to_dict() or {}
-    result = _snake_to_camel_dict(d)
-    result.setdefault("date", doc.id)
-    result.setdefault("vix", None)
-    result.setdefault("marketStateAuto", None)
-    return result
-
-
-# ── camelCase ↔ snake_case helpers ────────────────────────────────────────────
-
-def _camel_to_snake(name: str) -> str:
-    import re
-    s1 = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
-
-
-def _snake_to_camel(name: str) -> str:
-    parts = name.split("_")
-    return parts[0] + "".join(p.title() for p in parts[1:])
-
-
-def _snake_to_camel_dict(d: dict) -> dict:
-    return {_snake_to_camel(k): v for k, v in d.items()}
+    return {
+        "date":             d.get("date", date_id),
+        "execCapital":      d.get("exec_capital", 0),
+        "reinvest":         d.get("reinvest", 0),
+        "stockValue":       d.get("stock_value", 0),
+        "cashBalance":      d.get("cash_balance", 0),
+        "forexValue":       d.get("forex_value", 0),
+        "unrealizedProfit": d.get("unrealized_profit", 0),
+        "note":             d.get("note", ""),
+        "holdings":         normalized_holdings,
+        "vix":              d.get("vix"),
+        "marketStateAuto":  d.get("market_state_auto"),
+        "recordedAt":       recorded_at,
+    }

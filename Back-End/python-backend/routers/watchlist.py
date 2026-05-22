@@ -1,104 +1,144 @@
-from __future__ import annotations
-
-import logging
 from datetime import datetime, timezone
-
 from fastapi import APIRouter, HTTPException
-from google.cloud.firestore import SERVER_TIMESTAMP
-
-from services.firestore import db
-from routers.schemas import (
-    CreateWatchlistPayload,
-    ReorderPayload,
-    UpdateWatchlistPayload,
-    success,
-)
+from firebase_admin import firestore as fs
+from services.firestore import get_db
+from services.yahoo_finance import get_quote
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
-
-_COL = "watchlist"
 
 
-def _deserialize(doc) -> dict:
+def ts_iso(val) -> str:
+    if isinstance(val, datetime):
+        return val.isoformat()
+    return datetime.now(timezone.utc).isoformat()
+
+
+def deserialize_watchlist(doc) -> dict:
     d = doc.to_dict()
-    def _ts(field):
-        v = d.get(field)
-        return v.isoformat() if hasattr(v, "isoformat") else datetime.now(timezone.utc).isoformat()
     return {
         "stockId":     doc.id,
         "stockName":   d.get("stock_name", ""),
         "targetPrice": d.get("target_price", 0),
         "note":        d.get("note", ""),
-        "createdAt":   _ts("created_at"),
-        "updatedAt":   _ts("updated_at"),
+        "createdAt":   ts_iso(d.get("created_at")),
+        "updatedAt":   ts_iso(d.get("updated_at")),
         "sortIndex":   d.get("sort_index", 0),
     }
 
 
-# ── GET /watchlist ─────────────────────────────────────────────────────────────
-
-@router.get("")
-def get_all():
-    snap = db.collection(_COL).stream()
-    items = sorted([_deserialize(d) for d in snap], key=lambda x: x["sortIndex"])
-    return success(items)
+def find_all() -> list[dict]:
+    db = get_db()
+    snap = db.collection("watchlist").get()
+    items = [deserialize_watchlist(doc) for doc in snap]
+    return sorted(items, key=lambda x: x["sortIndex"])
 
 
-# ── POST /watchlist ────────────────────────────────────────────────────────────
+# ─── GET /watchlist ────────────────────────────────────────────────────────────
 
-@router.post("", status_code=201)
-def create(payload: CreateWatchlistPayload):
-    ref = db.collection(_COL).document(payload.stockId)
+@router.get("/")
+async def get_all():
+    items = find_all()
+    result = []
+    for item in items:
+        live_price = None
+        change = None
+        change_pct = None
+        judgment = None
+        try:
+            q = get_quote(item["stockId"])
+            live_price = q["price"]
+            change = q["change"]
+            change_pct = q["changePercent"]
+            stock_name = q["name"] or item["stockName"] or item["stockId"]
+            if live_price is not None:
+                judgment = "買進" if live_price <= item["targetPrice"] else "觀望"
+        except Exception:
+            stock_name = item["stockName"] or item["stockId"]
+
+        result.append({
+            **item,
+            "stockName":    stock_name,
+            "livePrice":    live_price,
+            "change":       change,
+            "changePercent":change_pct,
+            "judgment":     judgment,
+        })
+    return {"success": True, "data": result}
+
+
+# ─── POST /watchlist ───────────────────────────────────────────────────────────
+
+@router.post("/")
+async def create(body: dict):
+    stock_id = body.get("stockId")
+    target_price = body.get("targetPrice")
+    if not stock_id or target_price is None:
+        raise HTTPException(status_code=400, detail="缺少必填欄位：stockId / targetPrice")
+
+    db = get_db()
+    ref = db.collection("watchlist").document(str(stock_id))
     if ref.get().exists:
-        raise HTTPException(status_code=409, detail="該股票已在自選股清單中")
+        raise HTTPException(status_code=409, detail=f"關注清單已存在：{stock_id}")
+
     ref.set({
-        "stock_id":     payload.stockId,
-        "stock_name":   payload.stockName or "",
-        "target_price": payload.targetPrice,
-        "note":         payload.note or "",
-        "created_at":   SERVER_TIMESTAMP,
-        "updated_at":   SERVER_TIMESTAMP,
+        "stock_id":     str(stock_id),
+        "stock_name":   str(body.get("stockName", "")),
+        "target_price": float(target_price),
+        "note":         str(body.get("note", "")),
+        "created_at":   fs.SERVER_TIMESTAMP,
+        "updated_at":   fs.SERVER_TIMESTAMP,
     })
-    return success(_deserialize(ref.get()))
+    created = deserialize_watchlist(ref.get())
+    return {"success": True, "data": created}
 
 
-# ── PUT /watchlist/reorder ─────────────────────────────────────────────────────
+# ─── PUT /watchlist/reorder ────────────────────────────────────────────────────
 
 @router.put("/reorder")
-def reorder(payload: ReorderPayload):
-    if not payload.order:
+async def reorder(body: dict):
+    order = body.get("order")
+    if not isinstance(order, list) or len(order) == 0:
         raise HTTPException(status_code=400, detail="order 必須為非空字串陣列")
+    db = get_db()
     batch = db.batch()
-    col = db.collection(_COL)
-    for idx, stock_id in enumerate(payload.order):
-        batch.update(col.document(stock_id), {"sort_index": idx})
+    for i, stock_id in enumerate(order):
+        ref = db.collection("watchlist").document(str(stock_id))
+        batch.update(ref, {"sort_index": i})
     batch.commit()
-    return success({"reordered": len(payload.order)})
+    return {"success": True, "data": {"reordered": len(order)}}
 
 
-# ── PUT /watchlist/{stock_id} ──────────────────────────────────────────────────
+# ─── PUT /watchlist/:stockId ───────────────────────────────────────────────────
 
 @router.put("/{stock_id}")
-def update(stock_id: str, payload: UpdateWatchlistPayload):
-    ref = db.collection(_COL).document(stock_id)
+async def update(stock_id: str, body: dict):
+    target_price = body.get("targetPrice")
+    note = body.get("note")
+    if target_price is None and note is None:
+        raise HTTPException(status_code=400, detail="至少需提供 targetPrice 或 note 其中一個欄位")
+
+    db = get_db()
+    ref = db.collection("watchlist").document(stock_id)
     if not ref.get().exists:
-        raise HTTPException(status_code=404, detail="自選股不存在")
-    patch: dict = {"updated_at": SERVER_TIMESTAMP}
-    if payload.targetPrice is not None:
-        patch["target_price"] = payload.targetPrice
-    if payload.note is not None:
-        patch["note"] = payload.note
+        raise HTTPException(status_code=404, detail=f"關注清單不存在：{stock_id}")
+
+    patch: dict = {"updated_at": fs.SERVER_TIMESTAMP}
+    if target_price is not None:
+        patch["target_price"] = float(target_price)
+    if note is not None:
+        patch["note"] = str(note)
     ref.update(patch)
-    return success(_deserialize(ref.get()))
+    updated = deserialize_watchlist(ref.get())
+    return {"success": True, "data": updated}
 
 
-# ── DELETE /watchlist/{stock_id} ───────────────────────────────────────────────
+# ─── DELETE /watchlist/:stockId ────────────────────────────────────────────────
 
 @router.delete("/{stock_id}")
-def remove(stock_id: str):
-    ref = db.collection(_COL).document(stock_id)
+async def remove(stock_id: str):
+    db = get_db()
+    ref = db.collection("watchlist").document(stock_id)
     if not ref.get().exists:
-        raise HTTPException(status_code=404, detail="自選股不存在")
+        raise HTTPException(status_code=404, detail=f"關注清單不存在：{stock_id}")
     ref.delete()
-    return success({"deleted": stock_id})
+    return {"success": True, "data": {"deleted": stock_id}}

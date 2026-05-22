@@ -1,92 +1,16 @@
-import base64
-import json
-import logging
 import os
-import sys
-from contextlib import asynccontextmanager
-
+import time
 from dotenv import load_dotenv
-load_dotenv()  # 本機開發載入 .env；生產環境（Azure）env vars 已由 App Service 注入，為 no-op
+
+load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 
-# ── Structured logging ─────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format='{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    stream=sys.stdout,
-)
-logger = logging.getLogger(__name__)
+app = FastAPI()
 
-
-# ── Lifespan ───────────────────────────────────────────────────────────────────
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    from services.firestore import db  # noqa: F401 — 觸發 lazy Firebase init
-    from services.shioaji_service import manager as sj_manager, is_shioaji_enabled
-    logger.info("finance-backend-py starting up")
-    if is_shioaji_enabled():
-        try:
-            await sj_manager.initialize()
-        except Exception as e:
-            logger.warning("Shioaji init failed, falling back to Yahoo Finance: %s", e)
-    else:
-        logger.info("Shioaji not configured, using Yahoo Finance only")
-    yield
-    if is_shioaji_enabled():
-        await sj_manager.shutdown()
-    logger.info("finance-backend-py shutting down")
-
-
-# ── App ────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="finance-backend-py", version="1.0.0", lifespan=lifespan)
-
-
-# ── Easy Auth Middleware ───────────────────────────────────────────────────────
-_SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"
-
-_AUTH_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
-
-
-class EasyAuthMiddleware(BaseHTTPMiddleware):
-    """
-    讀取 Azure Easy Auth 注入的 X-MS-CLIENT-PRINCIPAL header，
-    解碼後將 userId 存至 request.state.user_id 供各 router 使用。
-    本機開發時設 SKIP_AUTH=true 跳過驗證。
-    """
-
-    async def dispatch(self, request: Request, call_next):
-        if _SKIP_AUTH or request.url.path in _AUTH_SKIP_PATHS:
-            request.state.user_id = "dev"
-            return await call_next(request)
-
-        header = request.headers.get("X-MS-CLIENT-PRINCIPAL")
-        if not header:
-            return JSONResponse(
-                status_code=401,
-                content={"success": False, "error": "Unauthorized"},
-            )
-        try:
-            principal = json.loads(base64.b64decode(header).decode("utf-8"))
-            request.state.user_id = (
-                principal.get("userId") or principal.get("sub") or ""
-            )
-        except Exception:
-            return JSONResponse(
-                status_code=401,
-                content={"success": False, "error": "Invalid auth token"},
-            )
-
-        return await call_next(request)
-
-
-# 注意：add_middleware 後加者為最外層。
-# EasyAuth 先加（內層）→ CORS 後加（最外層），確保 401 response 也帶 CORS headers
-app.add_middleware(EasyAuthMiddleware)
+# CORS — 最外層，確保 OPTIONS preflight 可通過
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -96,16 +20,24 @@ app.add_middleware(
 )
 
 
-# ── Request logging ────────────────────────────────────────────────────────────
+# EasyAuth 驗證 middleware
+# Azure App Service 會在請求到達前注入 X-MS-CLIENT-PRINCIPAL header
+# EASY_AUTH_BYPASS=true 時（本機開發）跳過驗證
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
-    logger.info("%s %s", request.method, request.url.path)
-    response = await call_next(request)
-    logger.info("%s %s → %s", request.method, request.url.path, response.status_code)
-    return response
+async def easy_auth_middleware(request: Request, call_next):
+    bypass = os.getenv("EASY_AUTH_BYPASS", "").lower() in ("true", "1", "yes")
+    skip = request.url.path == "/health" or request.method == "OPTIONS"
+
+    if not bypass and not skip:
+        if not request.headers.get("X-MS-CLIENT-PRINCIPAL"):
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "error": "未授權：缺少 EasyAuth token"},
+            )
+    return await call_next(request)
 
 
-# ── Unified error handlers ─────────────────────────────────────────────────────
+# 統一錯誤格式
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
@@ -115,44 +47,44 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled error on %s %s: %s", request.method, request.url.path, exc)
+async def general_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
-        content={"success": False, "error": "Internal server error"},
+        content={"success": False, "error": "伺服器內部錯誤"},
     )
 
 
-# ── Health probe（Azure warmup / readiness）────────────────────────────────────
+from routers import holdings, watchlist, transactions, assets, plans
+from routers import tags, market_state, correlation, market, stocks
+from routers import snapshots, settings, preferences, asset_tags
+from routers.rebalance import rules_router, snapshots_router
+
+API = "/api/v1"
+app.include_router(holdings.router,     prefix=f"{API}/holdings")
+app.include_router(watchlist.router,    prefix=f"{API}/watchlist")
+app.include_router(transactions.router, prefix=f"{API}/transactions")
+app.include_router(assets.router,       prefix=f"{API}/foreign-assets")
+app.include_router(plans.router,        prefix=f"{API}/plan")
+app.include_router(tags.router,         prefix=f"{API}/tags")
+app.include_router(market_state.router, prefix=f"{API}/market-state")
+app.include_router(correlation.router,  prefix=f"{API}/tag-correlation-matrix")
+app.include_router(rules_router,        prefix=f"{API}/rebalance-rules")
+app.include_router(snapshots_router,    prefix=f"{API}/rebalance-snapshots")
+app.include_router(market.router,       prefix=f"{API}/market")
+app.include_router(stocks.router,       prefix=f"{API}/stocks")
+app.include_router(snapshots.router,    prefix=f"{API}/snapshots")
+app.include_router(settings.router,     prefix=f"{API}/settings")
+app.include_router(preferences.router,  prefix=f"{API}/preferences")
+app.include_router(asset_tags.router,   prefix=f"{API}/asset-tags")
+
+
+# 健康探測端點（Azure warm-up probe，與 Node.js 一致）
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "uptime": time.time()}
 
 
-# ── Routers ────────────────────────────────────────────────────────────────────
-from routers import holdings, watchlist, transactions, assets, plans  # noqa: E402
-from routers import tags, market_state, correlation, rebalance        # noqa: E402
-from routers import market, stocks                                     # noqa: E402
-from routers import snapshots, settings, preferences                   # noqa: E402
-from routers import mcp                                                # noqa: E402
-
-# M2
-app.include_router(holdings.router,     prefix="/api/v1/holdings",                tags=["Holdings"])
-app.include_router(watchlist.router,    prefix="/api/v1/watchlist",                tags=["Watchlist"])
-app.include_router(transactions.router, prefix="/api/v1/transactions",             tags=["Transactions"])
-app.include_router(assets.router,       prefix="/api/v1/foreign-assets",           tags=["ForeignAssets"])
-app.include_router(plans.router,        prefix="/api/v1/plan",                     tags=["Plan"])
-# M3
-app.include_router(tags.router,         prefix="/api/v1/tags",                     tags=["Tags"])
-app.include_router(market_state.router, prefix="/api/v1/market-state",             tags=["MarketState"])
-app.include_router(correlation.router,  prefix="/api/v1/tag-correlation-matrix",   tags=["Correlation"])
-app.include_router(rebalance.router,    prefix="/api/v1",                          tags=["Rebalance"])
-# M4
-app.include_router(market.router,       prefix="/api/v1/market",                   tags=["Market"])
-app.include_router(stocks.router,       prefix="/api/v1/stocks",                   tags=["Stocks"])
-# M5
-app.include_router(snapshots.router,    prefix="/api/v1/snapshots",                tags=["Snapshots"])
-app.include_router(settings.router,     prefix="/api/v1/settings",                 tags=["Settings"])
-app.include_router(preferences.router,  prefix="/api/v1/preferences",              tags=["Preferences"])
-# M6
-app.include_router(mcp.router,          prefix="/api/v1/mcp",                      tags=["MCP"])
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

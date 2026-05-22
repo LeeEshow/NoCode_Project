@@ -1,77 +1,64 @@
-from __future__ import annotations
-
-import asyncio
-import logging
-from typing import Optional, Any
-
 from fastapi import APIRouter
-from pydantic import BaseModel
-
-from services.firestore import db
-from routers.schemas import success
+from firebase_admin import firestore as fs
+from services.firestore import get_db
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
-_DOC = ("preferences", "default")
-
-_DEFAULTS: dict[str, Any] = {
-    "language": "zh-TW",
-    "theme": "light",
-    "defaultDays": 90,
+DEFAULTS = {
+    "chart": {
+        "showK":      True,
+        "showMA5":    True,
+        "showMA20":   True,
+        "showMA60":   True,
+        "showVolume": True,
+        "zoomLock":   False,
+    }
 }
 
 
-class UpdatePreferencesPayload(BaseModel):
-    language: Optional[str] = None
-    theme: Optional[str] = None
-    defaultDays: Optional[int] = None
-
-    model_config = {"extra": "allow"}
-
-
-# ── GET /preferences ───────────────────────────────────────────────────────────
-
-@router.get("")
-async def get_preferences():
-    def _read():
-        doc = db.collection(_DOC[0]).document(_DOC[1]).get()
-        if not doc.exists:
-            return _DEFAULTS.copy()
-        d = doc.to_dict() or {}
-        return {
-            "language":    d.get("language",     _DEFAULTS["language"]),
-            "theme":       d.get("theme",         _DEFAULTS["theme"]),
-            "defaultDays": d.get("default_days",  _DEFAULTS["defaultDays"]),
-            **{k: v for k, v in d.items() if k not in {"language", "theme", "default_days"}},
+def _from_firestore(d: dict) -> dict:
+    """Firestore 欄位直接是 camelCase（例外規則）"""
+    chart_raw = d.get("chart", {})
+    return {
+        "chart": {
+            "showK":      bool(chart_raw.get("showK",      DEFAULTS["chart"]["showK"])),
+            "showMA5":    bool(chart_raw.get("showMA5",    DEFAULTS["chart"]["showMA5"])),
+            "showMA20":   bool(chart_raw.get("showMA20",   DEFAULTS["chart"]["showMA20"])),
+            "showMA60":   bool(chart_raw.get("showMA60",   DEFAULTS["chart"]["showMA60"])),
+            "showVolume": bool(chart_raw.get("showVolume", DEFAULTS["chart"]["showVolume"])),
+            "zoomLock":   bool(chart_raw.get("zoomLock",  DEFAULTS["chart"]["zoomLock"])),
         }
+    }
 
-    return success(await asyncio.to_thread(_read))
+
+# ─── GET /preferences ─────────────────────────────────────────────────────────
+
+@router.get("/")
+async def get_preferences():
+    db = get_db()
+    doc = db.collection("preferences").document("default").get()
+    if not doc.exists:
+        return {"success": True, "data": DEFAULTS}
+    return {"success": True, "data": _from_firestore(doc.to_dict())}
 
 
-# ── PUT /preferences ───────────────────────────────────────────────────────────
+# ─── PUT /preferences ─────────────────────────────────────────────────────────
 
-@router.put("")
-async def update_preferences(body: UpdatePreferencesPayload):
-    extra = body.model_extra or {}
-    updates: dict = {}
+@router.put("/")
+async def update_preferences(body: dict):
+    db = get_db()
+    doc = db.collection("preferences").document("default").get()
+    current = _from_firestore(doc.to_dict()) if doc.exists else DEFAULTS
 
-    if body.language is not None:
-        updates["language"] = body.language
-    if body.theme is not None:
-        updates["theme"] = body.theme
-    if body.defaultDays is not None:
-        updates["default_days"] = body.defaultDays
-    for k, v in extra.items():
-        updates[k] = v
+    # Deep merge chart
+    input_chart = body.get("chart", {})
+    merged_chart = {**current["chart"], **input_chart}
 
-    if not updates:
-        return success({})
+    updated = {"chart": merged_chart}
 
-    def _write():
-        db.collection(_DOC[0]).document(_DOC[1]).set(updates, merge=True)
+    db.collection("preferences").document("default").set({
+        "chart":      merged_chart,
+        "updated_at": fs.SERVER_TIMESTAMP,
+    }, merge=True)
 
-    await asyncio.to_thread(_write)
-    result = {k: v for k, v in body.model_dump(exclude_none=True).items()}
-    result.update(extra)
-    return success(result)
+    return {"success": True, "data": _from_firestore({"chart": merged_chart})}

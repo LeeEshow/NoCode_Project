@@ -1,126 +1,113 @@
-from __future__ import annotations
-
 import asyncio
-import logging
-
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional, Any
-
-from services.firestore import db
-from routers.schemas import success
+import re
+from datetime import datetime, timezone
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
+from firebase_admin import firestore as fs
+from services.firestore import get_db
+from services.snapshot_service import record_snapshot, _deserialize_snapshot_dict
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 
-# ── Payload ────────────────────────────────────────────────────────────────────
-
-class CreateSnapshotPayload(BaseModel):
-    date: Optional[str] = None
-    totalValue: Optional[float] = None
-    totalCost: Optional[float] = None
-    totalGain: Optional[float] = None
-    gainPercent: Optional[float] = None
-    cashTwd: Optional[float] = None
-    marketState: Optional[str] = None
-
-    model_config = {"extra": "allow"}
+def deserialize_snapshot(doc) -> dict:
+    return _deserialize_snapshot_dict(doc.id, doc.to_dict())
 
 
-# ── GET /snapshots ─────────────────────────────────────────────────────────────
+# ─── GET /snapshots ───────────────────────────────────────────────────────────
 
-@router.get("")
-async def get_all():
-    from services.snapshot_service import get_all_snapshots
-    return success(await get_all_snapshots())
+@router.get("/")
+async def get_snapshots(year: int | None = Query(default=None)):
+    if year is not None and not (2000 <= year <= 2100):
+        raise HTTPException(status_code=400, detail="year 參數格式錯誤（例：?year=2025）")
 
+    from_date = f"{year}-01-01" if year else "2000-01-01"
+    to_date   = f"{year}-12-31" if year else "9999-12-31"
 
-# ── GET /snapshots/{date} ──────────────────────────────────────────────────────
-
-@router.get("/{date}")
-async def get_by_date(date: str):
-    from services.snapshot_service import get_snapshot_by_date
-    doc = await get_snapshot_by_date(date)
-    if doc is None:
-        raise HTTPException(status_code=404, detail=f"快照 {date} 不存在")
-    return success(doc)
-
-
-# ── POST /snapshots ────────────────────────────────────────────────────────────
-
-@router.post("")
-async def create_snapshot(body: CreateSnapshotPayload):
-    from services.snapshot_service import record_snapshot
-    data = await record_snapshot(body.model_dump(exclude_none=True))
-    return success(data)
+    db = get_db()
+    snap = (
+        db.collection("daily_snapshots")
+        .where("date", ">=", from_date)
+        .where("date", "<=", to_date)
+        .order_by("date", direction="DESCENDING")
+        .get()
+    )
+    return {"success": True, "data": [deserialize_snapshot(doc) for doc in snap]}
 
 
-# ── POST /snapshots/record（後端自算端點） ─────────────────────────────────────
+# ─── POST /snapshots/record ───────────────────────────────────────────────────
 
 @router.post("/record")
 async def record():
-    """
-    後端自算快照：並行抓各持股報價 → 計算總值 → 寫入 daily_snapshots。
-    同時抓 VIX 計算 marketStateAuto，完成後 fire-and-forget 觸發動態風險重算。
-    """
-    from services.snapshot_service import record_snapshot, _today_taipei
-    from services import yahoo_finance as yf_svc
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, record_snapshot)
+    return {"success": True, "data": data}
 
-    # ── 讀取所有持股 ──────────────────────────────────────────────────────────
-    def _read_holdings():
-        return [
-            {**doc.to_dict(), "_id": doc.id}
-            for doc in db.collection("holdings").stream()
-        ]
 
-    holdings = await asyncio.to_thread(_read_holdings)
-    active = [h for h in holdings if (h.get("shares_held") or 0) > 0]
+# ─── POST /snapshots ──────────────────────────────────────────────────────────
 
-    # ── 並行抓各持股即時報價 ──────────────────────────────────────────────────
-    async def _quote(h: dict) -> tuple[str, float]:
-        sid = h.get("stock_id") or h["_id"]
-        try:
-            q = await yf_svc.get_quote(sid)
-            return sid, q.get("price", 0)
-        except Exception:
-            return sid, float(h.get("average_cost") or 0)
+@router.post("/")
+async def create_snapshot(body: dict):
+    date = body.get("date")
+    if not date or not re.match(r"^\d{4}-\d{2}-\d{2}$", str(date)):
+        raise HTTPException(status_code=400, detail="date 為必填欄位，格式 YYYY-MM-DD")
 
-    price_results = await asyncio.gather(*[_quote(h) for h in active], return_exceptions=True)
-    price_map: dict[str, float] = {}
-    for r in price_results:
-        if isinstance(r, tuple):
-            price_map[r[0]] = r[1]
+    for key in ["stockValue", "cashBalance", "forexValue", "unrealizedProfit"]:
+        if body.get(key) is None:
+            raise HTTPException(status_code=400, detail=f"缺少必填欄位：{key}")
 
-    # ── 計算總市值 / 成本 ─────────────────────────────────────────────────────
-    total_value = 0.0
-    total_cost  = 0.0
-    for h in active:
-        sid    = h.get("stock_id") or h["_id"]
-        shares = float(h.get("shares_held") or 0)
-        cost   = float(h.get("average_cost") or 0)
-        price  = price_map.get(sid, cost)
-        total_value += shares * price
-        total_cost  += shares * cost
+    db = get_db()
+    ref = db.collection("daily_snapshots").document(str(date))
+    ref.set({
+        "date":              str(date),
+        "exec_capital":      float(body.get("execCapital", 0)),
+        "reinvest":          float(body.get("reinvest", 0)),
+        "stock_value":       float(body["stockValue"]),
+        "cash_balance":      float(body["cashBalance"]),
+        "forex_value":       float(body["forexValue"]),
+        "unrealized_profit": float(body["unrealizedProfit"]),
+        "note":              str(body.get("note", "")),
+        "holdings":          body.get("holdings", []),
+        "vix":               body.get("vix"),
+        "market_state_auto": body.get("marketStateAuto"),
+        "recorded_at":       fs.SERVER_TIMESTAMP,
+    }, merge=True)
 
-    total_gain   = round(total_value - total_cost, 2)
-    gain_percent = round(total_gain / total_cost * 100, 2) if total_cost else 0.0
+    return JSONResponse(
+        status_code=201,
+        content={"success": True, "data": deserialize_snapshot(ref.get())},
+    )
 
-    # ── 讀取市場狀態 ──────────────────────────────────────────────────────────
-    def _read_market_state():
-        doc = db.collection("market_state").document("main").get()
-        return doc.to_dict().get("current", "neutral") if doc.exists else "neutral"
 
-    market_state = await asyncio.to_thread(_read_market_state)
+# ─── GET /snapshots/{date} ────────────────────────────────────────────────────
 
-    payload = {
-        "date":         _today_taipei(),
-        "totalValue":   round(total_value, 2),
-        "totalCost":    round(total_cost, 2),
-        "totalGain":    total_gain,
-        "gainPercent":  gain_percent,
-        "marketState":  market_state,
-    }
+@router.get("/{date}")
+async def get_by_date(date: str):
+    db = get_db()
+    doc = db.collection("daily_snapshots").document(date).get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail=f"快照不存在：{date}")
+    return {"success": True, "data": deserialize_snapshot(doc)}
 
-    data = await record_snapshot(payload)
-    return success(data)
+
+# ─── PUT /snapshots/{date} ────────────────────────────────────────────────────
+
+@router.put("/{date}")
+async def update_snapshot(date: str, body: dict):
+    cash_balance = body.get("cashBalance")
+    note         = body.get("note")
+
+    if cash_balance is None and note is None:
+        raise HTTPException(status_code=400, detail="至少需提供 cashBalance 或 note 其中一個欄位")
+
+    db = get_db()
+    ref = db.collection("daily_snapshots").document(date)
+    if not ref.get().exists:
+        raise HTTPException(status_code=404, detail=f"快照不存在：{date}")
+
+    patch = {}
+    if cash_balance is not None: patch["cash_balance"] = float(cash_balance)
+    if note         is not None: patch["note"]         = str(note)
+    ref.update(patch)
+
+    return {"success": True, "data": deserialize_snapshot(ref.get())}

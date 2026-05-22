@@ -1,26 +1,16 @@
-from __future__ import annotations
-
-import logging
 from datetime import datetime, timezone
-
 from fastapi import APIRouter, HTTPException, Query
-from google.cloud.firestore import SERVER_TIMESTAMP
+from firebase_admin import firestore as fs
+from services.firestore import get_db
 
-from services.firestore import db
-from routers.schemas import (
-    CreateRebalanceSnapshotPayload,
-    UpdateRebalanceRulePayload,
-    success,
-)
+rules_router     = APIRouter()
+snapshots_router = APIRouter()
 
-router = APIRouter()
-logger = logging.getLogger(__name__)
+RULES_COL     = "rebalance_rules"
+RULES_DOC     = "main"
+SNAPSHOTS_COL = "rebalance_snapshots"
 
-_RULES_COL    = "rebalance_rules"
-_RULES_DOC_ID = "main"
-_SNAP_COL     = "rebalance_snapshots"
-
-_RULE_DEFAULTS = {
+RULE_DEFAULTS = {
     "baseThreshold":     0.05,
     "volatilityFactor":  1.0,
     "liquidityCapRatio": 0.20,
@@ -28,116 +18,91 @@ _RULE_DEFAULTS = {
     "concentrationLimit": 0.70,
 }
 
+VALID_MARKET_STATES = {"neutral", "risk-on", "risk-off", "liquidity-dry"}
 
-def _deserialize_rule(doc) -> dict:
+
+# ─── RebalanceRule helpers ────────────────────────────────────────────────────
+
+def deserialize_rule(doc) -> dict:
     d = doc.to_dict()
     return {
-        "baseThreshold":     d.get("base_threshold",      _RULE_DEFAULTS["baseThreshold"]),
-        "volatilityFactor":  d.get("volatility_factor",   _RULE_DEFAULTS["volatilityFactor"]),
-        "liquidityCapRatio": d.get("liquidity_cap_ratio", _RULE_DEFAULTS["liquidityCapRatio"]),
-        "advLookbackDays":   d.get("adv_lookback_days",   _RULE_DEFAULTS["advLookbackDays"]),
-        "concentrationLimit": d.get("concentration_limit", _RULE_DEFAULTS["concentrationLimit"]),
+        "baseThreshold":     d.get("base_threshold",      RULE_DEFAULTS["baseThreshold"]),
+        "volatilityFactor":  d.get("volatility_factor",   RULE_DEFAULTS["volatilityFactor"]),
+        "liquidityCapRatio": d.get("liquidity_cap_ratio", RULE_DEFAULTS["liquidityCapRatio"]),
+        "advLookbackDays":   int(d.get("adv_lookback_days",   RULE_DEFAULTS["advLookbackDays"])),
+        "concentrationLimit": d.get("concentration_limit", RULE_DEFAULTS["concentrationLimit"]),
     }
 
 
-def _validate_rules(p: UpdateRebalanceRulePayload, existing: dict) -> None:
-    bt = p.baseThreshold
-    vf = p.volatilityFactor
-    lc = p.liquidityCapRatio
-    ld = p.advLookbackDays if p.advLookbackDays is not None else existing["advLookbackDays"]
-    cl = p.concentrationLimit if p.concentrationLimit is not None else existing["concentrationLimit"]
+# ─── GET /rebalance-rules ─────────────────────────────────────────────────────
 
-    if not (0 <= bt <= 1):
-        raise HTTPException(status_code=400, detail="baseThreshold 必須在 0–1 之間")
-    if vf <= 0:
-        raise HTTPException(status_code=400, detail="volatilityFactor 必須 > 0")
-    if not (0 <= lc <= 1):
-        raise HTTPException(status_code=400, detail="liquidityCapRatio 必須在 0–1 之間")
-    if not (5 <= ld <= 60):
-        raise HTTPException(status_code=400, detail="advLookbackDays 必須在 5–60 之間")
-    if not (0.50 <= cl <= 0.95):
-        raise HTTPException(status_code=400, detail="concentrationLimit 必須在 0.50–0.95 之間")
-
-
-# ── GET /rebalance-rules ───────────────────────────────────────────────────────
-
-@router.get("/rebalance-rules")
-def get_rules():
-    doc = db.collection(_RULES_COL).document(_RULES_DOC_ID).get()
+@rules_router.get("/")
+async def get_rules():
+    db = get_db()
+    doc = db.collection(RULES_COL).document(RULES_DOC).get()
     if not doc.exists:
-        return success(_RULE_DEFAULTS)
-    return success(_deserialize_rule(doc))
+        return {"success": True, "data": RULE_DEFAULTS}
+    return {"success": True, "data": deserialize_rule(doc)}
 
 
-# ── PUT /rebalance-rules ───────────────────────────────────────────────────────
+# ─── PUT /rebalance-rules ─────────────────────────────────────────────────────
 
-@router.put("/rebalance-rules")
-def update_rules(payload: UpdateRebalanceRulePayload):
-    ref = db.collection(_RULES_COL).document(_RULES_DOC_ID)
-    existing_doc = ref.get()
-    existing = _deserialize_rule(existing_doc) if existing_doc.exists else _RULE_DEFAULTS.copy()
+@rules_router.put("/")
+async def update_rules(body: dict):
+    base_threshold      = body.get("baseThreshold")
+    volatility_factor   = body.get("volatilityFactor")
+    liquidity_cap_ratio = body.get("liquidityCapRatio")
 
-    _validate_rules(payload, existing)
+    if not isinstance(base_threshold, (int, float)) or not (0 < base_threshold < 1):
+        raise HTTPException(status_code=400, detail="baseThreshold 必須為 0 < value < 1 的數字")
+    if not isinstance(volatility_factor, (int, float)) or volatility_factor <= 0:
+        raise HTTPException(status_code=400, detail="volatilityFactor 必須為正數")
+    if not isinstance(liquidity_cap_ratio, (int, float)) or not (0 < liquidity_cap_ratio <= 1):
+        raise HTTPException(status_code=400, detail="liquidityCapRatio 必須為 0 < value ≤ 1 的數字")
 
+    db = get_db()
+    current_doc = db.collection(RULES_COL).document(RULES_DOC).get()
+    current = deserialize_rule(current_doc) if current_doc.exists else RULE_DEFAULTS
+
+    adv = body.get("advLookbackDays")
+    if adv is not None:
+        if not isinstance(adv, int) or not (5 <= adv <= 60):
+            raise HTTPException(status_code=400, detail="advLookbackDays 必須為 5 ≤ value ≤ 60 的整數")
+        resolved_adv = adv
+    else:
+        resolved_adv = current["advLookbackDays"]
+
+    conc = body.get("concentrationLimit")
+    if conc is not None:
+        if not isinstance(conc, (int, float)) or not (0.50 <= conc <= 0.95):
+            raise HTTPException(status_code=400, detail="concentrationLimit 必須為 0.50 ≤ value ≤ 0.95 的數字")
+        resolved_conc = conc
+    else:
+        resolved_conc = current["concentrationLimit"]
+
+    ref = db.collection(RULES_COL).document(RULES_DOC)
     ref.set({
-        "base_threshold":      payload.baseThreshold,
-        "volatility_factor":   payload.volatilityFactor,
-        "liquidity_cap_ratio": payload.liquidityCapRatio,
-        "adv_lookback_days":   payload.advLookbackDays if payload.advLookbackDays is not None else existing["advLookbackDays"],
-        "concentration_limit": payload.concentrationLimit if payload.concentrationLimit is not None else existing["concentrationLimit"],
-        "updated_at":          SERVER_TIMESTAMP,
+        "base_threshold":      float(base_threshold),
+        "volatility_factor":   float(volatility_factor),
+        "liquidity_cap_ratio": float(liquidity_cap_ratio),
+        "adv_lookback_days":   int(resolved_adv),
+        "concentration_limit": float(resolved_conc),
+        "updated_at":          fs.SERVER_TIMESTAMP,
     })
-    return success(_deserialize_rule(ref.get()))
+    return {"success": True, "data": deserialize_rule(ref.get())}
 
 
-# ── GET /rebalance-snapshots ───────────────────────────────────────────────────
+# ─── RebalanceSnapshot helpers ────────────────────────────────────────────────
 
-@router.get("/rebalance-snapshots")
-def get_snapshots(limit: int = Query(default=10, ge=1, le=100)):
-    snap = (
-        db.collection(_SNAP_COL)
-        .order_by("created_at", direction="DESCENDING")
-        .limit(limit)
-        .stream()
-    )
-    return success([_deserialize_snapshot(d) for d in snap])
-
-
-# ── POST /rebalance-snapshots ──────────────────────────────────────────────────
-
-@router.post("/rebalance-snapshots", status_code=201)
-def create_snapshot(payload: CreateRebalanceSnapshotPayload):
-    ref = db.collection(_SNAP_COL).document()
-    ref.set({
-        "created_at": SERVER_TIMESTAMP,
-        "params": {
-            "total_asset":         payload.params.totalAsset,
-            "base_threshold":      payload.params.baseThreshold,
-            "liquidity_cap_ratio": payload.params.liquidityCapRatio,
-            "market_state":        payload.params.marketState,
-        },
-        "suggestions": [
-            {
-                "stock_code":           s.stockCode,
-                "stock_name":           s.stockName,
-                "action":               s.action,
-                "shares":               s.shares,
-                "estimated_amount":     s.estimatedAmount,
-                "is_liquidity_limited": s.isLiquidityLimited,
-            }
-            for s in payload.suggestions
-        ],
-    })
-    return success(_deserialize_snapshot(ref.get()))
-
-
-def _deserialize_snapshot(doc) -> dict:
+def deserialize_snapshot(doc) -> dict:
     d = doc.to_dict()
     ca = d.get("created_at")
-    p  = d.get("params", {})
+    created_at = ca.isoformat() if hasattr(ca, "isoformat") else datetime.now(timezone.utc).isoformat()
+
+    p = d.get("params", {})
     return {
         "id":        doc.id,
-        "createdAt": ca.isoformat() if hasattr(ca, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        "createdAt": created_at,
         "params": {
             "totalAsset":        p.get("total_asset", 0),
             "baseThreshold":     p.get("base_threshold", 0),
@@ -156,3 +121,56 @@ def _deserialize_snapshot(doc) -> dict:
             for s in d.get("suggestions", [])
         ],
     }
+
+
+# ─── GET /rebalance-snapshots ─────────────────────────────────────────────────
+
+@snapshots_router.get("/")
+async def get_snapshots(limit: int = Query(default=10, ge=1, le=100)):
+    db = get_db()
+    snap = (
+        db.collection(SNAPSHOTS_COL)
+        .order_by("created_at", direction="DESCENDING")
+        .limit(limit)
+        .get()
+    )
+    return {"success": True, "data": [deserialize_snapshot(doc) for doc in snap]}
+
+
+# ─── POST /rebalance-snapshots ────────────────────────────────────────────────
+
+@snapshots_router.post("/")
+async def create_snapshot(body: dict):
+    params      = body.get("params")
+    suggestions = body.get("suggestions", [])
+
+    if not isinstance(params, dict):
+        raise HTTPException(status_code=400, detail="params 為必填物件")
+
+    market_state = params.get("marketState")
+    if market_state not in VALID_MARKET_STATES:
+        raise HTTPException(status_code=400, detail="params.marketState 值無效")
+
+    db = get_db()
+    ref = db.collection(SNAPSHOTS_COL).document()
+    ref.set({
+        "created_at": fs.SERVER_TIMESTAMP,
+        "params": {
+            "total_asset":         float(params.get("totalAsset", 0)),
+            "base_threshold":      float(params.get("baseThreshold", 0)),
+            "liquidity_cap_ratio": float(params.get("liquidityCapRatio", 0)),
+            "market_state":        market_state,
+        },
+        "suggestions": [
+            {
+                "stock_code":           str(s.get("stockCode", "")),
+                "stock_name":           str(s.get("stockName", "")),
+                "action":               str(s.get("action", "hold")),
+                "shares":               float(s.get("shares", 0)),
+                "estimated_amount":     float(s.get("estimatedAmount", 0)),
+                "is_liquidity_limited": bool(s.get("isLiquidityLimited", False)),
+            }
+            for s in suggestions
+        ],
+    })
+    return {"success": True, "data": deserialize_snapshot(ref.get())}

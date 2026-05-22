@@ -1,75 +1,50 @@
+"""動態風險重算服務（忠實對應 Node.js tagRiskService.ts）"""
 from __future__ import annotations
-
 import asyncio
-import logging
-from typing import TypedDict
-
-from services.firestore import db
-
-logger = logging.getLogger(__name__)
-
-_STATE_MULTIPLIERS = {
-    "neutral":      1.0,
-    "risk-on":      1.3,
-    "risk-off":     1.8,
-    "liquidity-dry": 2.5,
-}
+from concurrent.futures import ThreadPoolExecutor
+from services.firestore import get_db
+from services.yahoo_finance import get_history_closes
 
 
-def _r2(v: float) -> float:
-    """四捨五入至小數兩位，對應 Node.js parseFloat(v.toFixed(2))"""
-    return round(v, 2)
+# ─── 數學工具 ──────────────────────────────────────────────────────────────────
+
+def _pop_std(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    return (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
+
+
+def _daily_returns(closes: list[float]) -> list[float]:
+    out = []
+    for i in range(1, len(closes)):
+        if closes[i - 1] > 0:
+            out.append((closes[i] - closes[i - 1]) / closes[i - 1])
+    return out
 
 
 def _clamp(v: float) -> float:
     return max(0.0, min(3.0, v))
 
 
-def _get_preset_value(msp: dict | None, state: str) -> float | None:
-    if not msp:
-        return None
-    key_map = {
-        "risk-on":       "riskOn",
-        "risk-off":      "riskOff",
-        "liquidity-dry": "liquidityDry",
-        "neutral":       None,
-    }
-    key = key_map.get(state)
-    if key is None:
-        return None
-    v = msp.get(key)
-    return float(v) if v is not None else None
+def _r2(v: float) -> float:
+    return round(v, 2)
 
 
-async def recalculate_dynamic_risk(market_state: str) -> dict:
-    """
-    依市場狀態批次更新所有 Tag 的 dynamicRisk。
-    計算邏輯（M3-B 規格）：
-      1. 若 tag.marketStatePresets[currentState] 存在 → 直接用 preset 值
-      2. 否則 → tag.baseRisk × stateMultiplier
-    所有 tag 都更新；skippedCount 僅統計無 asset_tags 掛載的 tag 數量（提示用）。
-    """
-    tags_snap = await asyncio.to_thread(lambda: list(db.collection("tags").stream()))
-    asset_tags_snap = await asyncio.to_thread(lambda: list(db.collection("asset_tags").stream()))
+# ─── 核心計算 ──────────────────────────────────────────────────────────────────
 
-    # 建立有掛載持股的 tagName 集合
-    tags_with_holdings: set[str] = set()
-    for at_doc in asset_tags_snap:
-        tag_name = at_doc.to_dict().get("tag_name", "")
-        if tag_name:
-            tags_with_holdings.add(tag_name)
+def recalculate_dynamic_risk(market_state: str) -> dict:
+    db = get_db()
 
-    multiplier = _STATE_MULTIPLIERS.get(market_state, 1.0)
-    updates: list[dict] = []
-    skipped_count = 0
+    # 讀取 tags / asset_tags / holdings
+    tags_snap      = db.collection("tags").order_by("name").get()
+    asset_tags_snap = db.collection("asset_tags").get()
+    holdings_snap  = db.collection("holdings").get()
 
+    tags = []
     for doc in tags_snap:
         d = doc.to_dict()
-        base_risk = d.get("base_risk", 0)
-        tag_name  = d.get("name", "")
-        msp_raw   = d.get("market_state_presets")
-
-        # 轉換 Firestore snake_case presets → camelCase 供 _get_preset_value 使用
+        msp_raw = d.get("market_state_presets")
         msp = None
         if msp_raw:
             msp = {
@@ -77,27 +52,123 @@ async def recalculate_dynamic_risk(market_state: str) -> dict:
                 "riskOff":      msp_raw.get("risk_off"),
                 "liquidityDry": msp_raw.get("liquidity_dry"),
             }
+        tags.append({
+            "id":       doc.id,
+            "name":     d.get("name"),
+            "baseRisk": d.get("base_risk", 0),
+            "marketStatePresets": msp,
+        })
 
-        preset_val = _get_preset_value(msp, market_state)
-        if preset_val is not None:
-            dynamic_risk = _r2(_clamp(preset_val))
+    # 活躍持股 set（sharesHeld > 0）
+    active_set = {
+        doc.to_dict().get("stock_id", doc.id)
+        for doc in holdings_snap
+        if (doc.to_dict().get("shares_held") or 0) > 0
+    }
+
+    # tagName → [{stockCode, weightRatio}]
+    tag_holdings_map: dict[str, list[dict]] = {}
+    for doc in asset_tags_snap:
+        d = doc.to_dict()
+        stock_code = d.get("stock_code", "")
+        if stock_code not in active_set:
+            continue
+        tag_name = d.get("tag_name", "")
+        lst = tag_holdings_map.setdefault(tag_name, [])
+        lst.append({"stockCode": stock_code, "weightRatio": d.get("weight_ratio", 0)})
+
+    # 收集需要歷史資料的股票
+    needed = set()
+    for items in tag_holdings_map.values():
+        for item in items:
+            needed.add(item["stockCode"])
+
+    # 並行取得 90 日收盤價
+    closes_map: dict[str, list[float]] = {}
+    if needed:
+        with ThreadPoolExecutor(max_workers=min(len(needed), 8)) as pool:
+            futures = {pool.submit(get_history_closes, sc): sc for sc in needed}
+            for fut, sc in futures.items():
+                try:
+                    closes = fut.result()
+                    if closes:
+                        closes_map[sc] = closes
+                except Exception:
+                    pass
+
+    # 計算各 Tag 的 vol_ratio → presets → dynamicRisk
+    updates = []
+    skipped = 0
+
+    for tag in tags:
+        holdings = tag_holdings_map.get(tag["name"], [])
+        if not holdings:
+            skipped += 1
+            continue
+
+        stock_series = []
+        for item in holdings:
+            closes = closes_map.get(item["stockCode"])
+            if not closes or len(closes) < 2:
+                continue
+            stock_series.append({
+                "returns": _daily_returns(closes),
+                "weight":  item["weightRatio"] / 100,
+            })
+
+        if not stock_series:
+            skipped += 1
+            continue
+
+        min_len = min(len(s["returns"]) for s in stock_series)
+        tag_returns = []
+        for i in range(min_len):
+            r = sum(s["weight"] * s["returns"][i] for s in stock_series)
+            tag_returns.append(r)
+
+        vol_ratio = 1.0
+        if len(tag_returns) >= 20:
+            recent_vol = _pop_std(tag_returns[-20:])
+            base_vol   = _pop_std(tag_returns)
+            if base_vol > 0:
+                vol_ratio = recent_vol / base_vol
+
+        base_risk    = tag["baseRisk"]
+        risk_on      = _r2(_clamp(base_risk * 1.3 * vol_ratio))
+        risk_off     = _r2(_clamp(base_risk * 1.8 * vol_ratio))
+        liquidity_dry = _r2(_clamp(base_risk * 2.5 * vol_ratio))
+
+        if market_state == "risk-on":
+            dynamic_risk = risk_on
+        elif market_state == "risk-off":
+            dynamic_risk = risk_off
+        elif market_state == "liquidity-dry":
+            dynamic_risk = liquidity_dry
         else:
-            dynamic_risk = _r2(_clamp(base_risk * multiplier))
+            dynamic_risk = _r2(_clamp(base_risk * vol_ratio))
 
-        updates.append({"id": doc.id, "dynamicRisk": dynamic_risk})
-
-        if tag_name not in tags_with_holdings:
-            skipped_count += 1
-
-    # Firestore batch 寫入
-    def _batch_write():
-        batch = db.batch()
-        col = db.collection("tags")
-        for u in updates:
-            batch.update(col.document(u["id"]), {"dynamic_risk": u["dynamicRisk"]})
-        batch.commit()
+        updates.append({
+            "id":          tag["id"],
+            "dynamicRisk": dynamic_risk,
+            "marketStatePresets": {
+                "riskOn":       risk_on,
+                "riskOff":      risk_off,
+                "liquidityDry": liquidity_dry,
+            },
+        })
 
     if updates:
-        await asyncio.to_thread(_batch_write)
+        batch = db.batch()
+        for u in updates:
+            ref = db.collection("tags").document(u["id"])
+            batch.update(ref, {
+                "dynamic_risk": u["dynamicRisk"],
+                "market_state_presets": {
+                    "risk_on":       u["marketStatePresets"]["riskOn"],
+                    "risk_off":      u["marketStatePresets"]["riskOff"],
+                    "liquidity_dry": u["marketStatePresets"]["liquidityDry"],
+                },
+            })
+        batch.commit()
 
-    return {"updatedCount": len(updates), "skippedCount": skipped_count}
+    return {"updatedCount": len(updates), "skippedCount": skipped}
