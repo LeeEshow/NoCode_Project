@@ -93,7 +93,7 @@ class ShioajiManager:
         try:
             txf_group = self._api.Contracts.Futures.TXF
             candidates = sorted(
-                [c for c in txf_group if hasattr(c, "code") and not c.code.startswith("TXFR")],
+                [c for c in txf_group if hasattr(c, "code") and not str(getattr(c, "code", "")).startswith("TXFR")],
                 key=lambda c: str(getattr(c, "delivery_date", ""))
             )
             if candidates:
