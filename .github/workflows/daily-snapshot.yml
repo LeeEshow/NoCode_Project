@@ -12,7 +12,7 @@ jobs:
       - name: Trigger daily snapshot
         run: |
           curl -X POST \
-            https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/api/v1/snapshots/record \
+            https://finance-backend-py-b8b2hbc4eaezd4gb.southeastasia-01.azurewebsites.net/api/v1/snapshots/record \
             -H "Content-Type: application/json" \
             --fail \
             --silent \

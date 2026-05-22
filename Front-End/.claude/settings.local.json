@@ -57,7 +57,8 @@
       "Bash(Select-Object FullName)",
       "Bash(Write-Output \"done\")",
       "Bash(find \"D:/Project/Backup/ex_sk_101_Semantic_Kernel_beginning\" -type f | head -50)",
-      "Bash(rm \"D:/Project/NoCode_Project/.github/workflows/daily-ai-report.yml\")"
+      "Bash(rm \"D:/Project/NoCode_Project/.github/workflows/daily-ai-report.yml\")",
+      "Bash(curl -s --max-time 15 https://finance-backend-py-b8b2hbc4eaezd4gb.southeastasia-01.azurewebsites.net/api/v1/market/indices)"
     ]
   }
 }
