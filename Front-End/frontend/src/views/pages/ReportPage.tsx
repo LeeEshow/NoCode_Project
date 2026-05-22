@@ -39,7 +39,7 @@ function toChartData(snapshots: DailySnapshotDTO[], startDate: string, endDate: 
       return {
         dayIndex: Math.round((new Date(s.date).getTime() - base) / MS_PER_DAY) + 1,
         returnRate: totalInvested > 0 ? net / totalInvested : 0,
-        totalInvested,
+        netReturn: net,
         date: s.date,
       };
     })

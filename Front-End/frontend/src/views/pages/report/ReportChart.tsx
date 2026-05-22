@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts/core';
-import { BarChart, LineChart } from 'echarts/charts';
+import { LineChart } from 'echarts/charts';
 import {
   GridComponent,
   TooltipComponent,
@@ -11,12 +11,12 @@ import {
 import { CanvasRenderer } from 'echarts/renderers';
 import { colors, chartColors } from '../../../styles';
 
-echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer]);
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer]);
 
 export interface ChartDayData {
   dayIndex: number;
   returnRate: number;
-  totalInvested: number;
+  netReturn: number;
   date: string;
 }
 
@@ -34,7 +34,7 @@ interface Props {
 function buildDense(
   data: ChartDayData[],
   totalDays: number,
-  key: 'returnRate' | 'totalInvested',
+  key: 'returnRate' | 'netReturn',
 ): (number | null)[] {
   const map = new Map(data.map(d => [d.dayIndex, d]));
   return Array.from({ length: totalDays }, (_, i) => {
@@ -42,7 +42,7 @@ function buildDense(
     if (!d) return null;
     return key === 'returnRate'
       ? parseFloat((d.returnRate * 100).toFixed(3))
-      : d.totalInvested;
+      : d.netReturn;
   });
 }
 
@@ -52,9 +52,11 @@ function buildDenseDates(data: ChartDayData[], totalDays: number): (string | nul
 }
 
 function fmtAxisWan(v: number): string {
-  if (v >= 10_000_000) return `${(v / 10_000_000).toFixed(1)}千萬`;
-  if (v >= 1_000_000)  return `${(v / 1_000_000).toFixed(1)}百萬`;
-  if (v >= 10_000)     return `${(v / 10_000).toFixed(0)}萬`;
+  const abs  = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 10_000_000) return `${sign}${(abs / 10_000_000).toFixed(1)}千萬`;
+  if (abs >= 1_000_000)  return `${sign}${(abs / 1_000_000).toFixed(1)}百萬`;
+  if (abs >= 10_000)     return `${sign}${(abs / 10_000).toFixed(0)}萬`;
   return String(v);
 }
 
@@ -87,9 +89,9 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
     );
   }
 
-  const xData        = Array.from({ length: totalDays }, (_, i) => `第 ${i + 1} 日`);
-  const targetPct    = parseFloat((targetRate * 100).toFixed(2));
-  const denseInvList = seriesList.map(s => buildDense(s.data, totalDays, 'totalInvested'));
+  const xData         = Array.from({ length: totalDays }, (_, i) => `第 ${i + 1} 日`);
+  const targetPct     = parseFloat((targetRate * 100).toFixed(2));
+  const denseNetList  = seriesList.map(s => buildDense(s.data, totalDays, 'netReturn'));
   const denseRateList = seriesList.map(s => buildDense(s.data, totalDays, 'returnRate'));
   const denseDateList = seriesList.map(s => buildDenseDates(s.data, totalDays));
 
@@ -98,26 +100,35 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
   const legendData: string[] = [];
 
   seriesList.forEach((seg, i) => {
-    const color  = chartColors[i % chartColors.length];
-    const invKey = `累計投入 (${seg.label})`;
-    const ratKey = `報酬率 (${seg.label})`;
+    const netColor = chartColors[(i * 2)     % chartColors.length];
+    const ratColor = chartColors[(i * 2 + 1) % chartColors.length];
+    const netKey   = `淨損益 (${seg.label})`;
+    const ratKey   = `報酬率 (${seg.label})`;
 
     seriesOptions.push({
-      name: invKey,
-      type: 'bar',
+      name: netKey,
+      type: 'line',
       yAxisIndex: 0,
-      data: denseInvList[i],
-      barMaxWidth: 14,
-      barGap: '30%',
-      itemStyle: {
-        color: hexToRgba(color, 0.20),
-        borderColor: hexToRgba(color, 0.50),
-        borderWidth: 1,
-        borderRadius: [2, 2, 0, 0],
-      },
+      data: denseNetList[i],
+      connectNulls: false,
+      smooth: false,
+      symbol: 'none',
+      lineStyle: { color: netColor, width: 1.4, type: 'solid' },
+      z: 2,
+    });
+    legendData.push(netKey);
+
+    seriesOptions.push({
+      name: `__gap_net_${i}`,
+      type: 'line',
+      yAxisIndex: 0,
+      data: denseNetList[i],
+      connectNulls: true,
+      smooth: false,
+      symbol: 'none',
+      lineStyle: { color: netColor, width: 1.2, type: 'dashed', opacity: 0.4 },
       z: 1,
     });
-    legendData.push(invKey);
 
     seriesOptions.push({
       name: ratKey,
@@ -127,7 +138,7 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
       connectNulls: false,
       smooth: false,
       symbol: 'none',
-      lineStyle: { color, width: 1.8, type: 'solid' },
+      lineStyle: { color: ratColor, width: 1.8, type: 'solid' },
       z: 3,
       ...(i === 0 ? {
         markLine: {
@@ -154,7 +165,7 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
       connectNulls: true,
       smooth: false,
       symbol: 'none',
-      lineStyle: { color, width: 1.4, type: 'dashed', opacity: 0.5 },
+      lineStyle: { color: ratColor, width: 1.4, type: 'dashed', opacity: 0.5 },
       z: 2,
     });
   });
@@ -179,9 +190,8 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
     yAxis: [
       {
         type: 'value',
-        name: '累計投入',
+        name: '淨損益',
         nameTextStyle: { color: colors.dim, fontSize: 10, padding: [0, 0, 0, 40] },
-        min: 0,
         axisLabel: { color: colors.dim, fontSize: 10, formatter: fmtAxisWan },
         splitLine: { show: false },
         axisLine: { show: false },
@@ -238,7 +248,9 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
         const lines = ps.map(p => {
           const v      = p.value as number;
           const isRate = p.seriesName.includes('報酬率');
-          const display = isRate ? `${v.toFixed(2)}%` : v.toLocaleString('zh-TW');
+          const display = isRate
+            ? `${v.toFixed(2)}%`
+            : `${v >= 0 ? '+' : ''}${v.toLocaleString('zh-TW')}`;
           return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:5px"></span>${p.seriesName}：<b>${display}</b>`;
         });
 
