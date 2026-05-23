@@ -1,6 +1,6 @@
 # 個人理財雲端系統 — 後端開發任務清單
 
-> 版本：4.0（2026-05-22）
+> 版本：4.1（2026-05-23）
 > 參考文件：Back-End\CLAUDE.md
 
 ---
@@ -422,6 +422,32 @@ Node.js（port 3001）與 Python（port 8000）同時運行，以比對腳本對
 - **M6-C** ✅ API Key 驗證：`?key=<MCP_ACCESS_KEY>`；`MCP_ACCESS_KEY` 未設定時跳過（開發模式）
 - ✅ `main.py` 加掛 `mcp.router`；EasyAuth skip 加入 `/api/v1/mcp/` prefix
 - **✅ 驗證關卡** `pytest tests/test_m6_mcp.py` → **14/14 passed**（2026-05-22）
+
+#### M6 補強：MCP 傳輸修正 ✅（2026-05-23）
+
+- ✅ `POST /api/v1/mcp`（Streamable HTTP transport，MCP 2025-03-26）：與 SSE 並存，共用 `_handle_rpc()` 邏輯；Claude Code 以 `--transport http` 連線
+- ✅ `notifications/*` 一律回傳 HTTP 204（原錯誤回傳 JSON，違反 JSON-RPC 規範）
+- ✅ SSE `message_url` 強制 `https`（Azure SSL 終止後內部 scheme 為 `http`，非 localhost 環境補正）
+- 連線方式：`claude mcp add --transport http finance-mcp "https://<backend>/api/v1/mcp?key=<MCP_ACCESS_KEY>"`
+
+#### M6 擴充：MCP Tool 補齊 🔲
+
+> 現有 8 個 tool 缺少以下資料，AI Agent 分析時無法取得完整投資組合資訊。
+
+- **M6-D** 🔲 `get_stock_history`：個股 K 線 + 指定時間範圍歷史報價
+  - 參數：`stock_id`（必填）、`start_date`（選填，YYYY-MM-DD）、`end_date`（選填）、`interval`（選填，預設 `1d`）
+  - 資料來源：`yahoo_finance.py` 的 `_yf_chart()`（已有實作，直接複用）
+  - 回傳：`[{ timestamp, open, high, low, close, volume }]`
+
+- **M6-E** 🔲 `get_asset_tags`：個股 Tag 配置（每檔股票對應哪些 Tag 及持倉比例）
+  - 無參數（回傳全部 `asset_tags` collection）
+  - 回傳：`[{ id, stockCode, tagName, weightRatio }]`
+  - 補充：可搭配 `get_tags` + `get_holdings` 讓 AI 計算各 Tag 現有配置比例
+
+- **M6-F** 🔲 `get_rebalance_snapshots`：再平衡快照（含歷史買賣建議）
+  - 參數：`limit`（選填，預設 5）
+  - 回傳：`[{ id, createdAt, params: { totalAsset, baseThreshold, marketState, ... }, suggestions: [{ stockCode, action, shares, estimatedAmount }] }]`
+  - 資料來源：`rebalance_snapshots` collection（`rebalance.py` 已有 API，直接讀 Firestore）
 
 #### M7：切換與下線 ✅
 
