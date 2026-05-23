@@ -29,7 +29,7 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # axios 未設 withCredentials，不需傳送 cookie；wildcard + credentials 違反 CORS 規範
     allow_methods=["*"],
     allow_headers=["*"],
 )
