@@ -103,7 +103,9 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, ensure_ascii=False, indent=2\\)[:800]\\)\")",
       "PowerShell(Get-ChildItem \"D:\\\\Project\\\\NoCode_Project\\\\Back-End\\\\Shioaji_API\" -Recurse | Select-Object FullName, PSIsContainer | Where-Object {$_.PSIsContainer -eq $false})",
       "PowerShell(python --version)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(py -3.14 -m pytest tests/test_m6_mcp.py -v)",
+      "Bash(py -3.14 -m pytest tests/ -v --tb=short)"
     ]
   }
 }

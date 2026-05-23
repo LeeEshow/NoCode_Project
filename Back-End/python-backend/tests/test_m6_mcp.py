@@ -1,4 +1,5 @@
-"""M6 驗證：MCP Server — SSE 連線 + JSON-RPC 2.0"""
+"""M6 驗證：MCP Server — SSE 連線 + JSON-RPC 2.0 + Phase 2 擴充"""
+import json
 import pytest
 from tests.helpers import assert_keys
 
@@ -7,6 +8,7 @@ from tests.helpers import assert_keys
 def clear_mcp_key(monkeypatch):
     """測試預設不啟用 MCP Key 驗證，auth 測試再自行 setenv"""
     monkeypatch.delenv("MCP_ACCESS_KEY", raising=False)
+
 
 BASE = "/api/v1/mcp"
 
@@ -19,16 +21,41 @@ TOOL_NAMES = {
     "get_tags",
     "get_rebalance_rules",
     "get_foreign_assets",
+    # Phase 2 新增
+    "get_asset_tags",
+    "get_tag_correlation_matrix",
+    "get_transactions",
+    "get_stock_history",
+    "get_stock_chip",
+    "get_rebalance_snapshots",
+    "get_portfolio_tag_analysis",
 }
 
 
+# ─── 共用輔助 ─────────────────────────────────────────────────────────────────
+
+async def _call_tool(client, tool_name: str, arguments: dict | None = None) -> object:
+    res = await client.post(
+        f"{BASE}/message",
+        json={
+            "jsonrpc": "2.0",
+            "id": 99,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": arguments or {}},
+        },
+    )
+    assert res.status_code == 200
+    return res
+
+
+def _parse(res) -> object:
+    """解析 tools/call 回傳的 content[0].text"""
+    return json.loads(res.json()["result"]["content"][0]["text"])
+
+
 # ─── SSE ──────────────────────────────────────────────────────────────────────
-# httpx ASGITransport 會等待整個 ASGI app 完成，無法測試無限 SSE stream。
-# 改用直接 ASGI 呼叫：receive() 回傳 http.disconnect，讓 Starlette 的
-# listen_for_disconnect task 主動取消 task group，使 app 正常退出。
 
 async def _sse_direct(path: str = "/api/v1/mcp/sse", qs: bytes = b""):
-    """直接呼叫 ASGI app，回傳 (status, content_type, first_body)"""
     import asyncio
     from main import app as _app
 
@@ -46,7 +73,6 @@ async def _sse_direct(path: str = "/api/v1/mcp/sse", qs: bytes = b""):
         "root_path": "",
         "scheme": "http",
     }
-
     _req_done = False
 
     async def receive():
@@ -78,7 +104,7 @@ async def _sse_direct(path: str = "/api/v1/mcp/sse", qs: bytes = b""):
 
 async def test_mcp_sse_status_and_content_type():
     status, ct, _ = await _sse_direct()
-    assert status == 200, f"Expected 200, got {status}"
+    assert status == 200
     assert "text/event-stream" in ct
 
 
@@ -118,9 +144,7 @@ async def test_mcp_tools_list_returns_tools(client):
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     )
     assert res.status_code == 200
-    body = res.json()
-    assert "result" in body
-    tools = body["result"]["tools"]
+    tools = res.json()["result"]["tools"]
     assert isinstance(tools, list)
     assert len(tools) == len(TOOL_NAMES)
 
@@ -144,25 +168,13 @@ async def test_mcp_tools_list_names_match(client):
     assert names == TOOL_NAMES
 
 
-# ─── tools/call ───────────────────────────────────────────────────────────────
+# ─── tools/call — 基礎格式 ───────────────────────────────────────────────────
 
 async def test_mcp_tools_call_returns_content(client):
-    res = await client.post(
-        f"{BASE}/message",
-        json={
-            "jsonrpc": "2.0",
-            "id": 5,
-            "method": "tools/call",
-            "params": {"name": "get_tags", "arguments": {}},
-        },
-    )
-    assert res.status_code == 200
-    body = res.json()
-    assert "result" in body
-    result = body["result"]
+    res = await _call_tool(client, "get_tags")
+    result = res.json()["result"]
     assert "content" in result
     assert isinstance(result["content"], list)
-    assert len(result["content"]) > 0
     assert result["content"][0]["type"] == "text"
     assert isinstance(result["content"][0]["text"], str)
 
@@ -170,12 +182,7 @@ async def test_mcp_tools_call_returns_content(client):
 async def test_mcp_tools_call_missing_name_returns_error(client):
     res = await client.post(
         f"{BASE}/message",
-        json={
-            "jsonrpc": "2.0",
-            "id": 6,
-            "method": "tools/call",
-            "params": {"arguments": {}},
-        },
+        json={"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"arguments": {}}},
     )
     body = res.json()
     assert "error" in body
@@ -183,18 +190,8 @@ async def test_mcp_tools_call_missing_name_returns_error(client):
 
 
 async def test_mcp_tools_call_unknown_tool_returns_error_content(client):
-    res = await client.post(
-        f"{BASE}/message",
-        json={
-            "jsonrpc": "2.0",
-            "id": 7,
-            "method": "tools/call",
-            "params": {"name": "does_not_exist", "arguments": {}},
-        },
-    )
-    body = res.json()
-    assert "result" in body
-    text = body["result"]["content"][0]["text"]
+    res = await _call_tool(client, "does_not_exist")
+    text = res.json()["result"]["content"][0]["text"]
     assert "未知工具" in text
 
 
@@ -237,3 +234,215 @@ async def test_mcp_no_key_required_when_env_not_set(client, monkeypatch):
         json={"jsonrpc": "2.0", "id": 11, "method": "tools/list"},
     )
     assert res.status_code == 200
+
+
+# ─── MCP-OPT-01/02: get_holdings camelCase + currentPrice ────────────────────
+
+async def test_holdings_camelcase(client):
+    data = _parse(await _call_tool(client, "get_holdings"))
+    if not isinstance(data, list) or len(data) == 0:
+        pytest.skip("Firestore 無持股資料")
+    h = data[0]
+    assert "shares_held" not in h, "不應出現 snake_case 欄位"
+    assert "avg_cost"    not in h, "不應出現 snake_case 欄位"
+    assert "currentPrice" in h,    "應含 currentPrice 欄位"
+    assert "currentValue" in h,    "應含 currentValue 欄位"
+
+
+async def test_holdings_current_price_type(client):
+    data = _parse(await _call_tool(client, "get_holdings"))
+    if not isinstance(data, list) or len(data) == 0:
+        pytest.skip("Firestore 無持股資料")
+    for h in data:
+        cp = h.get("currentPrice")
+        cv = h.get("currentValue")
+        assert cp is None or isinstance(cp, (int, float)), f"currentPrice 型別錯誤：{cp}"
+        assert cv is None or isinstance(cv, (int, float)), f"currentValue 型別錯誤：{cv}"
+
+
+# ─── MCP-OPT-01: get_tags camelCase ──────────────────────────────────────────
+
+async def test_tags_camelcase(client):
+    data = _parse(await _call_tool(client, "get_tags"))
+    if not isinstance(data, list) or len(data) == 0:
+        pytest.skip("Firestore 無 Tag 資料")
+    t = data[0]
+    assert "base_risk"    not in t, "不應出現 snake_case"
+    assert "dynamic_risk" not in t, "不應出現 snake_case"
+    assert "baseRisk"    in t, "應含 baseRisk"
+    assert "dynamicRisk" in t, "應含 dynamicRisk"
+
+
+# ─── MCP-OPT-01: get_rebalance_rules camelCase ───────────────────────────────
+
+async def test_rebalance_rules_camelcase(client):
+    data = _parse(await _call_tool(client, "get_rebalance_rules"))
+    assert isinstance(data, dict)
+    if data:
+        assert "base_threshold"    not in data
+        assert "volatility_factor" not in data
+        assert "baseThreshold"    in data
+        assert "volatilityFactor" in data
+
+
+# ─── MCP-OPT-03: get_snapshots 日期範圍 ──────────────────────────────────────
+
+async def test_snapshots_default_returns_list(client):
+    data = _parse(await _call_tool(client, "get_snapshots"))
+    assert isinstance(data, list)
+
+
+async def test_snapshots_date_range_limit(client):
+    data = _parse(await _call_tool(client, "get_snapshots", {"start_date": "2025-01-01", "end_date": "2025-12-31", "limit": 5}))
+    assert isinstance(data, list)
+    assert len(data) <= 5
+
+
+async def test_snapshots_camelcase(client):
+    data = _parse(await _call_tool(client, "get_snapshots", {"limit": 1}))
+    if not isinstance(data, list) or len(data) == 0:
+        pytest.skip("Firestore 無快照資料")
+    s = data[0]
+    assert "cash_balance"     not in s
+    assert "stock_value"      not in s
+    assert "cashBalance"      in s or "date" in s
+
+
+# ─── MCP-NEW-01: get_asset_tags ───────────────────────────────────────────────
+
+async def test_get_asset_tags_returns_list(client):
+    data = _parse(await _call_tool(client, "get_asset_tags"))
+    assert isinstance(data, list)
+
+
+async def test_get_asset_tags_structure(client):
+    data = _parse(await _call_tool(client, "get_asset_tags"))
+    if len(data) == 0:
+        pytest.skip("Firestore 無 asset_tags 資料")
+    at = data[0]
+    assert_keys(at, ["stockCode", "tagName", "weightRatio"])
+    assert "stock_code" not in at
+    assert "tag_name"   not in at
+    assert "weight_ratio" not in at
+
+
+# ─── MCP-NEW-02: get_tag_correlation_matrix ───────────────────────────────────
+
+async def test_get_tag_correlation_matrix_structure(client):
+    data = _parse(await _call_tool(client, "get_tag_correlation_matrix"))
+    assert isinstance(data, dict)
+    assert "lastUpdated"    in data
+    assert "entries"        in data
+    assert "previousEntries" in data
+    assert isinstance(data["entries"], list)
+
+
+async def test_get_tag_correlation_matrix_entries_camelcase(client):
+    data = _parse(await _call_tool(client, "get_tag_correlation_matrix"))
+    for entry in data.get("entries", []):
+        assert_keys(entry, ["tagA", "tagB", "rho"])
+        assert "tag_a" not in entry
+        assert "tag_b" not in entry
+
+
+# ─── MCP-NEW-03: get_transactions ─────────────────────────────────────────────
+
+async def test_get_transactions_returns_list(client):
+    data = _parse(await _call_tool(client, "get_transactions"))
+    assert isinstance(data, list)
+
+
+async def test_get_transactions_camelcase(client):
+    data = _parse(await _call_tool(client, "get_transactions"))
+    if len(data) == 0:
+        pytest.skip("Firestore 無交易紀錄")
+    t = data[0]
+    assert "stockId"      in t
+    assert "pricePerShare" in t
+    assert "stock_id"         not in t
+    assert "price_per_share"  not in t
+
+
+# ─── MCP-NEW-04: get_stock_history ───────────────────────────────────────────
+
+async def test_get_stock_history_structure(client):
+    data = _parse(await _call_tool(client, "get_stock_history", {"stock_id": "2330"}))
+    assert isinstance(data, list)
+    if len(data) > 0:
+        assert_keys(data[0], ["timestamp", "open", "high", "low", "close", "volume"])
+
+
+async def test_get_stock_history_date_range(client):
+    data = _parse(await _call_tool(client, "get_stock_history", {"stock_id": "2330", "start_date": "2025-01-01", "end_date": "2025-03-31"}))
+    assert isinstance(data, list)
+
+
+async def test_get_stock_history_missing_id_returns_error(client):
+    data = _parse(await _call_tool(client, "get_stock_history", {}))
+    assert "error" in data
+
+
+# ─── MCP-NEW-05: get_stock_chip ───────────────────────────────────────────────
+
+async def test_get_stock_chip_structure(client):
+    data = _parse(await _call_tool(client, "get_stock_chip", {"stock_id": "2330"}))
+    assert isinstance(data, list)
+    if len(data) > 0:
+        assert_keys(data[0], ["date", "foreign", "trust", "dealer"])
+
+
+async def test_get_stock_chip_missing_id_returns_error(client):
+    data = _parse(await _call_tool(client, "get_stock_chip", {}))
+    assert "error" in data
+
+
+# ─── MCP-NEW-06: get_rebalance_snapshots ─────────────────────────────────────
+
+async def test_get_rebalance_snapshots_returns_list(client):
+    data = _parse(await _call_tool(client, "get_rebalance_snapshots"))
+    assert isinstance(data, list)
+
+
+async def test_get_rebalance_snapshots_limit(client):
+    data = _parse(await _call_tool(client, "get_rebalance_snapshots", {"limit": 2}))
+    assert isinstance(data, list)
+    assert len(data) <= 2
+
+
+async def test_get_rebalance_snapshots_structure(client):
+    data = _parse(await _call_tool(client, "get_rebalance_snapshots", {"limit": 1}))
+    if len(data) == 0:
+        pytest.skip("Firestore 無再平衡快照")
+    s = data[0]
+    assert "id"          in s
+    assert "createdAt"   in s
+    assert "params"      in s
+    assert "suggestions" in s
+    assert "created_at"  not in s
+
+
+# ─── MCP-NEW-07: get_portfolio_tag_analysis ───────────────────────────────────
+
+async def test_get_portfolio_tag_analysis_structure(client):
+    data = _parse(await _call_tool(client, "get_portfolio_tag_analysis"))
+    assert isinstance(data, dict)
+    assert "totalValue" in data
+    assert "tags"       in data
+    assert isinstance(data["totalValue"], (int, float))
+    assert isinstance(data["tags"], list)
+
+
+async def test_get_portfolio_tag_analysis_tag_fields(client):
+    data = _parse(await _call_tool(client, "get_portfolio_tag_analysis"))
+    for tag in data.get("tags", []):
+        assert_keys(tag, ["tagName", "actualWeight", "holdings"])
+        assert isinstance(tag["actualWeight"], (int, float))
+        assert isinstance(tag["holdings"], list)
+
+
+async def test_get_portfolio_tag_analysis_holding_fields(client):
+    data = _parse(await _call_tool(client, "get_portfolio_tag_analysis"))
+    for tag in data.get("tags", []):
+        for h in tag.get("holdings", []):
+            assert_keys(h, ["stockCode", "weightRatio", "contribution"])
+            assert isinstance(h["contribution"], (int, float))

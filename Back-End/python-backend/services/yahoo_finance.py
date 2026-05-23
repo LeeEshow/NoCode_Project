@@ -252,6 +252,45 @@ def get_indices() -> list[dict]:
 
 # ─── 股票歷史 K 線 ─────────────────────────────────────────────────────────────
 
+def get_history_range(stock_id: str, start_date: str | None = None, end_date: str | None = None, interval: str = "1d") -> list[dict]:
+    """取得個股指定日期範圍的 OHLCV（period1/period2 方式呼叫 Yahoo v8）"""
+    from datetime import datetime, timezone, timedelta
+
+    symbol = resolve_symbol(stock_id)
+    now = datetime.now(tz=timezone.utc)
+    end_dt   = (datetime.strptime(end_date,   "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)) if end_date   else (now + timedelta(days=1))
+    start_dt = (datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc))                     if start_date else (end_dt - timedelta(days=180))
+
+    try:
+        res = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            params={"interval": interval, "period1": int(start_dt.timestamp()), "period2": int(end_dt.timestamp())},
+            timeout=10,
+            headers=_YF_HEADERS,
+        )
+        res.raise_for_status()
+        data = (res.json().get("chart", {}).get("result") or [{}])[0]
+        timestamps = data.get("timestamp", [])
+        q = data.get("indicators", {}).get("quote", [{}])[0]
+        opens, highs, lows, closes, volumes = (q.get(k, []) for k in ("open", "high", "low", "close", "volume"))
+        result = []
+        for i, ts in enumerate(timestamps):
+            close = _f(closes[i] if i < len(closes) else None, 0.0)
+            if not close or close <= 0:
+                continue
+            result.append({
+                "timestamp": int(ts),
+                "open":   _f(opens[i]   if i < len(opens)   else None, 0.0),
+                "high":   _f(highs[i]   if i < len(highs)   else None, 0.0),
+                "low":    _f(lows[i]    if i < len(lows)    else None, 0.0),
+                "close":  close,
+                "volume": _i(volumes[i] if i < len(volumes) else None),
+            })
+        return result
+    except Exception:
+        return []
+
+
 def get_full_history(stock_id: str, days: int = 90) -> list[dict]:
     """取得個股 N 日 OHLCV 資料（與 Node.js StockHistoryPoint 結構一致）"""
     symbol = resolve_symbol(stock_id)

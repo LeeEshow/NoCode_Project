@@ -1,32 +1,37 @@
 import os
 import json
 import base64
+import threading
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 _db = None
+_lock = threading.Lock()
 
 
 def get_db():
     global _db
     if _db is not None:
         return _db
+    with _lock:
+        if _db is not None:  # double-checked locking
+            return _db
 
-    if not firebase_admin._apps:
-        cred_json_b64 = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-        if cred_json_b64:
-            try:
-                cred_dict = json.loads(base64.b64decode(cred_json_b64).decode())
-            except Exception:
-                cred_dict = json.loads(cred_json_b64)
-            cred = credentials.Certificate(cred_dict)
-        else:
-            cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "./serviceAccountKey.json")
-            cred = credentials.Certificate(cred_path)
+        if not firebase_admin._apps:
+            cred_json_b64 = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+            if cred_json_b64:
+                try:
+                    cred_dict = json.loads(base64.b64decode(cred_json_b64).decode())
+                except Exception:
+                    cred_dict = json.loads(cred_json_b64)
+                cred = credentials.Certificate(cred_dict)
+            else:
+                cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "./serviceAccountKey.json")
+                cred = credentials.Certificate(cred_path)
 
-        project_id = os.getenv("FIRESTORE_PROJECT_ID")
-        options = {"projectId": project_id} if project_id else {}
-        firebase_admin.initialize_app(cred, options)
+            project_id = os.getenv("FIRESTORE_PROJECT_ID")
+            options = {"projectId": project_id} if project_id else {}
+            firebase_admin.initialize_app(cred, options)
 
-    _db = firestore.client()
+        _db = firestore.client()
     return _db

@@ -38,7 +38,19 @@
       "Bash(where pytest *)",
       "Bash(pytest --version)",
       "PowerShell(Get-Command *)",
-      "PowerShell(py *)"
+      "PowerShell(py *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'fix: return HTTP 204 for MCP notifications instead of JSON-RPC response *)",
+      "Bash(git push *)",
+      "Bash(curl *)",
+      "Bash(git commit -m 'feat: add Streamable HTTP transport endpoint POST /api/v1/mcp *)",
+      "Bash(python -c \"import sys,json; [print\\(p, list\\(methods.keys\\(\\)\\)\\) for p,methods in json.load\\(sys.stdin\\)['paths'].items\\(\\) if '/mcp' in p]\")",
+      "mcp__finance-mcp__get_holdings",
+      "Bash(py -3.14 -m pytest tests/test_m6_mcp.py -v)",
+      "Bash(py -3.14 -m pytest tests/ -v --tb=short)",
+      "Bash(py -3.14 -m pytest tests/ -v --tb=no -q)",
+      "Bash(py -3.14 -m pytest tests/test_m1_health.py::test_auth_bypass_allows_api_request tests/test_m2_holdings.py::test_get_holdings_returns_success -v --tb=long)",
+      "Bash(py -3.14 -m pytest tests/ -q --tb=line)"
     ]
   }
 }
