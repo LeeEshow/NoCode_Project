@@ -2,8 +2,8 @@ name: Daily Snapshot
 
 on:
   schedule:
-    - cron: '0 6 * * *'    # 14:00 台灣時間（UTC+8）= 06:00 UTC，每日
-  workflow_dispatch:        # 支援手動觸發（測試用）
+    - cron: '0 6 * * 1-5'   # 14:00 台灣時間（UTC+8）= 06:00 UTC，週一至週五
+  workflow_dispatch:          # 支援手動觸發（測試用）
 
 jobs:
   snapshot:
@@ -12,8 +12,9 @@ jobs:
       - name: Trigger daily snapshot
         run: |
           curl -X POST \
-            https://finance-backend-py-b8b2hbc4eaezd4gb.southeastasia-01.azurewebsites.net/api/v1/snapshots/record \
+            "${{ secrets.BACKEND_URL }}/api/v1/snapshots/record" \
             -H "Content-Type: application/json" \
+            -H "X-Cron-Token: ${{ secrets.CRON_SECRET }}" \
             --fail \
             --silent \
             --show-error

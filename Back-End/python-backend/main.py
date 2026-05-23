@@ -44,6 +44,7 @@ app = FastAPI(title="finance-backend-py", version="1.0.0", lifespan=lifespan)
 
 # ── EasyAuth Middleware ────────────────────────────────────────────────────────
 _SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"
+_CRON_SECRET = os.getenv("CRON_SECRET", "")
 _AUTH_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
 
@@ -54,6 +55,11 @@ class EasyAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if request.url.path.startswith("/api/v1/mcp/"):
+            return await call_next(request)
+
+        # 排程工作（每日快照、AI 報告）以 X-Cron-Token 繞過 EasyAuth
+        if _CRON_SECRET and request.headers.get("X-Cron-Token") == _CRON_SECRET:
+            request.state.user_id = "cron"
             return await call_next(request)
 
         header = request.headers.get("X-MS-CLIENT-PRINCIPAL")
