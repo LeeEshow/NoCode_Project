@@ -1,7 +1,13 @@
 import axios from 'axios';
 
+// Production 環境強制升級為 HTTPS，防止環境變數誤設 http:// 造成 Mixed Content
+const rawBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api/v1';
+const baseURL = import.meta.env.PROD
+  ? rawBase.replace(/^http:\/\//, 'https://')
+  : rawBase;
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api/v1',
+  baseURL,
   timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
 });
