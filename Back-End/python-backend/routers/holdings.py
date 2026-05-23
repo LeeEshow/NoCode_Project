@@ -110,7 +110,7 @@ async def _fetch_quotes_switched(stock_ids: list[str]) -> dict[str, dict]:
     return {sid: q for sid, q in results if q is not None}
 
 
-@router.get("/")
+@router.get("")
 async def get_all():
     loop = asyncio.get_event_loop()
     holdings, all_asset_tags = await asyncio.gather(

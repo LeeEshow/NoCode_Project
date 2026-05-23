@@ -17,7 +17,7 @@ def deserialize_snapshot(doc) -> dict:
 
 # ─── GET /snapshots ───────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_snapshots(year: int | None = Query(default=None)):
     if year is not None and not (2000 <= year <= 2100):
         raise HTTPException(status_code=400, detail="year 參數格式錯誤（例：?year=2025）")
@@ -47,7 +47,7 @@ async def record():
 
 # ─── POST /snapshots ──────────────────────────────────────────────────────────
 
-@router.post("/")
+@router.post("")
 async def create_snapshot(body: dict):
     date = body.get("date")
     if not date or not re.match(r"^\d{4}-\d{2}-\d{2}$", str(date)):

@@ -26,7 +26,7 @@ def deserialize_tag(doc) -> dict:
 
 # ─── GET /market-state ─────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_market_state():
     db = get_db()
     doc = db.collection(COL).document(DOC_ID).get()
@@ -38,7 +38,7 @@ async def get_market_state():
 
 # ─── PUT /market-state ─────────────────────────────────────────────────────────
 
-@router.put("/")
+@router.put("")
 async def update_market_state(body: dict):
     state = body.get("state")
     if state not in VALID_STATES:

@@ -33,7 +33,7 @@ def deserialize_transaction(doc) -> dict:
 
 # ─── GET /transactions ─────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_all(stock_id: str | None = Query(default=None, alias="stock_id")):
     db = get_db()
     col = db.collection("transactions")
@@ -56,7 +56,7 @@ async def get_by_id(tx_id: str):
 
 # ─── POST /transactions ────────────────────────────────────────────────────────
 
-@router.post("/")
+@router.post("")
 async def create(body: dict):
     stock_id      = body.get("stockId")
     tx_type       = body.get("type")

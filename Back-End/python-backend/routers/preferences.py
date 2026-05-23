@@ -33,7 +33,7 @@ def _from_firestore(d: dict) -> dict:
 
 # ─── GET /preferences ─────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_preferences():
     db = get_db()
     doc = db.collection("preferences").document("default").get()
@@ -44,7 +44,7 @@ async def get_preferences():
 
 # ─── PUT /preferences ─────────────────────────────────────────────────────────
 
-@router.put("/")
+@router.put("")
 async def update_preferences(body: dict):
     db = get_db()
     doc = db.collection("preferences").document("default").get()

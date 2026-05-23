@@ -19,7 +19,7 @@ def deserialize_settings(doc) -> dict:
 
 # ─── GET /settings ────────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_settings():
     db = get_db()
     doc = db.collection("settings").document("main").get()
@@ -30,7 +30,7 @@ async def get_settings():
 
 # ─── PUT /settings ────────────────────────────────────────────────────────────
 
-@router.put("/")
+@router.put("")
 async def update_settings(body: dict):
     cost_method = body.get("costMethod")
 

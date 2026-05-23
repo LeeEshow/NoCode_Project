@@ -33,7 +33,7 @@ def _deserialize(doc, name_map: dict) -> dict:
 
 # ─── GET /asset-tags ─────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_all(stockCode: str | None = Query(default=None)):
     db = get_db()
     col = db.collection("asset_tags")
@@ -44,7 +44,7 @@ async def get_all(stockCode: str | None = Query(default=None)):
 
 # ─── POST /asset-tags ────────────────────────────────────────────────────────
 
-@router.post("/")
+@router.post("")
 async def create(body: dict):
     stock_code   = (body.get("stockCode") or "").strip()
     tag_name     = (body.get("tagName") or "").strip()

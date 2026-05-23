@@ -1,4 +1,8 @@
+import base64
+import json
+import logging
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
@@ -8,60 +12,80 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"time":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}',
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    stream=sys.stdout,
+)
+logger = logging.getLogger(__name__)
 
 
+# ── Lifespan ───────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 預熱 Firestore gRPC 連線，避免第一個請求因 channel 初始化而延遲 2–3 秒
     try:
         import asyncio
         from services.firestore import get_db
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, lambda: get_db().collection("holdings").limit(1).get())
-    except Exception:
-        pass
+        logger.info("Firestore warm-up OK")
+    except Exception as e:
+        logger.warning("Firestore warm-up failed: %s", e)
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+# ── App ────────────────────────────────────────────────────────────────────────
+app = FastAPI(title="finance-backend-py", version="1.0.0", lifespan=lifespan)
 
-# 讓 FastAPI 信任 Azure App Service 注入的 X-Forwarded-Proto header
-# 使 redirect_slashes 產生正確的 https:// redirect URL，而非 http://
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
-# CORS — 最外層，確保 OPTIONS preflight 可通過
+# ── EasyAuth Middleware ────────────────────────────────────────────────────────
+_SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"
+_AUTH_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+
+
+class EasyAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if _SKIP_AUTH or request.url.path in _AUTH_SKIP_PATHS or request.method == "OPTIONS":
+            request.state.user_id = "dev"
+            return await call_next(request)
+
+        if request.url.path.startswith("/api/v1/mcp/"):
+            return await call_next(request)
+
+        header = request.headers.get("X-MS-CLIENT-PRINCIPAL")
+        if not header:
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "error": "Unauthorized"},
+            )
+        try:
+            principal = json.loads(base64.b64decode(header).decode("utf-8"))
+            request.state.user_id = principal.get("userId") or principal.get("sub") or ""
+        except Exception:
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "error": "Invalid auth token"},
+            )
+        return await call_next(request)
+
+
+# 注意：add_middleware 後加者為最外層
+# EasyAuth 先加（內層）→ CORS 後加（最外層），確保 401 response 也帶 CORS headers
+app.add_middleware(EasyAuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # axios 未設 withCredentials，不需傳送 cookie；wildcard + credentials 違反 CORS 規範
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# EasyAuth 驗證 middleware
-# Azure App Service 會在請求到達前注入 X-MS-CLIENT-PRINCIPAL header
-# EASY_AUTH_BYPASS=true 時（本機開發）跳過驗證
-@app.middleware("http")
-async def easy_auth_middleware(request: Request, call_next):
-    bypass = os.getenv("EASY_AUTH_BYPASS", "").lower() in ("true", "1", "yes")
-    skip = (
-        request.url.path == "/health"
-        or request.method == "OPTIONS"
-        or request.url.path.startswith("/api/v1/mcp/")
-    )
-
-    if not bypass and not skip:
-        if not request.headers.get("X-MS-CLIENT-PRINCIPAL"):
-            return JSONResponse(
-                status_code=401,
-                content={"success": False, "error": "未授權：缺少 EasyAuth token"},
-            )
-    return await call_next(request)
-
-
-# 統一錯誤格式
+# ── Error handlers ─────────────────────────────────────────────────────────────
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
@@ -72,12 +96,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error: %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"success": False, "error": "伺服器內部錯誤"},
+        content={"success": False, "error": "Internal server error"},
     )
 
 
+# ── Routers ────────────────────────────────────────────────────────────────────
 from routers import holdings, watchlist, transactions, assets, plans
 from routers import tags, market_state, correlation, market, stocks
 from routers import snapshots, settings, preferences, asset_tags, system
@@ -85,27 +111,27 @@ from routers.rebalance import rules_router, snapshots_router
 from routers import mcp
 
 API = "/api/v1"
-app.include_router(holdings.router,     prefix=f"{API}/holdings")
-app.include_router(watchlist.router,    prefix=f"{API}/watchlist")
-app.include_router(transactions.router, prefix=f"{API}/transactions")
-app.include_router(assets.router,       prefix=f"{API}/foreign-assets")
-app.include_router(plans.router,        prefix=f"{API}/plan")
-app.include_router(tags.router,         prefix=f"{API}/tags")
-app.include_router(market_state.router, prefix=f"{API}/market-state")
-app.include_router(correlation.router,  prefix=f"{API}/tag-correlation-matrix")
-app.include_router(rules_router,        prefix=f"{API}/rebalance-rules")
-app.include_router(snapshots_router,    prefix=f"{API}/rebalance-snapshots")
-app.include_router(market.router,       prefix=f"{API}/market")
-app.include_router(stocks.router,       prefix=f"{API}/stocks")
-app.include_router(snapshots.router,    prefix=f"{API}/snapshots")
-app.include_router(settings.router,     prefix=f"{API}/settings")
-app.include_router(preferences.router,  prefix=f"{API}/preferences")
-app.include_router(asset_tags.router,   prefix=f"{API}/asset-tags")
-app.include_router(system.router,       prefix=f"{API}/system")
-app.include_router(mcp.router,          prefix=f"{API}/mcp")
+app.include_router(holdings.router,     prefix=f"{API}/holdings",              tags=["Holdings"])
+app.include_router(watchlist.router,    prefix=f"{API}/watchlist",              tags=["Watchlist"])
+app.include_router(transactions.router, prefix=f"{API}/transactions",           tags=["Transactions"])
+app.include_router(assets.router,       prefix=f"{API}/foreign-assets",         tags=["ForeignAssets"])
+app.include_router(plans.router,        prefix=f"{API}/plan",                   tags=["Plan"])
+app.include_router(tags.router,         prefix=f"{API}/tags",                   tags=["Tags"])
+app.include_router(market_state.router, prefix=f"{API}/market-state",           tags=["MarketState"])
+app.include_router(correlation.router,  prefix=f"{API}/tag-correlation-matrix", tags=["Correlation"])
+app.include_router(rules_router,        prefix=f"{API}/rebalance-rules",        tags=["Rebalance"])
+app.include_router(snapshots_router,    prefix=f"{API}/rebalance-snapshots",    tags=["Rebalance"])
+app.include_router(market.router,       prefix=f"{API}/market",                 tags=["Market"])
+app.include_router(stocks.router,       prefix=f"{API}/stocks",                 tags=["Stocks"])
+app.include_router(snapshots.router,    prefix=f"{API}/snapshots",              tags=["Snapshots"])
+app.include_router(settings.router,     prefix=f"{API}/settings",               tags=["Settings"])
+app.include_router(preferences.router,  prefix=f"{API}/preferences",            tags=["Preferences"])
+app.include_router(asset_tags.router,   prefix=f"{API}/asset-tags",             tags=["AssetTags"])
+app.include_router(system.router,       prefix=f"{API}/system",                 tags=["System"])
+app.include_router(mcp.router,          prefix=f"{API}/mcp",                    tags=["MCP"])
 
 
-# 健康探測端點（Azure warm-up probe，與 Node.js 一致）
+# ── Health probe ───────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
     return {"status": "ok", "uptime": time.time()}

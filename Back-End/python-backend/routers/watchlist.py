@@ -39,7 +39,7 @@ def find_all() -> list[dict]:
 
 # ─── GET /watchlist ────────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_all():
     loop = asyncio.get_event_loop()
     items = await loop.run_in_executor(None, find_all)
@@ -91,7 +91,7 @@ async def get_all():
 
 # ─── POST /watchlist ───────────────────────────────────────────────────────────
 
-@router.post("/")
+@router.post("")
 async def create(body: dict):
     stock_id = body.get("stockId")
     target_price = body.get("targetPrice")

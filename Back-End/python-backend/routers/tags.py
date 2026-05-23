@@ -63,7 +63,7 @@ def validate_presets(presets: dict) -> dict:
 
 # ─── GET /tags ─────────────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_all():
     db = get_db()
     snap = db.collection("tags").order_by("name").get()
@@ -72,7 +72,7 @@ async def get_all():
 
 # ─── POST /tags ────────────────────────────────────────────────────────────────
 
-@router.post("/")
+@router.post("")
 async def create(body: dict):
     name = body.get("name")
     base_risk = body.get("baseRisk")

@@ -103,7 +103,7 @@ def deserialize_investment_plan(doc) -> dict:
 
 # ─── GET /plan ─────────────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_plan(asset_type: str = Query(default="tw_stock", alias="asset_type")):
     db = get_db()
     doc = db.collection(INVESTMENT_PLANS_COL).document(asset_type).get()
@@ -114,7 +114,7 @@ async def get_plan(asset_type: str = Query(default="tw_stock", alias="asset_type
 
 # ─── PUT /plan ─────────────────────────────────────────────────────────────────
 
-@router.put("/")
+@router.put("")
 async def update_plan(body: dict):
     required = ["annualInvest", "rBase", "piBase", "piShock",
                 "inflationScenario", "kRisk", "startYear", "planYears"]

@@ -51,7 +51,7 @@ def validate_input(body: dict) -> None:
 
 # ─── GET /foreign-assets ───────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def get_all():
     db = get_db()
     snap = db.collection("foreign_assets").order_by("updated_at", direction="DESCENDING").get()
@@ -71,7 +71,7 @@ async def get_all():
 
 # ─── POST /foreign-assets ──────────────────────────────────────────────────────
 
-@router.post("/")
+@router.post("")
 async def create(body: dict):
     validate_input(body)
     db = get_db()
