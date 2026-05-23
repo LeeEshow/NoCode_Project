@@ -33,8 +33,6 @@ jobs:
       - name: Build
         working-directory: Front-End/frontend
         run: npm run build
-        env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
 
       - name: Deploy to Azure Static Web Apps
         id: builddeploy

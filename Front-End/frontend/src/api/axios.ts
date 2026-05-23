@@ -1,9 +1,6 @@
 import axios from 'axios';
 
-// Production 使用固定 HTTPS URL；本機開發走 .env 的 VITE_API_BASE_URL（預設 localhost:8000）
-const PROD_API = 'https://finance-backend-py-b8b2hbc4eaezd4gb.southeastasia-01.azurewebsites.net/api/v1';
-const DEV_API  = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-const baseURL  = import.meta.env.PROD ? PROD_API : DEV_API;
+const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
 
 const api = axios.create({
   baseURL,
