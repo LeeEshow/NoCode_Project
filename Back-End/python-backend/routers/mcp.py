@@ -23,9 +23,11 @@ def _check_key(key: str | None) -> None:
 async def mcp_sse(request: Request, key: str | None = Query(default=None)):
     _check_key(key)
 
-    # Azure SSL 終止後 request.url.scheme 會是 http，需從 X-Forwarded-Proto 取得真實 scheme
-    scheme  = request.headers.get("X-Forwarded-Proto", request.url.scheme)
-    netloc  = request.headers.get("X-Forwarded-Host", request.url.netloc)
+    # Azure SSL 終止後內部 scheme 永遠是 http；非 localhost 環境強制使用 https
+    netloc = request.headers.get("X-Forwarded-Host", request.url.netloc)
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+    if scheme == "http" and "localhost" not in netloc:
+        scheme = "https"
     qs      = f"?key={key}" if key else ""
     message_url = f"{scheme}://{netloc}/api/v1/mcp/message{qs}"
 
