@@ -75,7 +75,6 @@ src/
 | `useEnsurePlanStore` | 初始化 `planStore`（每頁掛載一次） |
 | `useRiskViewModel` | **純計算**：riskTotal、tagStats 偏差、重疊群組 |
 | `useRebalanceViewModel` | **純計算**：volatilityFactor、dynamicThreshold、再平衡建議 |
-| `useAiReportViewModel` | AI 每日早報：`loadLatest` / `loadByDate`、`report` / `hasReport` / `availableDates` / `loading` / `error`；由 `PanelHeader` instantiate，資料向下傳入 `AiReportModal` |
 
 ### 純計算 ViewModel（副作用為零）
 
@@ -103,8 +102,7 @@ src/
 | Store | 用途 |
 |-------|------|
 | `planStore` | 當年度原始輸入：`execCapital / reinvest / forexValue / liveStockValue`。由 `useEnsurePlanStore` 初始化一次；`StockOverviewPage` 在 `holdings.items` 變動後呼叫 `updateStockValue()` 同步。整年報酬率以 `useMemo` 在 `StockOverviewPage` 計算，**不存於 store** |
-| `snapshotStore` | 流動資金 `cashBalance`，今日快照優先，無則 fallback 最近一筆。`PanelHeader` 掛載時自動呼叫 `load()`，含 `PanelHeader` 的頁面無需另行觸發 |
-| `settingsStore` | `aiReportEnabled`（布林）：控制 AI 早報按鈕在 `PanelHeader` 的顯示與否。`PanelHeader` 掛載時呼叫 `load()`（已載入則跳過）；`SettingsModal` 的 toggle 呼叫 `setAiReportEnabled(value)`（樂觀更新 + PUT /settings，失敗自動 rollback）。兩端訂閱同一 store，切換後立即反映，無需重新整理 |
+| `snapshotStore` | 流動資金 `cashBalance`、`vix`、`marketStateAuto`，今日快照優先，無則 fallback 最近一筆。`PanelHeader` 掛載時自動呼叫 `load()`，含 `PanelHeader` 的頁面無需另行觸發 |
 
 ### 使用者偏好（`usePreferencesViewModel`）
 
@@ -236,7 +234,7 @@ Icon：`<Icon name="edit" size={18} />` 包裝 Material Symbols Rounded。
 | `@radix-ui/react-dialog` | `Modal.tsx` | `.ft-modal-backdrop` / `.ft-modal` / `.ft-modal--{sm,md,lg}` / `.ft-modal__header` / `.ft-modal__body` / `.ft-modal__footer`；接受可選 `className` prop 可附加自訂 class（如 `SettingsModal` 的 `settings-modal` 覆寫固定 80vw×80vh） |
 | `@radix-ui/react-slider` | `RiskPanel.tsx` | `.rd-slider` / `.rd-slider__track` / `.rd-slider__range` / `.rd-slider__thumb` |
 | `@radix-ui/react-select` | `RiskPanel.tsx` | `.rd-select-trigger` / `.rd-select-content` / `.rd-select-item` |
-| `@radix-ui/react-tooltip` | `RiskPanel.tsx` | inline style，`appendTo: document.body` |
+| `@radix-ui/react-tooltip` | `RiskPanel.tsx`、`PanelHeader.tsx` | inline style，`appendTo: document.body` |
 
 Modal 動畫：`data-state="open/closed"` 搭配 CSS `@keyframes overlay-in/out`、`modal-in/out`，定義於 `Modal.css`。
 
@@ -257,8 +255,7 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 
 | 元件 | 用途 |
 |------|------|
-| `PanelHeader` | 各頁頂部橫幅；掛載時自動呼叫 `snapshotStore.load()` 與 `settingsStore.load()`；`settingsStore.aiReportEnabled` 為 true 時顯示 AI 早報按鈕 |
-| `AiReportModal` | AI 每日早報 Modal（size="lg"）；由 `PanelHeader` 持有開關狀態與 ViewModel，Modal 為純展示層接受 props。**重要**：Radix Dialog 關閉動畫期間元件仍 rendered，關閉時清空的 state 禁止用非空斷言（`!`），一律用可選串鏈（`?.`），否則會 crash 造成黑畫面 |
+| `PanelHeader` | 各頁頂部橫幅；掛載時呼叫 `snapshotStore.load()`；顯示流動資金輸入欄與曝險比徽章（`liveStockValue / (liveStockValue + cashBalance)`），顏色由 `snapshotStore.marketStateAuto` 推導的門檻判斷，VIX 資訊顯示於 Tooltip |
 | `ECGLoader` | 頁面切換心電圖動畫，位於 `views/components/ECGLoader/`，由 `MainLayout` 掛載 |
 | `StockExpandPanel` | 持股 / 關注清單展開列，含 K線 / 法人基本面 / 交易紀錄 / 標籤設定 四個 Tab |
 | `Modal` | Radix Dialog 封裝（sm/md/lg，ESC 關閉，backdrop blur 動畫） |
@@ -272,7 +269,7 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 | `MarketIndicesRow` | 頁頂市場指數橫列 |
 | `RiskPanel` | 風險再平衡模組（可收折），使用 Radix Slider / Select，設定區採 2 欄 CSS Grid |
 
-**SettingsModal 佈局**：採分頁 Tab（資料管理 / AI 早報），內容用 `.settings-section` / `.settings-row` 扁平 rows，**不使用 `.ft-panel`**。CSS 定義於 `views/layout/SettingsModal.css`；tab panel 用 HTML `hidden` 屬性切換（非條件渲染），確保 textarea 內容在切換 tab 時不遺失。
+**SettingsModal 佈局**：size="md"，無 tab 結構，兩個扁平 section（股票清單 / 每日快照），內容用 `.settings-section` / `.settings-row` rows，**不使用 `.ft-panel`**。CSS 定義於 `views/layout/SettingsModal.css`。
 
 **ReportPage 圖表**（非共用元件，位於 `pages/report/ReportChart.tsx`，已加 `React.memo`）：Bar（累計投入）+ Line（報酬率）混合 ECharts 圖，雙 Y 軸，支援雙段比較，含 markLine 目標線。
 
@@ -318,5 +315,6 @@ const ps = all.filter(p =>
 - `tsconfig.app.json` 開啟 `noUnusedLocals / noUnusedParameters`，未使用的 import 必須刪除才能通過編譯。
 - DTO 型別（後端回傳）與 Payload 型別（前端送出）都定義在 `types/index.ts`（唯一真實來源）。
 - `verbatimModuleSyntax: true`，type-only import 須用 `import type { … }`。
+- `erasableSyntaxOnly: true`，禁止使用需要 emit 的語法（`enum`、`namespace`、帶初始值的建構子參數屬性、experimentalDecorators）。
 - `skipLibCheck: true`，`.d.ts` 不做型別檢查；`"react/canary"` 在 `types` 陣列中啟用 ViewTransition 型別（保留以備未來使用）。
 - ECharts option 物件內的 series 若需動態 push 不同型別，用 `any[]` 並以 `// eslint-disable-next-line @typescript-eslint/no-explicit-any` 抑制警告。

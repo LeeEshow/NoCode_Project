@@ -1,6 +1,6 @@
 # 個人理財雲端系統 — 管理層規劃文件
 
-> 版本：2.1（2026-05-21）
+> 版本：3.0（2026-05-23）
 > 開發任務：Front-End\Task_Frontend.md、Back-End\Task_Backend.md
 
 ---
@@ -13,9 +13,11 @@
 | Phase 2 | 風險模型監控層（Risk_total、Tag 偏差、市場狀態切換、相關性矩陣） |
 | Phase 3 | 再平衡決策層（ADV 流動性過濾、快照、觸發按鈕） |
 | Phase 4 | 進階優化（DynamicRisk 自動計算、ρ 自動計算、集中度定量警示、每月提醒） |
+| Phase 5 移除 | AI 每日早報前後端全移除（Claude API、aiReportService、AiReportModal） |
 | Phase 6 | 曝險/流動比模組（曝險比 Badge、VIX 自動市場狀態、RiskPanel 建議提示） |
+| Backend 重建 | Python FastAPI 取代 Node.js Express（M1–M7 全通過，pytest 121/121） |
 | UI 升級 | Radix UI Primitives、RiskPanel Tab 重構、收折列重組、Tooltip、View Transitions |
-| 部署 | Azure Static Web Apps（前端）+ App Service B1（Node.js + Python）、Easy Auth、每日快照 CI/CD |
+| 部署 | Azure Static Web Apps（前端）+ App Service B1（Python FastAPI）、Easy Auth、每日快照 CI/CD |
 
 ---
 
@@ -64,6 +66,7 @@
 - Asset-Tag 資料內嵌於持股 JSON（`GET /holdings` 回傳 `tags[]`）
 - Tag 維護：獨立 `GET/POST/PUT/DELETE /tags`
 - Asset-Tag 操作：`/holdings/:stockCode/tags` 嵌套子資源
+- 所有路由前綴 `/api/v1`；回應格式統一 `{ success: true, data: ... }` / `{ success: false, error: "..." }`
 
 ### 四、Accessibility 規範
 
@@ -89,7 +92,7 @@
 
 ---
 
-## Phase 6 — 曝險/流動比模組
+## Phase 6 — 曝險/流動比模組（已完成）
 
 ### 功能概述
 
@@ -153,23 +156,6 @@
 ```
 
 使用者自行決定是否手動切換；切換後觸發 dynamicRisk 批次重算（現有機制不變）。
-
-### 後端異動
-
-| 檔案 | 異動 |
-|------|------|
-| `DailySnapshotDoc` | 新增 `vix: number \| null`、`marketStateAuto: MarketState \| null` |
-| `snapshotsController.ts` | `POST /snapshots/record` 並行抓 `^VIX`，失敗靜默 |
-| `GET /snapshots` | 回傳結構含新欄位，舊快照缺欄位 fallback `null` |
-
-### 前端異動
-
-| 檔案 | 異動 |
-|------|------|
-| `types/index.ts` | `DailySnapshotDTO` 新增 `vix?`、`marketStateAuto?` |
-| `stores/snapshotStore.ts` | 擴充 `vix`、`marketStateAuto` 欄位 |
-| `PanelHeader` | 曝險比 Badge（方案 C）、流動現金欄位縮寬 |
-| `RiskPanel` | 收折列 `marketStateAuto` 建議提示 |
 
 ---
 

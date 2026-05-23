@@ -46,14 +46,14 @@
        └─ React 19 + TypeScript + Vite
 
 Azure App Service Plan B1（Linux）
-  ├─ finance-backend    → Node.js Express（API /api/v1/*）
-  └─ finance-shioaji    → Python FastAPI + 永豐金 Shioaji SDK
+  └─ finance-backend    → Python FastAPI（API /api/v1/*）
+                          整合 Shioaji WebSocket + Yahoo Finance fallback
+                          MCP Server（SSE + JSON-RPC 2.0）
 
 Firebase Firestore（資料庫）
 
 GitHub Actions
-  ├─ deploy-backend.yml          → 後端自動部署
-  ├─ deploy-shioaji.yml          → Python 服務自動部署
+  ├─ deploy-python-backend.yml   → 後端自動部署
   ├─ azure-static-web-apps-*.yml → 前端自動部署
   └─ daily-snapshot.yml          → 每日 14:00（台灣時間）自動快照
 ```
@@ -74,29 +74,19 @@ GitHub Actions
 
 架構採 **MVVM**（Model / ViewModel / View），所有商務計算於前端 ViewModel（Custom Hook）執行，後端為純資料存取層。
 
-### 後端（`Back-End/backend/`）
+### 後端（`Back-End/python-backend/`）
 
 | 技術 | 版本 | 用途 |
 |------|------|------|
-| Node.js | 22 | 執行環境 |
-| Express | - | Web 框架 |
-| TypeScript | - | 型別安全 |
-| Firebase Admin SDK | - | Firestore 存取 |
-| node-cache | - | 即時報價短快取 |
-| Axios | - | 呼叫 Yahoo Finance / Shioaji |
-
-資料來源切換策略：盤中優先走 Shioaji（WebSocket 即時報價），盤外 fallback Yahoo Finance；Circuit Breaker 自動偵測服務異常。**未設定 `SHIOAJI_API_URL` 時全程使用 Yahoo Finance，無需部署 Python 微服務。**
-
-### Python 微服務（`Back-End/Shioaji_API/`，選用）
-
-| 技術 | 版本 | 用途 |
-|------|------|------|
-| Python | 3.11 | 執行環境 |
+| Python | 3.14 | 執行環境 |
 | FastAPI | - | Web 框架 |
 | Uvicorn | - | ASGI 伺服器 |
-| 永豐金 Shioaji | 1.3.x | 台股即時報價 SDK |
+| Firebase Admin SDK | - | Firestore 存取 |
+| 永豐金 Shioaji | 1.3.x | 台股即時報價 SDK（選用） |
 
-提供個股報價、加權指數、台指期近月報價及 K 線資料，透過 WebSocket 保持持續連線。**無永豐金帳號時可略過此服務，後端自動以 Yahoo Finance 替代。**
+報價來源切換策略：盤中優先走 Shioaji WebSocket，盤外 fallback Yahoo Finance；Circuit Breaker 自動偵測異常（失敗 3 次 → 冷卻 60 秒）。**未設定 `SJ_API_KEY` 時全程使用 Yahoo Finance（Yahoo-only 模式），無需 Shioaji 帳號。**
+
+另內建 **MCP Server**（`/api/v1/mcp/sse` + `/api/v1/mcp/message`），提供 8 個 AI Tool 供外部 AI Agent 存取理財資料。
 
 ---
 
@@ -115,18 +105,14 @@ NoCode_Project/
 │           ├── utils/         # 純函式工具
 │           └── views/         # 元件 / 頁面
 ├── Back-End/
-│   ├── backend/               # Node.js 主後端
-│   │   └── src/
-│   │       ├── controllers/
-│   │       ├── models/
-│   │       ├── routes/
-│   │       ├── services/
-│   │       ├── middleware/
-│   │       └── global/
-│   └── Shioaji_API/           # Python 微服務
-│       └── src/shioaji_api/
-│           ├── core/          # 設定 / ShioajiManager
-│           └── routers/
+│   ├── python-backend/        # Python FastAPI 主後端（現役）
+│   │   ├── main.py
+│   │   ├── routers/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   └── tests/             # pytest 測試套件（121 tests）
+│   ├── backend/               # ⚠️ 待刪除：Node.js Express（已下線）
+│   └── Shioaji_API/           # ⚠️ 待刪除：舊 Shioaji 微服務（已整合進 python-backend）
 ├── Docs/                      # 架構文件
 └── .github/workflows/         # GitHub Actions CI/CD
 ```
@@ -137,36 +123,22 @@ NoCode_Project/
 
 ### 前置需求
 
-- Node.js 22+
-- Python 3.11+
+- Python 3.14+
+- Node.js 22+（前端）
 - Firebase 專案（Firestore 已啟用）
 - 永豐金證券帳號（Shioaji API Key，可選）
 
-### 後端（Node.js）
+### 後端（Python FastAPI）
 
 ```bash
-cd Back-End/backend
+cd Back-End/python-backend
 cp .env.example .env
 # 填入 FIRESTORE_PROJECT_ID 與 GOOGLE_APPLICATION_CREDENTIALS
+# 選填：SJ_API_KEY / SJ_SECRET_KEY（未設定則全程 Yahoo Finance）
 
-npm install
-npm run dev        # 開發模式（熱重載，port 3001）
+py -3.14 -m uvicorn main:app --reload --port 8000   # 開發模式（熱重載）
+py -3.14 -m pytest tests/ -v                        # 測試套件
 ```
-
-### Python 微服務
-
-```bash
-cd Back-End/Shioaji_API
-pip install -r requirements.txt
-
-# 建立 .env
-echo "SJ_API_KEY=your_api_key" > .env
-echo "SJ_SECRET_KEY=your_secret_key" >> .env
-
-uvicorn main:app --port 8000
-```
-
-> 無 Shioaji API Key 時，後端會自動 fallback 至 Yahoo Finance，功能不受影響。
 
 ### 前端
 
@@ -174,8 +146,8 @@ uvicorn main:app --port 8000
 cd Front-End/frontend
 npm install
 
-# 建立 .env（可選，預設指向 localhost:3001）
-echo "VITE_API_BASE_URL=http://localhost:3001/api/v1" > .env
+# 建立 .env（可選，預設指向 localhost:8000）
+echo "VITE_API_BASE_URL=http://localhost:8000/api/v1" > .env
 
 npm run dev        # 開發伺服器（port 5173）
 ```
@@ -189,30 +161,26 @@ npm run lint       # ESLint
 npx tsc --noEmit   # 僅型別檢查
 
 # 後端
-npm run build      # 編譯 TypeScript → dist/
-npm run lint
+py -3.14 -m pytest tests/ -v                  # 全部測試（121 tests）
+py -3.14 -m pytest tests/test_m6_mcp.py       # 單模組測試
 ```
 
 ---
 
 ## 環境變數
 
-### 後端（`Back-End/backend/.env`）
+### 後端（`Back-End/python-backend/.env`）
 
 | 變數 | 說明 |
 |------|------|
 | `FIRESTORE_PROJECT_ID` | Firebase 專案 ID |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Service Account JSON 路徑（本機） |
-| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Service Account JSON 內容（Azure 部署） |
-| `PORT` | 監聽 port（預設 `3001`） |
-| `SHIOAJI_API_URL` | Python 微服務 URL（**選填**；未設定則全程使用 Yahoo Finance） |
-
-### Python 微服務（`Back-End/Shioaji_API/.env`）
-
-| 變數 | 說明 |
-|------|------|
-| `SJ_API_KEY` | 永豐金 API Key |
-| `SJ_SECRET_KEY` | 永豐金 Secret Key |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Service Account JSON（base64，Azure 部署） |
+| `PORT` | 監聽 port（預設 `8000`） |
+| `EASY_AUTH_BYPASS` | `true` = 跳過 Azure EasyAuth（本機開發用） |
+| `SJ_API_KEY` | 永豐金 API Key（**選填**；未設定則全程使用 Yahoo Finance） |
+| `SJ_SECRET_KEY` | 永豐金 Secret Key（**選填**） |
+| `MCP_ACCESS_KEY` | MCP Server API Key（**選填**；未設定則 MCP 端點不需驗證） |
 
 ---
 
@@ -228,9 +196,9 @@ npm run lint
 
 **CI/CD**：推送至 `main` 分支自動觸發對應 GitHub Actions workflow 部署。
 
-### 無永豐金帳號（Yahoo-only）
+### Yahoo-only 模式（無永豐金帳號）
 
-不需部署 `finance-shioaji` Python 服務，**只需在 `finance-backend` 的環境變數中省略 `SHIOAJI_API_URL`**，後端即自動切換為 Yahoo Finance 模式。詳細步驟見 [`Docs/Azure-Deployment.md` 第五節](Docs/Azure-Deployment.md#五yahoo-only-部署無永豐金帳號)。
+不需設定 `SJ_API_KEY` / `SJ_SECRET_KEY`，後端即自動切換為 Yahoo Finance 模式，功能完整可用。詳細步驟見 [`Docs/Azure-Deployment.md`](Docs/Azure-Deployment.md)。
 
 ---
 
@@ -240,7 +208,7 @@ npm run lint
 |------|------|
 | [`Docs/Azure-Deployment.md`](Docs/Azure-Deployment.md) | Azure 部署完整紀錄（架構、參數、除錯） |
 | [`Docs/REQUIREMENTS.md`](Docs/REQUIREMENTS.md) | 功能規劃與設計決策 |
-| [`Docs/Backend-Node.md`](Docs/Backend-Node.md) | 後端架構設計原則 |
-| [`Docs/Frontend-Reat.md`](Docs/Frontend-Reat.md) | 前端 MVVM 架構設計原則 |
+| [`Docs/Backend-Node.md`](Docs/Backend-Node.md) | 舊 Node.js 後端架構（已下線，供歷史參考） |
+| [`Docs/Frontend-React.md`](Docs/Frontend-React.md) | 前端 MVVM 架構設計原則 |
 | [`Front-End/CLAUDE.md`](Front-End/CLAUDE.md) | 前端開發規範（供 AI 輔助開發） |
 | [`Back-End/CLAUDE.md`](Back-End/CLAUDE.md) | 後端開發規範（供 AI 輔助開發） |
