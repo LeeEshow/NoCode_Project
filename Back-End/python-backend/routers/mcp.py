@@ -1,7 +1,7 @@
 import asyncio
 import os
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from services.mcp_service import MCP_TOOLS, call_tool
 
@@ -84,7 +84,8 @@ async def mcp_message(body: dict, key: str | None = Query(default=None)):
         except Exception as e:
             return err(-32603, str(e))
 
-    if method == "notifications/initialized":
-        return {"jsonrpc": "2.0", "id": rpc_id}
+    # Notifications（無 id）不回傳 response，符合 JSON-RPC 規範
+    if method.startswith("notifications/"):
+        return Response(status_code=204)
 
     return err(-32601, f"未實作方法：{method}")
