@@ -6,6 +6,11 @@
 
 ## 功能概覽
 
+### 🤖 AI 每日投資報告（Phase 5）
+- 每日盤後自動生成 AI 分析報告（Claude Sonnet）
+- 整合持股現況、風險狀態、市場指數、績效快照
+- 點擊 PanelHeader 的 AI 圖示按鈕，以 Modal 彈窗顯示當日報告
+
 ### 📊 台股總覽
 - 持股庫存管理（均價、未實現損益、報酬率）
 - 即時股價輪詢（盤中 5 秒更新）
@@ -41,21 +46,22 @@
 
 ```
 使用者瀏覽器
-  └─ Azure Static Web Apps（前端）
+  └─ Azure Static Web Apps（前端，Free）
        ├─ Easy Auth（Microsoft 帳號登入）
        └─ React 19 + TypeScript + Vite
 
-Azure App Service Plan B1（Linux）
-  └─ finance-backend    → Python FastAPI（API /api/v1/*）
+Azure App Service Plan B1（Linux，~$13 USD/月）
+  └─ finance-backend-py → Python FastAPI（API /api/v1/*）
                           整合 Shioaji WebSocket + Yahoo Finance fallback
                           MCP Server（SSE + JSON-RPC 2.0）
 
-Firebase Firestore（資料庫）
+Firebase Firestore（Spark 免費方案）
 
 GitHub Actions
-  ├─ deploy-python-backend.yml   → 後端自動部署
-  ├─ azure-static-web-apps-*.yml → 前端自動部署
-  └─ daily-snapshot.yml          → 每日 14:00（台灣時間）自動快照
+  ├─ deploy-python-backend.yml   → 推送 Back-End/python-backend/** 自動部署後端
+  ├─ azure-static-web-apps-*.yml → 推送 Front-End/frontend/** 自動部署前端
+  ├─ daily-snapshot.yml          → 每日 14:00（台灣時間）自動快照
+  └─ daily-ai-report.yml         → 每日 AI 投資報告生成（Phase 5，待實作）
 ```
 
 ### 前端（`Front-End/frontend/`）
@@ -111,8 +117,8 @@ NoCode_Project/
 │   │   ├── services/
 │   │   ├── utils/
 │   │   └── tests/             # pytest 測試套件（121 tests）
-│   ├── backend/               # ⚠️ 待刪除：Node.js Express（已下線）
-│   └── Shioaji_API/           # ⚠️ 待刪除：舊 Shioaji 微服務（已整合進 python-backend）
+│   ├── backend/               # ⚠️ 待清理：Node.js Express（已下線）
+│   └── Shioaji_API/           # ⚠️ 待清理：舊 Shioaji 微服務（已整合進 python-backend）
 ├── Docs/                      # 架構文件
 └── .github/workflows/         # GitHub Actions CI/CD
 ```
@@ -177,7 +183,7 @@ py -3.14 -m pytest tests/test_m6_mcp.py       # 單模組測試
 | `GOOGLE_APPLICATION_CREDENTIALS` | Service Account JSON 路徑（本機） |
 | `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Service Account JSON（base64，Azure 部署） |
 | `PORT` | 監聽 port（預設 `8000`） |
-| `EASY_AUTH_BYPASS` | `true` = 跳過 Azure EasyAuth（本機開發用） |
+| `SKIP_AUTH` | `true` = 跳過 Azure EasyAuth（本機開發用） |
 | `SJ_API_KEY` | 永豐金 API Key（**選填**；未設定則全程使用 Yahoo Finance） |
 | `SJ_SECRET_KEY` | 永豐金 Secret Key（**選填**） |
 | `MCP_ACCESS_KEY` | MCP Server API Key（**選填**；未設定則 MCP 端點不需驗證） |

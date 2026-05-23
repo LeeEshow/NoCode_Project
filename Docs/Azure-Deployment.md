@@ -1,6 +1,6 @@
 # Azure 部署文件
 
-> 最後更新：2026-05-22  
+> 最後更新：2026-05-23  
 > 架構：Azure Static Web Apps（前端）+ Azure App Service Plan B1（後端）  
 > 目標架構：以 `finance-backend-py`（FastAPI）取代 `finance-backend`（Node.js）與 `finance-shioaji`（Python proxy），整合為單一服務。  
 > Shioaji 為**選用**服務：未設定 `SJ_API_KEY` 時，後端自動以 Yahoo Finance 全程替代。
@@ -13,41 +13,39 @@
 |------|------|
 | 資源群組 `finance-app-rg`（Southeast Asia） | ✅ |
 | App Service Plan B1 Linux | ✅ |
-| Web App `finance-backend`（Node 22） | ✅ 正常運行（遷移完成後下線） |
-| Web App `finance-shioaji`（Python 3.11） | ✅ 正常運行（遷移完成後下線） |
-| Web App `finance-backend-py`（Python 3.11） | 🔲 待建立 |
-| Node.js CI/CD（`deploy-backend.yml`） | ✅ |
-| Python Shioaji CI/CD（`deploy-shioaji.yml`） | ✅ |
-| **新 Python Backend CI/CD**（`deploy-python-backend.yml`） | ✅ workflow 已建立，待設定 Secret |
+| Web App `finance-backend`（Node 22） | ⚠️ 已下線（待刪除） |
+| Web App `finance-shioaji`（Python 3.11） | ⚠️ 已下線（待刪除） |
+| Web App `finance-backend-py`（Python 3.11） | ✅ 正常運行（現役主後端） |
+| Node.js CI/CD（`deploy-backend.yml`） | ⚠️ 已停用（待刪除） |
+| Python Shioaji CI/CD（`deploy-shioaji.yml`） | ⚠️ 已停用（待刪除） |
+| Python Backend CI/CD（`deploy-python-backend.yml`） | ✅ 正常運行 |
 | Azure Static Web Apps 前端 | ✅ 正常運行 |
 | 前端 Easy Auth（Microsoft 帳號） | ✅ |
 | 每日快照排程（`daily-snapshot.yml`） | ✅ |
+| 每日 AI 報告排程（`daily-ai-report.yml`） | 🔲 Phase 5 待實作 |
 
 ---
 
 ## 一、部署規劃 / 架構
 
-### 系統架構
+### 系統架構（現役）
 
 ```
 使用者瀏覽器
   └─ Azure Static Web Apps（免費）
        ├─ Easy Auth（Microsoft 帳號登入）
-       └─ React 前端（Vite build 靜態檔）
+       └─ React 19 前端（Vite build 靜態檔）
 
 Azure App Service Plan B1（~$13 USD/月）
-  ├─ Web App: finance-backend      → Node.js Express（遷移期並行，完成後下線）
-  ├─ Web App: finance-shioaji      → Python FastAPI proxy（遷移期並行，完成後下線）
-  └─ Web App: finance-backend-py   → Python FastAPI（目標架構，整合全部功能）
+  └─ Web App: finance-backend-py   → Python FastAPI（現役主後端，整合全部功能）
 
-Firebase Firestore（保留現有，不遷移）
+Firebase Firestore（Spark 免費方案）
 
 GitHub Actions
-  ├─ deploy-backend.yml            → 推送 Back-End/backend/** 自動部署（Node.js）
-  ├─ deploy-shioaji.yml            → 推送 Back-End/Shioaji_API/** 自動部署
-  ├─ deploy-python-backend.yml     → 推送 Back-End/python-backend/** 自動部署（新）
-  ├─ azure-static-web-apps-*.yml   → 推送 main 自動部署前端
-  └─ daily-snapshot.yml            → 每日 14:00（台灣時間）自動快照
+  ├─ deploy-python-backend.yml     → 推送 Back-End/python-backend/** 自動部署
+  ├─ azure-static-web-apps-*.yml   → 推送 Front-End/frontend/** 自動部署前端
+  ├─ daily-snapshot.yml            → 每日 14:00（台灣時間）自動快照
+  └─ daily-ai-report.yml           → 每日 AI 投資報告生成（Phase 5 待實作）
 ```
 
 ### 費用摘要
@@ -246,13 +244,15 @@ on:
 ## 三、前端部署參數
 
 > URL：`https://gray-bay-05c35e200.7.azurestaticapps.net`  
-> CI/CD：`.github/workflows/azure-static-web-apps-gray-bay-05c35e200.yml`（任何 push to main 觸發）
+> CI/CD：`.github/workflows/azure-static-web-apps-gray-bay-05c35e200.yml`（推送 `Front-End/frontend/**` 觸發）
 
-**GitHub Actions Variable**
+**Vite 環境變數**（`Front-End/frontend/.env.production`，隨原始碼版控）
 
 | 名稱 | 值 |
 |------|-----|
-| `VITE_API_BASE_URL` | `https://finance-backend-hzhvcpckemgedaeq.southeastasia-01.azurewebsites.net/api/v1` |
+| `VITE_API_BASE_URL` | `https://finance-backend-py-b8b2hbc4eaezd4gb.southeastasia-01.azurewebsites.net/api/v1` |
+
+> ⚠️ **不使用 GitHub Actions Variables 注入**：曾嘗試在 GitHub Actions 的 Build 步驟以環境變數覆寫，但會與 `.env.production` 衝突。正確做法是直接維護 `.env.production` 檔案，workflow 中的 `skip_app_build: true` 讓 SWA 直接取用 Vite 打包後的 `dist/`。
 
 **Easy Auth**（Microsoft 帳號）
 
@@ -436,3 +436,57 @@ Document ID: meta
 ```
 
 > 股票清單只需初始化一次，之後搜尋與名稱解析皆從此快取取用，不影響報價與其他功能。
+
+---
+
+## 六、Python 後端重建後的除錯紀錄（2026-05-23）
+
+> 後端從 Node.js 遷移至 Python FastAPI 後，正式環境出現三個連鎖錯誤，記錄根因與解法供日後參考。
+
+### ❾ Mixed Content：FastAPI 路由尾斜線導致 http:// redirect
+
+**症狀**：瀏覽器 Console 出現 14 個 Mixed Content 錯誤，所有 API 請求被阻擋。Network tab 顯示請求 URL 為 `http://`（非 `https://`）。
+
+**根因**：
+1. FastAPI 路由定義為 `@router.get("/")` 時，實際註冊路徑帶有尾斜線（`/api/v1/holdings/`）。
+2. FastAPI 預設 `redirect_slashes=True`：前端請求 `/api/v1/holdings`（無尾斜線）→ FastAPI 回傳 307 redirect 到 `/api/v1/holdings/`。
+3. Azure App Service 做 SSL 終止（外部 HTTPS → 內部 HTTP），FastAPI 生成 redirect URL 時以內部 `http://` 為基礎，redirect 目標變成 `http://...`。
+4. 瀏覽器在 HTTPS 頁面收到 `http://` redirect，判定為 Mixed Content，阻擋請求。
+
+**解法**：將所有 router 根路由從 `"/"` 改為 `""`（空字串），路徑完全對應前綴，不產生 redirect：
+```python
+# 錯誤（會觸發 307 redirect）
+@router.get("/")
+# 正確（直接匹配前綴路徑）
+@router.get("")
+```
+影響檔案：`holdings.py`、`watchlist.py`、`transactions.py`、`assets.py`、`asset_tags.py`、`correlation.py`、`market_state.py`、`plans.py`、`preferences.py`、`settings.py`、`snapshots.py`、`tags.py`、`rebalance.py`（含 `rules_router` 與 `snapshots_router`）
+
+> ⚠️ `rebalance.py` 使用不同名稱（`rules_router`、`snapshots_router`），第一次批次修改時漏掉，需單獨修正。
+
+---
+
+### ❿ EasyAuth 環境變數名稱與程式碼不一致
+
+**症狀**：所有 API 回傳 401 Unauthorized，即使設定了 `SKIP_AUTH=true`（或 `EASY_AUTH_BYPASS=true`）。
+
+**根因**：
+- `main.py` 讀取的環境變數是 `SKIP_AUTH`
+- Azure App Service 環境變數設定的是 `EASY_AUTH_BYPASS`（舊版本殘留名稱）
+- 兩者不符，認證跳過邏輯永不觸發
+
+**解法**：Azure Portal → `finance-backend-py` → 環境變數，將 `EASY_AUTH_BYPASS` 改名為 `SKIP_AUTH`（值 `true` 不變）。
+
+> 正式環境（啟用 Easy Auth）應將此變數刪除或設為 `false`，由 Easy Auth 注入 `X-MS-CLIENT-PRINCIPAL` header 完成身份驗證。
+
+**正確的環境變數清單（finance-backend-py，現役）**
+
+| 名稱 | 值 |
+|------|-----|
+| `FIRESTORE_PROJECT_ID` | `nocode-finance` |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | serviceAccountKey.json 完整 JSON 內容（單行） |
+| `SJ_API_KEY` | 永豐金 API Key（選填） |
+| `SJ_SECRET_KEY` | 永豐金 Secret Key（選填） |
+| `MCP_ACCESS_KEY` | MCP Server 存取金鑰（選填） |
+| `SKIP_AUTH` | `true`（暫時跳過 Easy Auth 驗證） |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` |
