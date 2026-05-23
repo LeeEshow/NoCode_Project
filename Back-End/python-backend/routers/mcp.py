@@ -11,48 +11,9 @@ _SERVER_INFO = {"name": "nocode-finance-mcp", "version": "1.0.0"}
 _PROTOCOL_VERSION = "2024-11-05"
 
 
-def _check_key(key: str | None) -> None:
-    required = os.getenv("MCP_ACCESS_KEY", "")
-    if required and key != required:
-        raise HTTPException(status_code=401, detail="MCP access key 無效")
+# ─── 共用 JSON-RPC 處理邏輯 ────────────────────────────────────────────────────
 
-
-# ─── GET /mcp/sse ──────────────────────────────────────────────────────────────
-
-@router.get("/sse")
-async def mcp_sse(request: Request, key: str | None = Query(default=None)):
-    _check_key(key)
-
-    # Azure SSL 終止後內部 scheme 永遠是 http；非 localhost 環境強制使用 https
-    netloc = request.headers.get("X-Forwarded-Host", request.url.netloc)
-    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
-    if scheme == "http" and "localhost" not in netloc:
-        scheme = "https"
-    qs      = f"?key={key}" if key else ""
-    message_url = f"{scheme}://{netloc}/api/v1/mcp/message{qs}"
-
-    async def event_stream():
-        try:
-            yield f"event: endpoint\ndata: {message_url}\n\n"
-            while True:
-                await asyncio.sleep(15)
-                yield ": ping\n\n"
-        except asyncio.CancelledError:
-            return
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-# ─── POST /mcp/message ─────────────────────────────────────────────────────────
-
-@router.post("/message")
-async def mcp_message(body: dict, key: str | None = Query(default=None)):
-    _check_key(key)
-
+async def _handle_rpc(body: dict) -> Response | dict:
     rpc_id = body.get("id")
     method = body.get("method", "")
     params = body.get("params") or {}
@@ -89,3 +50,56 @@ async def mcp_message(body: dict, key: str | None = Query(default=None)):
         return Response(status_code=204)
 
     return err(-32601, f"未實作方法：{method}")
+
+
+def _check_key(key: str | None) -> None:
+    required = os.getenv("MCP_ACCESS_KEY", "")
+    if required and key != required:
+        raise HTTPException(status_code=401, detail="MCP access key 無效")
+
+
+# ─── GET /mcp/sse ──────────────────────────────────────────────────────────────
+
+@router.get("/sse")
+async def mcp_sse(request: Request, key: str | None = Query(default=None)):
+    _check_key(key)
+
+    # Azure SSL 終止後內部 scheme 永遠是 http；非 localhost 環境強制使用 https
+    netloc = request.headers.get("X-Forwarded-Host", request.url.netloc)
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+    if scheme == "http" and "localhost" not in netloc:
+        scheme = "https"
+    qs      = f"?key={key}" if key else ""
+    message_url = f"{scheme}://{netloc}/api/v1/mcp/message{qs}"
+
+    async def event_stream():
+        try:
+            yield f"event: endpoint\ndata: {message_url}\n\n"
+            while True:
+                await asyncio.sleep(15)
+                yield ": ping\n\n"
+        except asyncio.CancelledError:
+            return
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ─── POST /mcp（Streamable HTTP transport，MCP 2025-03-26）────────────────────
+
+@router.post("")
+async def mcp_http(body: dict, key: str | None = Query(default=None)):
+    """Streamable HTTP transport — Claude Code 推薦格式（`--transport http`）"""
+    _check_key(key)
+    return await _handle_rpc(body)
+
+
+# ─── POST /mcp/message（SSE transport，保留向下相容）──────────────────────────
+
+@router.post("/message")
+async def mcp_message(body: dict, key: str | None = Query(default=None)):
+    _check_key(key)
+    return await _handle_rpc(body)
