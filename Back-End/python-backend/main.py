@@ -8,6 +8,7 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 
 @asynccontextmanager
@@ -23,7 +24,11 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan, redirect_slashes=False)
+app = FastAPI(lifespan=lifespan)
+
+# 讓 FastAPI 信任 Azure App Service 注入的 X-Forwarded-Proto header
+# 使 redirect_slashes 產生正確的 https:// redirect URL，而非 http://
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # CORS — 最外層，確保 OPTIONS preflight 可通過
 app.add_middleware(
