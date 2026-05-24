@@ -45,8 +45,19 @@ const INIT: State = {
   saving: false, marketStateChanging: false, error: null,
 };
 
+/*
+ * 模組層級快取：記住最後一次從 API 取得的市場狀態。
+ * useTagViewModel 每次（重新）掛載都會用此值作為初始值，
+ * 避免頁面切換後元件重建時短暫顯示「中性」的閃爍。
+ */
+let _cachedMarketState: MarketState = 'neutral';
+
 export function useTagViewModel() {
-  const [state, setState] = useState<State>(INIT);
+  /* 初始狀態：優先使用模組快取，確保導覽回來時不閃爍 */
+  const [state, setState] = useState<State>(() => ({
+    ...INIT,
+    marketState: _cachedMarketState,
+  }));
 
   /* 初始載入 */
   useEffect(() => {
@@ -54,7 +65,24 @@ export function useTagViewModel() {
     Promise.all([fetchTags(), fetchAssetTags(), fetchMarketState()])
       .then(([tags, assetTags, { current: marketState }]) => {
         if (cancelled) return;
-        setState({ tags, assetTags, correlationMatrix: [], marketState, loading: false, correlationLoading: false, correlationLoadFailed: false, saving: false, marketStateChanging: false, error: null });
+        /* 更新模組快取，讓下次重掛載時直接顯示正確狀態 */
+        _cachedMarketState = marketState;
+        /*
+         * 使用 functional update，只覆蓋需要的欄位。
+         * 不重置 correlationMatrix / correlationLoading：
+         * 這兩個欄位由 loadCorrelationMatrix 獨立管理，
+         * 若此處用全量替換且兩個 Promise 競速，會把已載好的矩陣清空。
+         */
+        setState(s => ({
+          ...s,
+          tags,
+          assetTags,
+          marketState,
+          loading: false,
+          saving: false,
+          marketStateChanging: false,
+          error: null,
+        }));
       })
       .catch(err => {
         if (cancelled) return;
@@ -109,6 +137,7 @@ export function useTagViewModel() {
     try {
       await apiSetMarketState(newState);
       const tags = await fetchTags(); /* dynamicRisk 由後端依新狀態重算 */
+      _cachedMarketState = newState; /* 更新模組快取 */
       setState(s => ({ ...s, marketState: newState, tags, marketStateChanging: false }));
     } catch (err) {
       setState(s => ({ ...s, marketStateChanging: false, error: (err as Error).message }));

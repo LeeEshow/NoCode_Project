@@ -1,15 +1,26 @@
 import asyncio
 import time
 from fastapi import APIRouter, HTTPException, Query
+from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
-from services.yahoo_finance import (
-    get_all_stocks, get_quote, get_full_history,
-    get_profile, get_chip,
-)
+from services.yahoo_finance import get_all_stocks, get_quote, get_full_history
 from services.api_switch import api_switch_call
 
 router = APIRouter()
+
+
+def _to_camel(k: str) -> str:
+    parts = k.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
+def _convert_keys(obj):
+    if isinstance(obj, dict):
+        return {_to_camel(k): _convert_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_keys(i) for i in obj]
+    return obj
 
 
 # ─── GET /stocks/search?q= ────────────────────────────────────────────────────
@@ -115,30 +126,57 @@ async def stock_history(stock_id: str, days: int = Query(default=90, ge=1, le=36
 
 
 # ─── GET /stocks/{id}/profile ─────────────────────────────────────────────────
+# FIN-B-03：從 Firestore stock_fundamentals/{stockId} 讀取（由 FinMind 每日同步寫入）
 
 @router.get("/{stock_id}/profile")
 async def stock_profile(stock_id: str):
-    cache_key = f"stock:profile:{stock_id}"
-    cached = cache_get(cache_key)
-    if cached is not None:
-        return {"success": True, "data": cached}
-
     loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, get_profile, stock_id)
-    cache_set(cache_key, data, 300)
+
+    def _read():
+        db = get_db()
+        doc = db.collection("stock_fundamentals").document(stock_id).get()
+        if not doc.exists:
+            return None
+        return _convert_keys(doc.to_dict())
+
+    data = await loop.run_in_executor(None, _read)
     return {"success": True, "data": data}
 
 
 # ─── GET /stocks/{id}/chip ────────────────────────────────────────────────────
+# FIN-B-04：從 Firestore stock_chip/{stockId}/records 讀取（由 FinMind 每日同步寫入）
 
 @router.get("/{stock_id}/chip")
-async def stock_chip(stock_id: str):
-    cache_key = f"stock:chip:{stock_id}"
-    cached = cache_get(cache_key)
-    if cached is not None:
-        return {"success": True, "data": cached}
-
+async def stock_chip(
+    stock_id: str,
+    limit: int = Query(default=20, ge=1, le=60),
+    start_date: str | None = Query(default=None),
+):
     loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, get_chip, stock_id)
-    cache_set(cache_key, data, 300)
+
+    def _read():
+        db = get_db()
+        q = (
+            db.collection("stock_chip")
+            .document(stock_id)
+            .collection("records")
+        )
+        if start_date:
+            q = q.where(filter=FieldFilter("date", ">=", start_date))
+        docs = q.order_by("date", direction="DESCENDING").limit(limit).get()
+        rows = []
+        for doc in docs:
+            d = doc.to_dict()
+            rows.append({
+                "stockId":   stock_id,
+                "date":      d.get("date", ""),
+                "foreign":   d.get("foreign", 0),
+                "trust":     d.get("trust", 0),
+                "dealer":    d.get("dealer", 0),
+                "updatedAt": d.get("updated_at"),
+            })
+        rows.reverse()   # 升冪（舊→新）
+        return rows
+
+    data = await loop.run_in_executor(None, _read)
     return {"success": True, "data": data}

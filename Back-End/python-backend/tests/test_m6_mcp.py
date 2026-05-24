@@ -29,6 +29,10 @@ TOOL_NAMES = {
     "get_stock_chip",
     "get_rebalance_snapshots",
     "get_portfolio_tag_analysis",
+    "get_stock_fundamental",
+    # M8 FinMind 直查 tool
+    "query_stock_fundamental",
+    "query_stock_chip",
 }
 
 
@@ -446,3 +450,65 @@ async def test_get_portfolio_tag_analysis_holding_fields(client):
         for h in tag.get("holdings", []):
             assert_keys(h, ["stockCode", "weightRatio", "contribution"])
             assert isinstance(h["contribution"], (int, float))
+
+
+# ─── MCP-NEW-08: get_stock_fundamental ───────────────────────────────────────
+
+# M8：fundamental 來源改為 FinMind + Firestore，欄位對齊 StockProfile DTO
+FUNDAMENTAL_KEYS = [
+    # 識別
+    "stockId", "name", "market",
+    # 評價
+    "peRatio", "pbRatio", "eps", "bookValue",
+    # 股利
+    "dividendYield", "dividendRate", "payoutRatio", "exDividendDate",
+    # 獲利能力
+    "grossMargin", "operatingMargin", "netMargin", "roe",
+    # 規模 / 成長
+    "marketCap", "revenue", "revenueGrowth",
+    # 風險 / 波動
+    "fiftyTwoWeekHigh", "fiftyTwoWeekLow", "beta",
+    # 同步資訊
+    "updatedAt",
+]
+
+
+async def test_get_stock_fundamental_structure(client):
+    data = _parse(await _call_tool(client, "get_stock_fundamental", {"stock_id": "2330"}))
+    assert isinstance(data, dict)
+    assert "stockId" in data
+    # 有 Firestore 資料時才驗證完整 schema（FinMind 未同步時僅含 stockId/updatedAt）
+    if data.get("updatedAt") is not None:
+        assert_keys(data, FUNDAMENTAL_KEYS)
+
+
+async def test_get_stock_fundamental_no_snake(client):
+    data = _parse(await _call_tool(client, "get_stock_fundamental", {"stock_id": "2330"}))
+    assert isinstance(data, dict)
+    for key in data:
+        assert "_" not in key, f"出現 snake_case 欄位：{key}"
+
+
+async def test_get_stock_fundamental_stock_id_matches(client):
+    data = _parse(await _call_tool(client, "get_stock_fundamental", {"stock_id": "2330"}))
+    assert data.get("stockId") == "2330"
+
+
+async def test_get_stock_fundamental_numeric_types(client):
+    data = _parse(await _call_tool(client, "get_stock_fundamental", {"stock_id": "2330"}))
+    # M8 DTO 數值欄位：若有值必須是數值型別
+    numeric_fields = [
+        "peRatio", "pbRatio", "eps", "bookValue",
+        "dividendYield", "dividendRate", "payoutRatio",
+        "grossMargin", "operatingMargin", "netMargin", "roe",
+        "marketCap", "revenue", "revenueGrowth",
+        "fiftyTwoWeekHigh", "fiftyTwoWeekLow", "beta",
+    ]
+    for field in numeric_fields:
+        v = data.get(field)
+        assert v is None or isinstance(v, (int, float)), f"{field} 型別錯誤：{v!r}"
+
+
+async def test_get_stock_fundamental_missing_id_returns_error(client):
+    data = _parse(await _call_tool(client, "get_stock_fundamental", {}))
+    assert "error" in data

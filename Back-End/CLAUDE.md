@@ -186,10 +186,10 @@ python-backend/
 │   ├── rate_helper.py      # 即時匯率 Map
 │   ├── snapshot_service.py # 快照自動記錄（VIX + marketStateAuto；不含風險重算）
 │   ├── tag_risk_service.py # 動態風險重算（volRatio + presets；使用共用 executor）
-│   └── mcp_service.py      # MCP 15 個 Tool 實作 + _convert_keys() camelCase 轉換
+│   └── mcp_service.py      # MCP 18 個 Tool 實作 + _convert_keys() camelCase 轉換
 ├── utils/
 │   └── market_hours.py     # is_market_open()（週一–五 09:00–13:30 UTC+8）
-└── tests/                  # pytest 測試套件（145 tests，全數通過）
+└── tests/                  # pytest 測試套件（161 tests，全數通過）
 ```
 
 ### Route Map
@@ -311,7 +311,7 @@ API Key：`?key=<MCP_ACCESS_KEY>`；`MCP_ACCESS_KEY` 未設定時跳過驗證（
 
 支援方法：`initialize`、`tools/list`、`tools/call`、`notifications/*`（204 無回應）
 
-**15 個 Tool**（實作於 `services/mcp_service.py`）：
+**18 個 Tool**（實作於 `services/mcp_service.py`）：
 
 | Tool | params | 說明 |
 |------|--------|------|
@@ -327,9 +327,12 @@ API Key：`?key=<MCP_ACCESS_KEY>`；`MCP_ACCESS_KEY` 未設定時跳過驗證（
 | `get_tag_correlation_matrix` | — | Tag 相關性矩陣（ρ 值；無資料時回預設空結構） |
 | `get_transactions` | `stock_id?` | 交易紀錄（依 date 升冪；可篩單一個股） |
 | `get_stock_history` | `stock_id`, `start_date?`, `end_date?`, `interval?` | 歷史 K 線（OHLCV） |
-| `get_stock_chip` | `stock_id` | 三大法人近 20 日買賣超（TWSE T86） |
+| `get_stock_chip` | `stock_id`, `limit?` | 三大法人買賣超（Firestore 快取，每日同步，預設 20 筆） |
 | `get_rebalance_snapshots` | `limit?` | 歷次再平衡建議快照（含 params + suggestions） |
 | `get_portfolio_tag_analysis` | — | 投組 Tag 配置分析（actualWeight / deviation / holdings 貢獻度聚合） |
+| `get_stock_fundamental` | `stock_id` | 個股基本面（Firestore 快取，由 FinMind 每日同步） |
+| `query_stock_fundamental` | `stock_id` | **即時**從 FinMind API 查詢任意個股基本面（不限庫存，非快取） |
+| `query_stock_chip` | `stock_id`, `start_date?`, `limit?` | **即時**從 FinMind API 查詢任意個股三大法人（不限庫存，非快取） |
 
 回傳格式：`{"content": [{"type": "text", "text": "<camelCase JSON string>"}]}`
 

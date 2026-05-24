@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
-from services.yahoo_finance import get_indices, get_quote, get_chip, get_history_range
+from services.yahoo_finance import get_indices, get_quote, get_history_range
 
 
 # ─── camelCase 轉換工具 ────────────────────────────────────────────────────────
@@ -125,11 +125,12 @@ MCP_TOOLS = [
     },
     {
         "name": "get_stock_chip",
-        "description": "取得個股三大法人近 20 個交易日買賣超資料（單位：張），來源為 TWSE T86。",
+        "description": "取得個股三大法人買賣超資料（單位：張），來源為 Firestore（由 FinMind 每日同步）。支援 limit 參數，預設 20，上限 60。",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "stock_id": {"type": "string", "description": "股票代號（必填）"},
+                "stock_id": {"type": "string",  "description": "股票代號（必填）"},
+                "limit":    {"type": "integer", "description": "回傳筆數（選填，預設 20，上限 60）"},
             },
             "required": ["stock_id"],
         },
@@ -149,6 +150,61 @@ MCP_TOOLS = [
         "name": "get_portfolio_tag_analysis",
         "description": "計算投組各 Tag 的已配置比例（actualWeight）、目標比例（targetWeight）、偏差與個股貢獻度。用於再平衡決策分析。",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "get_stock_fundamental",
+        "description": (
+            "取得個股基本面資料，來源為 Firestore（由 FinMind 每日同步），涵蓋："
+            "評價（peRatio/pbRatio/eps/bookValue）、"
+            "股利（dividendYield/dividendRate/payoutRatio/exDividendDate）、"
+            "獲利能力（grossMargin/operatingMargin/netMargin/roe）、"
+            "規模成長（marketCap/revenue/revenueGrowth）、"
+            "風險波動（fiftyTwoWeekHigh/fiftyTwoWeekLow/beta）。"
+            "資料未同步時回傳 {stockId, updatedAt: null}。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stock_id": {"type": "string", "description": "股票代號，例如 2330"},
+            },
+            "required": ["stock_id"],
+        },
+    },
+    {
+        "name": "query_stock_fundamental",
+        "description": (
+            "即時從 FinMind API 查詢任意個股基本面（不限庫存持股，直接向 FinMind 發起請求）。"
+            "涵蓋評價（peRatio/pbRatio/eps/bookValue）、"
+            "股利（dividendYield/dividendRate/payoutRatio/exDividendDate）、"
+            "獲利能力（grossMargin/operatingMargin/netMargin）、"
+            "規模成長（marketCap/revenue/revenueGrowth）、"
+            "風險波動（fiftyTwoWeekHigh/fiftyTwoWeekLow/beta）。"
+            "注意：直接呼叫 FinMind API，耗時約 3-10 秒，結果為最新資料（非快取）。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stock_id": {"type": "string", "description": "股票代號，例如 2330"},
+            },
+            "required": ["stock_id"],
+        },
+    },
+    {
+        "name": "query_stock_chip",
+        "description": (
+            "即時從 FinMind API 查詢任意個股三大法人買賣超（不限庫存持股，直接向 FinMind 發起請求）。"
+            "回傳 [{date, foreign, trust, dealer}]（單位：張），依日期升冪。"
+            "注意：直接呼叫 FinMind API，結果為最新資料（非快取）。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stock_id":   {"type": "string",  "description": "股票代號，例如 2330（必填）"},
+                "start_date": {"type": "string",  "description": "起始日 YYYY-MM-DD（選填，預設近 30 日）"},
+                "limit":      {"type": "integer", "description": "最多回傳筆數（選填，預設 20，上限 60）"},
+            },
+            "required": ["stock_id"],
+        },
     },
 ]
 
@@ -310,9 +366,65 @@ async def _get_stock_history(stock_id: str, start_date: str | None, end_date: st
     return _text(data)
 
 
-async def _get_stock_chip(stock_id: str) -> dict:
+async def _get_stock_chip(stock_id: str, limit: int = 20) -> dict:
+    """讀取 Firestore stock_chip/{stockId}/records（由 FinMind 每日同步寫入）"""
     loop = asyncio.get_event_loop()
-    return _text(await loop.run_in_executor(None, get_chip, stock_id))
+
+    def _read():
+        db = get_db()
+        docs = (
+            db.collection("stock_chip")
+            .document(stock_id)
+            .collection("records")
+            .order_by("date", direction="DESCENDING")
+            .limit(limit)
+            .get()
+        )
+        rows = []
+        for doc in docs:
+            d = doc.to_dict()
+            rows.append({
+                "stockId": stock_id,
+                "date":    d.get("date", ""),
+                "foreign": d.get("foreign", 0),
+                "trust":   d.get("trust",   0),
+                "dealer":  d.get("dealer",  0),
+            })
+        rows.reverse()   # 升冪（舊→新）
+        return rows
+
+    return _text(await loop.run_in_executor(None, _read))
+
+
+async def _get_stock_fundamental(stock_id: str) -> dict:
+    """讀取 Firestore stock_fundamentals/{stockId}（由 FinMind 每日同步寫入）"""
+    loop = asyncio.get_event_loop()
+
+    def _read():
+        db = get_db()
+        doc = db.collection("stock_fundamentals").document(stock_id).get()
+        if not doc.exists:
+            return {"stockId": stock_id, "updatedAt": None}
+        return _convert_keys(doc.to_dict())
+
+    return _text(await loop.run_in_executor(None, _read))
+
+
+async def _query_stock_fundamental(stock_id: str) -> dict:
+    """直接呼叫 FinMind API 查詢基本面（任意股票，非 Firestore 快取）"""
+    loop = asyncio.get_event_loop()
+    from services.finmind import build_stock_fundamental
+    data = await loop.run_in_executor(None, build_stock_fundamental, stock_id)
+    return _text(_convert_keys(data))
+
+
+async def _query_stock_chip(stock_id: str, start_date: str | None, limit: int) -> dict:
+    """直接呼叫 FinMind API 查詢三大法人（任意股票，非 Firestore 快取）"""
+    loop = asyncio.get_event_loop()
+    from services.finmind import fetch_chip, _recent
+    effective_start = start_date or _recent(30)
+    rows = await loop.run_in_executor(None, fetch_chip, stock_id, effective_start)
+    return _text(rows[:limit])
 
 
 async def _get_rebalance_snapshots(limit: int) -> dict:
@@ -466,10 +578,27 @@ async def call_tool(name: str, arguments: dict) -> dict:
         sid = str(arguments.get("stock_id", "")).strip()
         if not sid:
             return _text({"error": "stock_id 為必填"})
-        return await _get_stock_chip(sid)
+        limit = min(int(arguments.get("limit", 20)), 60)
+        return await _get_stock_chip(sid, limit)
     if name == "get_rebalance_snapshots":
         limit = min(int(arguments.get("limit", 5)), 20)
         return await _get_rebalance_snapshots(limit)
     if name == "get_portfolio_tag_analysis":
         return await _get_portfolio_tag_analysis()
+    if name == "get_stock_fundamental":
+        sid = str(arguments.get("stock_id", "")).strip()
+        if not sid:
+            return _text({"error": "stock_id 為必填"})
+        return await _get_stock_fundamental(sid)
+    if name == "query_stock_fundamental":
+        sid = str(arguments.get("stock_id", "")).strip()
+        if not sid:
+            return _text({"error": "stock_id 為必填"})
+        return await _query_stock_fundamental(sid)
+    if name == "query_stock_chip":
+        sid = str(arguments.get("stock_id", "")).strip()
+        if not sid:
+            return _text({"error": "stock_id 為必填"})
+        limit = min(int(arguments.get("limit", 20)), 60)
+        return await _query_stock_chip(sid, arguments.get("start_date"), limit)
     return _text({"error": f"未知工具：{name}"})

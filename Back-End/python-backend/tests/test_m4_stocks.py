@@ -4,9 +4,24 @@ from tests.helpers import assert_success, assert_keys, assert_no_snake
 QUOTE_KEYS   = ["stockId", "name", "price", "change", "changePercent",
                 "high", "low", "volume", "marketStatus", "updatedAt"]
 HISTORY_KEYS = ["timestamp", "open", "high", "low", "close", "volume"]
-PROFILE_KEYS = ["stockId", "name", "market", "peRatio", "dividendYield",
-                "fiftyTwoWeekHigh", "fiftyTwoWeekLow", "marketCap",
-                "discountPremiumRate", "revenue", "grossMargin", "roe", "roa"]
+
+# M8：profile 改由 FinMind + Firestore 提供，欄位與 StockProfile DTO 對齊
+PROFILE_KEYS = [
+    # 識別
+    "stockId", "name", "market",
+    # 評價
+    "peRatio", "pbRatio", "eps", "bookValue",
+    # 股利
+    "dividendYield", "dividendRate", "payoutRatio", "exDividendDate",
+    # 獲利能力
+    "grossMargin", "operatingMargin", "netMargin", "roe",
+    # 規模 / 成長
+    "marketCap", "revenue", "revenueGrowth",
+    # 風險 / 波動
+    "fiftyTwoWeekHigh", "fiftyTwoWeekLow", "beta",
+    # 同步資訊
+    "updatedAt",
+]
 CHIP_KEYS    = ["date", "foreign", "trust", "dealer"]
 SEARCH_KEYS  = ["stockId", "name", "market"]
 META_KEYS    = ["count", "updatedAt"]
@@ -68,13 +83,20 @@ async def test_get_history_items_camel(client):
 
 
 async def test_get_profile_returns_success(client):
+    """M8：profile 讀 Firestore；未同步時 data=null，同步後 data 為 camelCase dict"""
     res = await client.get(f"/api/v1/stocks/{TEST_STOCK}/profile")
-    data = assert_success(res)
-    assert_keys(data, PROFILE_KEYS)
-    assert_no_snake(data)
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("success") is True
+    assert "data" in body
+    # data 可為 null（FinMind 尚未同步）或含 PROFILE_KEYS 的 camelCase dict
+    if body["data"] is not None:
+        assert_keys(body["data"], PROFILE_KEYS)
+        assert_no_snake(body["data"])
 
 
 async def test_get_chip_returns_list(client):
+    """M8：chip 讀 Firestore；未同步時回空陣列"""
     res = await client.get(f"/api/v1/stocks/{TEST_STOCK}/chip")
     data = assert_success(res)
     assert isinstance(data, list)

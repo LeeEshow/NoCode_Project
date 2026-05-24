@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # production 必填；未設定且非 dev 環境時 MCP 端點回 503
     mcp_access_key: str = ""
 
+    # ── FinMind（選填；未設定時 FinMind API 不帶 Token，免費呼叫仍可用）──────
+    finmind_token: str = ""
+
     # ── Shioaji（選填；未設定時全程使用 Yahoo Finance）────────────────────────
     sj_api_key: str = ""
     sj_secret_key: str = ""

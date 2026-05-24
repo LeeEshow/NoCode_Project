@@ -61,7 +61,12 @@
       "Bash(curl -s --max-time 15 https://finance-backend-py-b8b2hbc4eaezd4gb.southeastasia-01.azurewebsites.net/api/v1/market/indices)",
       "Bash(dir /s /b \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\*.tsx\" \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\*.ts\")",
       "Bash(Get-ChildItem -Recurse -Path \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\src\" -Filter \"*.ts\")",
-      "Bash(Select-Object Name, FullName)"
+      "Bash(Select-Object Name, FullName)",
+      "Bash(curl -s http://localhost:3001/api/v1/stocks/2330/profile)",
+      "Bash(python -m json.tool)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:3001/api/v1/stocks/2330/profile\" -Method GET | ConvertTo-Json -Depth 5)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:8000/api/v1/stocks/2330/profile\" -Method GET | ConvertTo-Json -Depth 5)",
+      "Bash(Get-ChildItem -Recurse \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\" -Include \"*.ts\",\"*.tsx\")"
     ]
   }
 }

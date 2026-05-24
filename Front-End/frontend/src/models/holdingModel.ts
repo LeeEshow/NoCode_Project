@@ -27,18 +27,41 @@ interface RawHistoryPoint {
 }
 
 interface RawProfile {
-  stockId:           string;
-  name:              string;
-  market:            string;
-  peRatio:           number | null;
-  dividendYield:     number | null;
-  fiftyTwoWeekHigh:  number;
-  fiftyTwoWeekLow:   number;
-  marketCap:         number | null;
-  revenue?:          number | null;
-  grossMargin?:      number | null;
-  roe?:              number | null;
-  roa?:              number | null;
+  // 識別
+  stockId: string;
+  name:    string | null;
+  market:  string | null;
+
+  // 評價指標
+  peRatio:   number | null;
+  pbRatio:   number | null;
+  eps:       number | null;
+  bookValue: number | null;
+
+  // 股利
+  dividendYield:  number | null;
+  dividendRate:   number | null;
+  payoutRatio:    number | null;
+  exDividendDate: string | null;
+
+  // 獲利能力
+  grossMargin:     number | null;
+  operatingMargin: number | null;
+  netMargin:       number | null;
+  roe:             number | null;
+
+  // 規模/成長
+  marketCap:     number | null;
+  revenue:       number | null;
+  revenueGrowth: number | null;
+
+  // 風險/波動
+  fiftyTwoWeekHigh: number | null;
+  fiftyTwoWeekLow:  number | null;
+  beta:             number | null;
+
+  // 同步資訊
+  updatedAt: string | null;
 }
 
 interface RawSearchResult {
@@ -109,15 +132,41 @@ export async function fetchStockProfile(stockId: string): Promise<StockProfileDT
   const res = await api.get<ApiResponse<RawProfile>>(`/stocks/${stockId}/profile`);
   const r = res.data.data;
   return {
-    code:          r.stockId,
-    name:          r.name,
-    pe:            r.peRatio         ?? undefined,
-    dividendYield: r.dividendYield   ?? undefined,
-    marketCap:     r.marketCap       ?? undefined,
-    revenue:       r.revenue      ?? undefined,
-    grossMargin:   r.grossMargin  ?? undefined,
-    roe:           r.roe          ?? undefined,
-    roa:           r.roa          ?? undefined,
+    // 識別
+    stockId: r.stockId,
+    name:    r.name,
+    market:  r.market,
+
+    // 評價指標
+    peRatio:   r.peRatio,
+    pbRatio:   r.pbRatio,
+    eps:       r.eps,
+    bookValue: r.bookValue,
+
+    // 股利
+    dividendYield:  r.dividendYield,
+    dividendRate:   r.dividendRate,
+    payoutRatio:    r.payoutRatio,
+    exDividendDate: r.exDividendDate,
+
+    // 獲利能力
+    grossMargin:     r.grossMargin,
+    operatingMargin: r.operatingMargin,
+    netMargin:       r.netMargin,
+    roe:             r.roe,
+
+    // 規模/成長
+    marketCap:     r.marketCap,
+    revenue:       r.revenue,
+    revenueGrowth: r.revenueGrowth,
+
+    // 風險/波動
+    fiftyTwoWeekHigh: r.fiftyTwoWeekHigh,
+    fiftyTwoWeekLow:  r.fiftyTwoWeekLow,
+    beta:             r.beta,
+
+    // 同步資訊
+    updatedAt: r.updatedAt,
   };
 }
 

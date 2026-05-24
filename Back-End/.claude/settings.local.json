@@ -110,7 +110,10 @@
       "Bash(py -3.14 -m pytest tests/test_m6_mcp.py -v --tb=short)",
       "Bash(py -3.14 -m pytest tests/ -q)",
       "PowerShell(py *)",
-      "PowerShell(cd \"E:\\\\Code\\\\NoCode_Project\\\\Back-End\\\\python-backend\"; $env:SKIP_AUTH = 'true'; .\\\\.venv\\\\Scripts\\\\pytest.exe tests/ -v --tb=short 2>&1)"
+      "PowerShell(cd \"E:\\\\Code\\\\NoCode_Project\\\\Back-End\\\\python-backend\"; $env:SKIP_AUTH = 'true'; .\\\\.venv\\\\Scripts\\\\pytest.exe tests/ -v --tb=short 2>&1)",
+      "Bash(npx skills *)",
+      "Bash(.venv\\\\Scripts\\\\activate)",
+      "Bash(python -c \"from services.finmind import _fm_get, fetch_per; from routers.finmind_sync import _build_fundamentals; from routers import finmind_sync; print\\('import OK'\\)\")"
     ]
   }
 }

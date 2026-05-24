@@ -72,18 +72,41 @@ export interface KLineDTO {
 /* ── 股票基礎數據 ──────────────────────────────────────────── */
 
 export interface StockProfileDTO {
-  code:          string;
-  name:          string;
-  industry?:     string;
-  eps?:          number;
-  pe?:           number;
-  pb?:           number;
-  dividendYield?: number;
-  marketCap?:    number;
-  revenue?:      number;
-  grossMargin?:  number;
-  roe?:          number;
-  roa?:          number;
+  // 識別
+  stockId: string;
+  name:    string | null;
+  market:  string | null;
+
+  // 評價指標
+  peRatio:   number | null;   // 本益比（trailing）
+  pbRatio:   number | null;   // 股價淨值比
+  eps:       number | null;   // 每股盈餘（元）
+  bookValue: number | null;   // 每股淨值（元）
+
+  // 股利
+  dividendYield:  number | null;  // 殖利率（%），如 2.35
+  dividendRate:   number | null;  // 現金股利/股（元），如 16.0
+  payoutRatio:    number | null;  // 配息率（%）
+  exDividendDate: string | null;  // 除息日 "YYYY-MM-DD"
+
+  // 獲利能力（直接為 % 數值，如 53.2 代表 53.2%）
+  grossMargin:     number | null;
+  operatingMargin: number | null;
+  netMargin:       number | null;
+  roe:             number | null;
+
+  // 規模/成長
+  marketCap:     number | null;  // 市值（元，原始整數）
+  revenue:       number | null;  // 總營收（元，原始整數）
+  revenueGrowth: number | null;  // YoY 成長率（%）
+
+  // 風險/波動
+  fiftyTwoWeekHigh: number | null;  // 52 週最高價
+  fiftyTwoWeekLow:  number | null;  // 52 週最低價
+  beta:             number | null;  // 相對大盤波動係數
+
+  // 同步資訊（FinMind 最後同步時間，null 代表尚未同步）
+  updatedAt: string | null;
 }
 
 export interface ChipDTO {

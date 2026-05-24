@@ -127,7 +127,7 @@ from routers import holdings, watchlist, transactions, assets, plans
 from routers import tags, market_state, correlation, market, stocks
 from routers import snapshots, settings, preferences, asset_tags, system
 from routers.rebalance import rules_router, snapshots_router
-from routers import mcp
+from routers import mcp, finmind_sync
 
 API = "/api/v1"
 app.include_router(holdings.router,     prefix=f"{API}/holdings",              tags=["Holdings"])
@@ -146,8 +146,9 @@ app.include_router(snapshots.router,    prefix=f"{API}/snapshots",              
 app.include_router(settings.router,     prefix=f"{API}/settings",               tags=["Settings"])
 app.include_router(preferences.router,  prefix=f"{API}/preferences",            tags=["Preferences"])
 app.include_router(asset_tags.router,   prefix=f"{API}/asset-tags",             tags=["AssetTags"])
-app.include_router(system.router,       prefix=f"{API}/system",                 tags=["System"])
-app.include_router(mcp.router,          prefix=f"{API}/mcp",                    tags=["MCP"])
+app.include_router(system.router,        prefix=f"{API}/system",                tags=["System"])
+app.include_router(mcp.router,           prefix=f"{API}/mcp",                   tags=["MCP"])
+app.include_router(finmind_sync.router,  prefix=f"{API}/finmind",               tags=["FinMind"])
 
 
 # ── Health probe ───────────────────────────────────────────────────────────────

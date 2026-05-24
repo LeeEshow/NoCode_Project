@@ -11,11 +11,15 @@
 
 ## 待辦
 
-> 暫無待辦 
-
 ---
 
 ## 已完成
+
+### FIN-F — 基本面 DTO 更新與 UI 對齊
+
+- **FIN-F-01** `types/index.ts`：`StockProfileDTO` 移除 `forwardPE`、`roa`、`debtToEquity`、`currentRatio`、`freeCashflow`、`analystRating`、`analystCount`、`targetPrice`；識別欄位 `code` → `stockId`、`pe` → `peRatio`、`pb` → `pbRatio`；所有欄位統一為 `T | null`（移除 `?` optional）；新增 `updatedAt: string | null`
+- **FIN-F-02** `holdingModel.ts`：`RawProfile` 移除同批欄位，52W 改 `number | null`，新增 `updatedAt`；`fetchStockProfile` 直接傳遞 null 值（無 `?? undefined` 轉換、無 `(r as any)` 強轉），欄位名稱與 DTO 一一對齊
+- **FIN-F-03** `StockExpandPanel.tsx`：格式函式型別改 `number | null`；移除 `fmtRating`；`ProfilePanel` 標題列改 flex row，右側顯示同步日期（`updatedAt` 非 null）或「尚未同步」（muted）；移除廢棄欄位區塊（前瞻P/E、ROA、自由現金流、財務健康、分析師共識）；`ChipProfileSection` 有籌碼時加「最後資料：MM/DD」，無籌碼且 `updatedAt === null` 顯示「資料同步中，請稍候」
 
 ### Phase 5 移除 — AI 每日早報
 

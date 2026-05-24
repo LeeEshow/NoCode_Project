@@ -101,6 +101,133 @@ function KLineSection({ data }: { data: KLineDTO[] }) {
 
 /* ── Tab：法人 & 基本面 ── */
 
+/* 格式化工具（Profile 專用）*/
+const DASH = '—';
+function fmtPct(v: number | null): string {
+  return v != null ? `${v.toFixed(2)}%` : DASH;
+}
+function fmtAmt(v: number | null): string {
+  return v != null ? `${(v / 1e8).toFixed(2)} 億` : DASH;
+}
+function fmtVal(v: number | null, d = 2): string {
+  return v != null ? v.toFixed(d) : DASH;
+}
+function fmtPrice(v: number | null): string {
+  return v != null ? v.toLocaleString('zh-TW') : DASH;
+}
+function fmtDivRate(v: number | null): string {
+  return v != null ? `${v.toFixed(2)} 元/股` : DASH;
+}
+function fmtExDate(v: string | null): string {
+  if (!v) return DASH;
+  const m = v.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  return m ? `${m[1]}/${m[2]}` : v;
+}
+
+/* ProfileSection — 分類標題 + 欄位清單 */
+type ProfileField = { label: string; value: string };
+
+function ProfileSection({ title, fields }: { title: string; fields: ProfileField[] }) {
+  const visible = fields.filter(f => f.value !== DASH);
+  if (visible.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{
+        fontSize: 10,
+        color: 'var(--label)',
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        marginBottom: 5,
+        paddingBottom: 4,
+        borderBottom: '1px solid var(--border)',
+      }}>
+        {title}
+      </div>
+      {fields.map(({ label, value }) => (
+        <div key={label} style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          padding: '2px 0',
+          gap: 6,
+        }}>
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {label}
+          </span>
+          <span style={{
+            fontSize: 'var(--text-sm)',
+            color: value === DASH ? 'var(--dim)' : 'var(--text-value)',
+            fontWeight: value === DASH ? 400 : 600,
+            fontVariantNumeric: 'tabular-nums',
+            textAlign: 'right',
+          }}>
+            {value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ProfilePanel — 完整基本面面板 */
+function ProfilePanel({ profile }: { profile: StockProfileDTO }) {
+  const syncLabel = profile.updatedAt
+    ? `資料同步：${profile.updatedAt.slice(0, 10)}`
+    : '尚未同步';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {/* 標題列：左「基本面」+ 右同步日期 */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: 12,
+      }}>
+        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>基本面</span>
+        <span style={{
+          fontSize: 11,
+          color: profile.updatedAt ? 'var(--dim)' : 'var(--muted)',
+        }}>
+          {syncLabel}
+        </span>
+      </div>
+
+      <ProfileSection title="評價指標" fields={[
+        { label: 'P/E',     value: fmtVal(profile.peRatio, 2) },
+        { label: 'P/B',     value: fmtVal(profile.pbRatio, 2) },
+        { label: 'EPS',     value: profile.eps != null ? `${fmtVal(profile.eps, 2)} 元` : DASH },
+        { label: '每股淨值', value: profile.bookValue != null ? `${fmtVal(profile.bookValue, 2)} 元` : DASH },
+      ]} />
+
+      <ProfileSection title="股利" fields={[
+        { label: '殖利率',   value: fmtPct(profile.dividendYield) },
+        { label: '現金股利', value: fmtDivRate(profile.dividendRate) },
+        { label: '配息率',   value: fmtPct(profile.payoutRatio) },
+        { label: '除息日',   value: fmtExDate(profile.exDividendDate) },
+      ]} />
+
+      <ProfileSection title="獲利能力" fields={[
+        { label: '毛利率',   value: fmtPct(profile.grossMargin) },
+        { label: '營業利率', value: fmtPct(profile.operatingMargin) },
+        { label: '淨利率',   value: fmtPct(profile.netMargin) },
+        { label: 'ROE',      value: fmtPct(profile.roe) },
+      ]} />
+
+      <ProfileSection title="規模/成長" fields={[
+        { label: '市值',     value: fmtAmt(profile.marketCap) },
+        { label: '營收',     value: fmtAmt(profile.revenue) },
+        { label: 'YoY 成長', value: fmtPct(profile.revenueGrowth) },
+      ]} />
+
+      <ProfileSection title="風險/波動" fields={[
+        { label: '52W 最高', value: fmtPrice(profile.fiftyTwoWeekHigh) },
+        { label: '52W 最低', value: fmtPrice(profile.fiftyTwoWeekLow) },
+        { label: 'Beta',     value: fmtVal(profile.beta, 2) },
+      ]} />
+    </div>
+  );
+}
+
 const ChipChart = memo(function ChipChart({ chips }: { chips: ChipDTO[] }) {
   const option = useMemo(() => {
     const recent  = chips.slice(-20);
@@ -195,53 +322,53 @@ const ChipChart = memo(function ChipChart({ chips }: { chips: ChipDTO[] }) {
   return <ReactECharts option={option} style={{ height: 310, width: '100%' }} />;
 });
 
-function ProfileGrid({ profile }: { profile: StockProfileDTO }) {
-  const pct = (v: number | undefined) => v != null ? `${fmt(v * 100, 2)}%` : undefined;
-  const fields: { label: string; value: string | undefined }[] = [
-    { label: '產業',     value: profile.industry },
-    { label: 'EPS',      value: profile.eps  != null ? fmt(profile.eps, 2)  : undefined },
-    { label: 'P/E',      value: profile.pe   != null ? fmt(profile.pe, 2)   : undefined },
-    { label: 'P/B',      value: profile.pb   != null ? fmt(profile.pb, 2)   : undefined },
-    { label: '殖利率',   value: profile.dividendYield != null ? `${fmt(profile.dividendYield, 2)}%` : undefined },
-    { label: '市值(億)', value: profile.marketCap  != null ? fmt(profile.marketCap / 1e8, 2)  : undefined },
-    { label: '營收(億)', value: profile.revenue     != null ? fmt(profile.revenue / 1e8, 2)    : undefined },
-    { label: '毛利率',   value: pct(profile.grossMargin) },
-    { label: 'ROE',      value: pct(profile.roe) },
-    { label: 'ROA',      value: pct(profile.roa) },
-  ].filter(f => f.value !== undefined);
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)', marginBottom: 2 }}>基本面</span>
-      {fields.map(f => (
-        <div key={f.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>{f.label}</span>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-value)', fontWeight: 600 }}>
-            {f.value}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function ChipProfileSection({
   chips, profile,
 }: {
   chips:   ChipDTO[]       | undefined;
   profile: StockProfileDTO | undefined;
 }) {
+  // 最後一筆籌碼日期（格式化為顯示用）
+  const lastChipDate = chips && chips.length > 0
+    ? parseChipDate(chips[chips.length - 1].date)
+    : null;
+
+  // 三大法人區：無資料且尚未同步 → 顯示等待提示；其餘 → 空資料訊息
+  const chipEmpty = !chips || chips.length === 0;
+  const notSynced = profile?.updatedAt === null;
+
   return (
-    <div style={{ display: 'flex', gap: 0, alignItems: 'stretch', minHeight: 200 }}>
-      <div style={{ flex: '1 1 0', minWidth: 0, borderRight: '1px solid var(--border)', padding: '4px 8px 4px 0', display: 'flex', flexDirection: 'column' }}>
-        {chips && chips.length > 0
-          ? <ChipChart chips={chips} />
-          : <EmptyMsg text="無籌碼資料" />
-        }
+    <div style={{ display: 'flex', gap: 0, alignItems: 'stretch', height: '100%' }}>
+      {/* 左側：法人籌碼圖 */}
+      <div style={{
+        flex: '1 1 0', minWidth: 0,
+        borderRight: '1px solid var(--border)',
+        padding: '4px 12px 4px 0',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {!chipEmpty ? (
+          <>
+            {/* 資料日期（右對齊小字）*/}
+            {lastChipDate && (
+              <div style={{
+                fontSize: 11, color: 'var(--dim)',
+                textAlign: 'right', marginBottom: 2, flexShrink: 0,
+              }}>
+                最後資料：{lastChipDate}
+              </div>
+            )}
+            <ChipChart chips={chips!} />
+          </>
+        ) : notSynced ? (
+          <EmptyMsg text="資料同步中，請稍候" />
+        ) : (
+          <EmptyMsg text="無籌碼資料" />
+        )}
       </div>
-      <div style={{ flex: '0 0 240px', padding: '12px 16px', overflowY: 'auto' }}>
+      {/* 右側：基本面面板（300px，可獨立捲動）*/}
+      <div style={{ flex: '0 0 300px', padding: '8px 0 8px 16px', overflowY: 'auto' }}>
         {profile
-          ? <ProfileGrid profile={profile} />
+          ? <ProfilePanel profile={profile} />
           : <EmptyMsg text="無基本面資料" />
         }
       </div>

@@ -19,3 +19,14 @@ jobs:
             --silent \
             --show-error
           echo "Snapshot triggered at $(date '+%Y-%m-%d %H:%M:%S UTC')"
+
+      - name: Trigger FinMind sync（基本面 + 三大法人）
+        run: |
+          curl -X POST \
+            "${{ secrets.BACKEND_URL }}/api/v1/finmind/sync" \
+            -H "Content-Type: application/json" \
+            -H "X-Cron-Token: ${{ secrets.CRON_SECRET }}" \
+            --fail \
+            --silent \
+            --show-error
+          echo "FinMind sync triggered at $(date '+%Y-%m-%d %H:%M:%S UTC')"

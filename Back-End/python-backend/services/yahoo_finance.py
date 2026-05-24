@@ -3,8 +3,8 @@ import time
 import requests
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
-from core.executors import get_executor, yahoo_sem, twse_sem, ndc_sem
-from services.api_switch import yahoo_cb, twse_cb, ndc_cb
+from core.executors import get_executor, yahoo_sem, ndc_sem
+from services.api_switch import yahoo_cb, ndc_cb
 
 
 def _f(v, default=None):
@@ -64,7 +64,6 @@ _YF_HEADERS = {
     "Accept": "application/json",
 }
 
-
 def _yf_chart(symbol: str, interval: str = "1d", range_: str = "1d") -> dict:
     """Yahoo Finance v8 Chart API — 透過 yahoo_cb + yahoo_sem 保護"""
     def _call():
@@ -79,24 +78,6 @@ def _yf_chart(symbol: str, interval: str = "1d", range_: str = "1d") -> dict:
             result = res.json().get("chart", {}).get("result") or []
             if not result:
                 raise ValueError(f"Yahoo v8: 無資料 {symbol}")
-            return result[0]
-    return yahoo_cb.call(_call)
-
-
-def _yf_quote_summary(symbol: str, modules: str) -> dict:
-    """Yahoo Finance v10 quoteSummary API — 透過 yahoo_cb + yahoo_sem 保護"""
-    def _call():
-        with yahoo_sem:
-            res = requests.get(
-                f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}",
-                params={"modules": modules},
-                timeout=10,
-                headers=_YF_HEADERS,
-            )
-            res.raise_for_status()
-            result = res.json().get("quoteSummary", {}).get("result") or []
-            if not result:
-                raise ValueError(f"Yahoo v10: 無資料 {symbol}")
             return result[0]
     return yahoo_cb.call(_call)
 
@@ -334,163 +315,6 @@ def get_full_history(stock_id: str, days: int = 90) -> list[dict]:
         return result[-days:] if len(result) > days else result
     except Exception:
         return []
-
-
-# ─── 股票基本面 ────────────────────────────────────────────────────────────────
-
-def get_profile(stock_id: str) -> dict:
-    """取得個股基本面資料（與 Node.js StockProfile 結構一致）"""
-    _empty = {
-        "stockId": stock_id, "name": stock_id, "market": "",
-        "peRatio": None, "dividendYield": None,
-        "fiftyTwoWeekHigh": 0, "fiftyTwoWeekLow": 0,
-        "marketCap": None, "discountPremiumRate": None,
-        "revenue": None, "grossMargin": None, "roe": None, "roa": None,
-    }
-    symbol = resolve_symbol(stock_id)
-    try:
-        summary = _yf_quote_summary(
-            symbol, "summaryDetail,defaultKeyStatistics,financialData,price"
-        )
-
-        def _raw(d: dict, key: str):
-            v = d.get(key)
-            return v.get("raw") if isinstance(v, dict) else v
-
-        price_mod = summary.get("price", {})
-        detail    = summary.get("summaryDetail", {})
-        fin       = summary.get("financialData", {})
-
-        name      = price_mod.get("longName") or price_mod.get("shortName") or stock_id
-        market    = price_mod.get("exchangeName") or ""
-        pe_ratio  = _raw(detail, "trailingPE")
-        div_raw   = _raw(detail, "dividendYield")
-        div_yield = round(div_raw * 100, 2) if div_raw else None
-        market_cap  = _raw(price_mod, "marketCap")
-        week52_high = _f(_raw(detail, "fiftyTwoWeekHigh"), 0.0)
-        week52_low  = _f(_raw(detail, "fiftyTwoWeekLow"),  0.0)
-        gross_m = _raw(fin, "grossMargins")
-        roe     = _raw(fin, "returnOnEquity")
-        roa     = _raw(fin, "returnOnAssets")
-
-        return {
-            "stockId":             stock_id,
-            "name":                name,
-            "market":              market,
-            "peRatio":             pe_ratio,
-            "dividendYield":       div_yield,
-            "fiftyTwoWeekHigh":    week52_high,
-            "fiftyTwoWeekLow":     week52_low,
-            "marketCap":           market_cap,
-            "discountPremiumRate": None,
-            "revenue":             None,
-            "grossMargin":         round(gross_m * 100, 2) if gross_m else None,
-            "roe":                 round(roe * 100, 2) if roe else None,
-            "roa":                 round(roa * 100, 2) if roa else None,
-        }
-    except Exception:
-        return _empty
-
-
-# ─── 三大法人籌碼 ──────────────────────────────────────────────────────────────
-
-def _twse_fund_rows(endpoint: str, date_str: str) -> list[list]:
-    """TWSE 三大法人全市場端點單次查詢 — 透過 twse_cb + twse_sem 保護"""
-    def _call():
-        with twse_sem:
-            res = requests.get(
-                f"https://www.twse.com.tw/rwd/zh/fund/{endpoint}",
-                params={"date": date_str, "response": "json"},
-                timeout=10,
-                headers={"User-Agent": "Mozilla/5.0"},
-            )
-            data = res.json()
-            if data.get("stat") != "OK":
-                return []
-            return data.get("data") or []
-    try:
-        return twse_cb.call(_call)
-    except Exception:
-        return []
-
-
-def _ci(s) -> int:
-    try:
-        return int(str(s).replace(",", "").strip()) if s else 0
-    except Exception:
-        return 0
-
-
-def _fetch_chip_day(stock_id: str, date_str: str) -> dict | None:
-    """查詢單一交易日三大法人資料，非交易日回傳 None。
-
-    三個 TWSE 端點順序呼叫（避免與外層共用 executor 產生死鎖）：
-      TWT38U: row[1]=代號, row[11]=外資買賣超
-      TWT44U: row[1]=代號, row[5]=投信買賣超
-      TWT43U: row[0]=代號, row[10]=自營商買賣超
-    """
-    rows38 = _twse_fund_rows("TWT38U", date_str)
-    rows44 = _twse_fund_rows("TWT44U", date_str)
-    rows43 = _twse_fund_rows("TWT43U", date_str)
-
-    if not rows38:  # TWT38U 無資料 → 非交易日
-        return None
-
-    foreign = next(
-        (round(_ci(r[11]) / 1000) for r in rows38 if len(r) > 11 and str(r[1]).strip() == stock_id),
-        0,
-    )
-    trust = next(
-        (round(_ci(r[5]) / 1000) for r in rows44 if len(r) > 5 and str(r[1]).strip() == stock_id),
-        0,
-    )
-    dealer = next(
-        (round(_ci(r[10]) / 1000) for r in rows43 if len(r) > 10 and str(r[0]).strip() == stock_id),
-        0,
-    )
-
-    return {
-        "date":    f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}",
-        "foreign": foreign,
-        "trust":   trust,
-        "dealer":  dealer,
-    }
-
-
-def get_chip(stock_id: str) -> list[dict]:
-    """取得近 20 個交易日三大法人買賣超（單位：張），快取 3600s"""
-    from datetime import date, timedelta
-
-    cache_key = f"chip:{stock_id}"
-    cached = cache_get(cache_key)
-    if cached is not None:
-        return cached
-
-    today = date.today()
-    date_strs: list[str] = []
-    d = today
-    while len(date_strs) < 30:
-        if d.weekday() < 5:
-            date_strs.append(d.strftime("%Y%m%d"))
-        d -= timedelta(days=1)
-
-    executor = get_executor()
-    futs = [(ds, executor.submit(_fetch_chip_day, stock_id, ds)) for ds in date_strs]
-
-    results: list[dict] = []
-    for _, fut in futs:
-        try:
-            r = fut.result(timeout=45)   # 序列呼叫 3 個端點，timeout 較長
-            if r is not None:
-                results.append(r)
-        except Exception:
-            pass
-
-    results.sort(key=lambda x: x["date"])
-    final = results[-20:]
-    if final:
-        cache_set(cache_key, final, 3600)
-    return final
 
 
 # ─── 出口景氣燈號 ──────────────────────────────────────────────────────────────
