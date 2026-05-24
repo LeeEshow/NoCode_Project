@@ -9,6 +9,7 @@ import LoadingPanel from './LoadingPanel';
 import Icon from './Icon';
 import TransactionHistoryPanel from '../pages/stock/TransactionHistoryPanel';
 import { toast } from './Toast';
+import { chartColors, colors as themeColors } from '../../styles';
 import type {
   KLineDTO, StockProfileDTO, ChipDTO, ExpandTab,
   HoldingTagDTO, TagDTO, AddHoldingTagPayload, UpdateHoldingTagPayload,
@@ -107,46 +108,86 @@ const ChipChart = memo(function ChipChart({ chips }: { chips: ChipDTO[] }) {
     const foreign = recent.map(c => c.foreign);
     const trust   = recent.map(c => c.trust);
     const dealer  = recent.map(c => c.dealer);
+
+    // 三大法人各自對應 chartColors token（暗礦色板，index 固定勿改）
+    const cF = chartColors[0]; // #2d5578 青金石 H:208° — 外資
+    const cT = chartColors[1]; // #216226 碧玉   H:125° — 投信
+    const cD = chartColors[3]; // #ac770c 虎眼   H:40°  — 自營商
+    // 賣超（負值）用同色 55% 不透明度
+    const neg = (c: string) => `${c}8C`;
+
     return {
       backgroundColor: 'transparent',
-      textStyle: { fontFamily: 'var(--font-sans)', color: 'var(--muted)' },
+      textStyle: { fontFamily: "'Open Sans', sans-serif", color: themeColors.muted },
       tooltip: {
         trigger: 'axis',
-        backgroundColor: 'var(--surface)',
-        borderColor: 'var(--border)',
-        textStyle: { color: 'var(--text)', fontSize: 12 },
+        backgroundColor: themeColors.surface,
+        borderColor: themeColors.borderHi,
+        textStyle: { color: themeColors.text, fontSize: 12 },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any[]) => {
-          const idx  = params[0]?.dataIndex ?? 0;
-          const date = recent[idx]?.date ?? '';
-          return `<b>${date}</b><br/>` + params.map((p: { seriesName: string; value: number }) =>
+          const idx   = params[0]?.dataIndex ?? 0;
+          const date  = recent[idx]?.date ?? '';
+          const lines = params.map((p: { seriesName: string; value: number }) =>
             `${p.seriesName}：${p.value > 0 ? '+' : ''}${p.value.toLocaleString()} 張`
           ).join('<br/>');
+          const total      = params.reduce((sum: number, p: { value: number }) => sum + (p.value ?? 0), 0);
+          const totalColor = total > 0 ? themeColors.up : total < 0 ? themeColors.down : themeColors.muted;
+          const divider    = `<div style="border-top:1px solid ${themeColors.borderHi};margin:5px 0 3px"></div>`;
+          const totalLine  = `<span style="color:${totalColor};font-weight:600">合計：${total > 0 ? '+' : ''}${total.toLocaleString()} 張</span>`;
+          return `<b>${date}</b><br/>${lines}${divider}${totalLine}`;
         },
       },
-      legend: { top: 4, right: 8, textStyle: { color: 'var(--muted)', fontSize: 11 } },
+      legend: {
+        top: 4, right: 8,
+        textStyle: { color: themeColors.muted, fontSize: 11 },
+        data: [
+          { name: '外資',   itemStyle: { color: cF } },
+          { name: '投信',   itemStyle: { color: cT } },
+          { name: '自營商', itemStyle: { color: cD } },
+        ],
+      },
       grid: { top: 36, bottom: 44, left: 52, right: 8 },
       xAxis: {
         type: 'category',
         data: dates,
-        axisLabel: { color: 'var(--dim)', fontSize: 9, rotate: 35 },
-        axisLine: { lineStyle: { color: 'var(--border)' } },
+        axisLabel: { color: themeColors.dim, fontSize: 9, rotate: 35 },
+        axisLine: { onZero: true, lineStyle: { color: themeColors.borderHi } },
+        axisTick: { show: false },
       },
       yAxis: {
         type: 'value',
         axisLabel: {
-          color: 'var(--dim)', fontSize: 10,
+          color: themeColors.dim, fontSize: 10,
           formatter: (v: number) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v),
         },
-        splitLine: { lineStyle: { color: 'var(--border)' } },
+        splitLine: { lineStyle: { color: themeColors.border, type: 'dashed' } },
       },
       series: [
-        { name: '外資',   type: 'bar', stack: 'chip', data: foreign,
-          itemStyle: { color: (p: { value: number }) => p.value >= 0 ? 'var(--up)' : 'var(--down)' } },
-        { name: '投信',   type: 'bar', stack: 'chip', data: trust,
-          itemStyle: { color: (p: { value: number }) => p.value >= 0 ? '#C4956A' : '#6A9EC4' } },
-        { name: '自營商', type: 'bar', stack: 'chip', data: dealer,
-          itemStyle: { color: (p: { value: number }) => p.value >= 0 ? '#A87AC4' : '#7AC4B8' } },
+        {
+          name: '外資', type: 'bar', stack: 'chip', data: foreign,
+          color: cF,
+          itemStyle: {
+            color: (p: { value: number }) => p.value >= 0 ? cF : neg(cF),
+            borderColor: 'transparent',
+          },
+        },
+        {
+          name: '投信', type: 'bar', stack: 'chip', data: trust,
+          color: cT,
+          itemStyle: {
+            color: (p: { value: number }) => p.value >= 0 ? cT : neg(cT),
+            borderColor: 'transparent',
+          },
+        },
+        {
+          name: '自營商', type: 'bar', stack: 'chip', data: dealer,
+          color: cD,
+          itemStyle: {
+            color: (p: { value: number }) => p.value >= 0 ? cD : neg(cD),
+            borderColor: 'transparent',
+          },
+        },
       ],
     };
   }, [chips]);

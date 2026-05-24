@@ -1,7 +1,6 @@
 """動態風險重算服務（忠實對應 Node.js tagRiskService.ts）"""
 from __future__ import annotations
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from core.executors import get_executor
 from services.firestore import get_db
 from services.yahoo_finance import get_history_closes
 
@@ -83,18 +82,18 @@ def recalculate_dynamic_risk(market_state: str) -> dict:
         for item in items:
             needed.add(item["stockCode"])
 
-    # 並行取得 90 日收盤價
+    # 並行取得 90 日收盤價（使用共用 executor）
     closes_map: dict[str, list[float]] = {}
     if needed:
-        with ThreadPoolExecutor(max_workers=min(len(needed), 8)) as pool:
-            futures = {pool.submit(get_history_closes, sc): sc for sc in needed}
-            for fut, sc in futures.items():
-                try:
-                    closes = fut.result()
-                    if closes:
-                        closes_map[sc] = closes
-                except Exception:
-                    pass
+        executor = get_executor()
+        futures = {executor.submit(get_history_closes, sc): sc for sc in needed}
+        for fut, sc in futures.items():
+            try:
+                closes = fut.result()
+                if closes:
+                    closes_map[sc] = closes
+            except Exception:
+                pass
 
     # 計算各 Tag 的 vol_ratio → presets → dynamicRisk
     updates = []

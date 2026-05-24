@@ -72,12 +72,4 @@
 
   /* ── 頂部橫幅高度 ────────────────────────── */
   --topbar-h:    52px;
-
-  /* ── 圖表莫蘭迪色板（6 色循環） ─────────── */
-  --chart-1: #C8ACA4;  /* 煙粉 Smoky Rose */
-  --chart-2: #A8B4A6;  /* 苔灰 Moss Grey */
-  --chart-3: #A0ACBA;  /* 霧藍 Fog Blue */
-  --chart-4: #C4B8A8;  /* 燕麥 Oatmeal */
-  --chart-5: #B4AEBC;  /* 薰紫灰 Lavender Smoke */
-  --chart-6: #96A8B4;  /* 鴿藍 Pigeon Blue */
 }

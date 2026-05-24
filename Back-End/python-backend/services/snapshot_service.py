@@ -1,7 +1,7 @@
 """每日快照自動記錄服務（對應 Node.js snapshotsController.record）"""
 from datetime import datetime, timezone, timedelta
-from concurrent.futures import ThreadPoolExecutor
 from google.cloud.firestore_v1.base_query import FieldFilter
+from core.executors import get_executor
 from services.firestore import get_db
 from services.rate_helper import get_live_rate_map
 from services.yahoo_finance import get_quote, _f, _yf_chart
@@ -86,23 +86,23 @@ def record_snapshot() -> dict:
     plan_doc = db.collection("plan_config").document("main").get()
     reinvest = float(plan_doc.to_dict().get("current_year_reinvest", 0)) if plan_doc.exists else 0
 
-    # 並行取各股報價 + VIX
+    # 並行取各股報價 + VIX（使用共用 executor）
     needed_ids = [h["stockId"] for h in active]
     quotes: dict[str, dict] = {}
 
     def fetch_quote(stock_id):
         return stock_id, get_quote(stock_id)
 
-    with ThreadPoolExecutor(max_workers=min(len(needed_ids) + 1, 8)) as pool:
-        vix_fut = pool.submit(_get_vix)
-        quote_futures = {pool.submit(fetch_quote, sid): sid for sid in needed_ids}
-        vix, market_state_auto = vix_fut.result()
-        for fut in quote_futures:
-            try:
-                sid, q = fut.result()
-                quotes[sid] = q
-            except Exception:
-                pass
+    executor = get_executor()
+    vix_fut = executor.submit(_get_vix)
+    quote_futures = {executor.submit(fetch_quote, sid): sid for sid in needed_ids}
+    vix, market_state_auto = vix_fut.result()
+    for fut in quote_futures:
+        try:
+            sid, q = fut.result()
+            quotes[sid] = q
+        except Exception:
+            pass
 
     # 計算 stockValue / unrealizedProfit
     stock_value       = 0.0
@@ -161,16 +161,6 @@ def record_snapshot() -> dict:
     }, merge=True)
 
     updated = ref.get().to_dict()
-
-    # fire-and-forget 動態風險重算
-    try:
-        from services.tag_risk_service import recalculate_dynamic_risk
-        mstate_doc = db.collection("market_state").document("main").get()
-        mstate = mstate_doc.to_dict().get("current", "neutral") if mstate_doc.exists else "neutral"
-        recalculate_dynamic_risk(mstate)
-    except Exception:
-        pass
-
     return _deserialize_snapshot_dict(today, updated)
 
 

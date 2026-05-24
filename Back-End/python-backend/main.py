@@ -10,8 +10,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from core.settings import get_settings as _get_settings
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -43,8 +45,9 @@ app = FastAPI(title="finance-backend-py", version="1.0.0", lifespan=lifespan)
 
 
 # ── EasyAuth Middleware ────────────────────────────────────────────────────────
-_SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"
-_CRON_SECRET = os.getenv("CRON_SECRET", "")
+_s = _get_settings()
+_SKIP_AUTH   = _s.skip_auth
+_CRON_SECRET = _s.cron_secret
 _AUTH_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
 
@@ -82,9 +85,11 @@ class EasyAuthMiddleware(BaseHTTPMiddleware):
 # 注意：add_middleware 後加者為最外層
 # EasyAuth 先加（內層）→ CORS 後加（最外層），確保 401 response 也帶 CORS headers
 app.add_middleware(EasyAuthMiddleware)
+
+_allowed_origins = [o.strip() for o in _s.allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -106,6 +111,14 @@ async def general_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"success": False, "error": "Internal server error"},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"success": False, "error": str(exc.errors())},
     )
 
 
@@ -145,5 +158,4 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=_s.port, reload=True)

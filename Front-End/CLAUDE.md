@@ -173,12 +173,28 @@ useEffect(() => {
 
 ## 設計系統
 
-### 雙層 Token 架構（CSS ↔ JS 必須同步）
+### 雙層 Token 架構
 
-- **CSS 變數**：`styles/tokens.css`
-- **JS 常數**：`styles/theme.ts`，使用 `import { colors } from '../../../styles'`
+| 位置 | 用途 | 同步對象 |
+|------|------|---------|
+| `styles/tokens.css` CSS 變數 | UI 顏色（背景、文字、邊框、漲跌、accent）、字型、尺寸 | 對應 `theme.ts` 的 `colors` 物件，異動時兩邊同步 |
+| `styles/theme.ts` JS 常數 | 同上 `colors`，plus `chartColors`、`chartUiColors` | `colors` 需與 tokens.css 同步；`chartColors` **只存在於此**，tokens.css 沒有對應變數 |
 
-兩邊必須同步，異動時一起更新。`App.css` / `index.css` 是 Vite 樣板殘留，請勿修改。
+`App.css` / `index.css` 是 Vite 樣板殘留，請勿修改。
+
+### 圖表配色（`chartColors`）
+
+**唯一來源：`styles/theme.ts` 的 `chartColors` 陣列**，`tokens.css` 沒有 `--chart-*` 變數（已移除，因為 ECharts 走 Canvas 渲染，讀不到 CSS 變數）。
+
+```ts
+// 修改圖表配色只改 theme.ts，不需動 tokens.css
+export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
+```
+
+用途：
+- `MultiLineChart` / `ReportChart` → `color: [...chartColors]` 傳入 ECharts 全域調色板
+- `useRiskViewModel` → Tag 進度條循環配色（`chartColors[idx % chartColors.length]`）
+- `StockExpandPanel` ChipChart → 三大法人固定 index：外資 `[0]`、投信 `[1]`、自營商 `[3]`
 
 ### 核心色票（實際值）
 
@@ -194,8 +210,6 @@ useEffect(() => {
 | `--up` | `#B87A7A` | 漲（偏紅），配套 `-bg`、`-bd` |
 | `--down` | `#7CA88D` | 跌（偏綠），配套 `-bg`、`-bd` |
 | `--accent` | `#6A8FB5` | 互動色，配套 `-bg`、`-bd` |
-
-圖表色板（莫蘭迪 6 色）：CSS 變數 `--chart-1` ～ `--chart-6`；JS 陣列 `chartColors` 從 `styles` 匯出，供 ECharts 及 TagStat 進度條循環使用。
 
 **字型**：`tokens.css` 與 `theme.ts` 兩邊皆為 `'Open Sans', sans-serif`（sans 與 mono 相同）。Google Fonts 只載入 Open Sans，禁止在 `theme.ts` 引用未載入的字型（如 IBM Plex）。
 

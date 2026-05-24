@@ -105,7 +105,12 @@
       "PowerShell(python --version)",
       "Bash(python -c ' *)",
       "Bash(py -3.14 -m pytest tests/test_m6_mcp.py -v)",
-      "Bash(py -3.14 -m pytest tests/ -v --tb=short)"
+      "Bash(py -3.14 -m pytest tests/ -v --tb=short)",
+      "Bash(py -3.14 -c ' *)",
+      "Bash(py -3.14 -m pytest tests/test_m6_mcp.py -v --tb=short)",
+      "Bash(py -3.14 -m pytest tests/ -q)",
+      "PowerShell(py *)",
+      "PowerShell(cd \"E:\\\\Code\\\\NoCode_Project\\\\Back-End\\\\python-backend\"; $env:SKIP_AUTH = 'true'; .\\\\.venv\\\\Scripts\\\\pytest.exe tests/ -v --tb=short 2>&1)"
     ]
   }
 }

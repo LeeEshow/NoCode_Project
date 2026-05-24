@@ -1,12 +1,15 @@
 import asyncio
+import logging
 import re
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import JSONResponse
 from firebase_admin import firestore as fs
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 from services.snapshot_service import record_snapshot, _deserialize_snapshot_dict
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -38,10 +41,24 @@ async def get_snapshots(year: int | None = Query(default=None)):
 
 # ─── POST /snapshots/record ───────────────────────────────────────────────────
 
+def _bg_recalculate_risk() -> None:
+    """背景任務：重算 Tag 動態風險（不阻塞 record 回應）"""
+    try:
+        from services.firestore import get_db as _get_db
+        from services.tag_risk_service import recalculate_dynamic_risk
+        _db = _get_db()
+        mstate_doc = _db.collection("market_state").document("main").get()
+        mstate = mstate_doc.to_dict().get("current", "neutral") if mstate_doc.exists else "neutral"
+        recalculate_dynamic_risk(mstate)
+    except Exception as e:
+        logger.error("Background risk recalculation failed: %s", e)
+
+
 @router.post("/record")
-async def record():
+async def record(background_tasks: BackgroundTasks):
     loop = asyncio.get_event_loop()
     data = await loop.run_in_executor(None, record_snapshot)
+    background_tasks.add_task(_bg_recalculate_risk)
     return {"success": True, "data": data}
 
 

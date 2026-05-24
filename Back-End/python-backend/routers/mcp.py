@@ -53,9 +53,15 @@ async def _handle_rpc(body: dict) -> Response | dict:
 
 
 def _check_key(key: str | None) -> None:
+    # 每次 request 直讀（不用 lru_cache），確保測試 monkeypatch 可即時生效
     required = os.getenv("MCP_ACCESS_KEY", "")
-    if required and key != required:
-        raise HTTPException(status_code=401, detail="MCP access key 無效")
+    if required:
+        # key 已設定：驗證是否吻合
+        if key != required:
+            raise HTTPException(status_code=401, detail="MCP access key 無效")
+    elif os.getenv("SKIP_AUTH", "false").lower() != "true":
+        # key 未設定 + 非 dev 環境：fail closed，避免敏感資料外洩
+        raise HTTPException(status_code=503, detail="MCP_ACCESS_KEY 未設定，服務不可用")
 
 
 # ─── GET /mcp/sse ──────────────────────────────────────────────────────────────

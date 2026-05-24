@@ -1,9 +1,11 @@
 import math
 import time
 import requests
-from concurrent.futures import ThreadPoolExecutor
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
+from core.executors import get_executor, yahoo_sem, twse_sem, ndc_sem
+from services.api_switch import yahoo_cb, twse_cb, ndc_cb
+
 
 def _f(v, default=None):
     """安全轉 float：None / NaN / Inf 一律回傳 default"""
@@ -19,6 +21,7 @@ def _f(v, default=None):
 def _i(v, default=0) -> int:
     f = _f(v)
     return int(f) if f is not None else default
+
 
 FOREX_SYMBOLS = [
     {"code": "USD", "name": "美元",     "symbol": "USDTWD=X"},
@@ -63,33 +66,39 @@ _YF_HEADERS = {
 
 
 def _yf_chart(symbol: str, interval: str = "1d", range_: str = "1d") -> dict:
-    """Yahoo Finance v8 Chart API — 回傳 result[0]"""
-    res = requests.get(
-        f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
-        params={"interval": interval, "range": range_},
-        timeout=10,
-        headers=_YF_HEADERS,
-    )
-    res.raise_for_status()
-    result = res.json().get("chart", {}).get("result") or []
-    if not result:
-        raise ValueError(f"Yahoo v8: 無資料 {symbol}")
-    return result[0]
+    """Yahoo Finance v8 Chart API — 透過 yahoo_cb + yahoo_sem 保護"""
+    def _call():
+        with yahoo_sem:
+            res = requests.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+                params={"interval": interval, "range": range_},
+                timeout=10,
+                headers=_YF_HEADERS,
+            )
+            res.raise_for_status()
+            result = res.json().get("chart", {}).get("result") or []
+            if not result:
+                raise ValueError(f"Yahoo v8: 無資料 {symbol}")
+            return result[0]
+    return yahoo_cb.call(_call)
 
 
 def _yf_quote_summary(symbol: str, modules: str) -> dict:
-    """Yahoo Finance v10 quoteSummary API — 回傳 result[0]"""
-    res = requests.get(
-        f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}",
-        params={"modules": modules},
-        timeout=10,
-        headers=_YF_HEADERS,
-    )
-    res.raise_for_status()
-    result = res.json().get("quoteSummary", {}).get("result") or []
-    if not result:
-        raise ValueError(f"Yahoo v10: 無資料 {symbol}")
-    return result[0]
+    """Yahoo Finance v10 quoteSummary API — 透過 yahoo_cb + yahoo_sem 保護"""
+    def _call():
+        with yahoo_sem:
+            res = requests.get(
+                f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}",
+                params={"modules": modules},
+                timeout=10,
+                headers=_YF_HEADERS,
+            )
+            res.raise_for_status()
+            result = res.json().get("quoteSummary", {}).get("result") or []
+            if not result:
+                raise ValueError(f"Yahoo v10: 無資料 {symbol}")
+            return result[0]
+    return yahoo_cb.call(_call)
 
 
 def get_quote(stock_id: str) -> dict:
@@ -144,8 +153,9 @@ def get_forex_rates() -> list[dict]:
     cached = cache_get("market:forex-rates")
     if cached is not None:
         return cached
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(_fetch_forex_rate, FOREX_SYMBOLS))
+    executor = get_executor()
+    futs = [executor.submit(_fetch_forex_rate, item) for item in FOREX_SYMBOLS]
+    results = [f.result() for f in futs]
     cache_set("market:forex-rates", results, 300)
     return results
 
@@ -162,7 +172,7 @@ INDEX_SYMBOLS = [
 
 
 def _fetch_index_card(item: dict) -> dict:
-    """Yahoo v8 Chart API 取得單一指數報價（timeout=10s）"""
+    """Yahoo v8 Chart API 取得單一指數報價"""
     try:
         data = _yf_chart(item["symbol"], "1d", "1d")
         meta = data["meta"]
@@ -180,15 +190,16 @@ def _fetch_index_card(item: dict) -> dict:
 def _fetch_taiwan_futures() -> dict:
     """爬取 Yahoo Finance 台灣版取得台指期報價"""
     try:
-        res = requests.get(
-            "https://tw.stock.yahoo.com/future/WTX%26",
-            timeout=10,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "zh-TW,zh;q=0.9",
-            },
-        )
+        with yahoo_sem:
+            res = requests.get(
+                "https://tw.stock.yahoo.com/future/WTX%26",
+                timeout=10,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "zh-TW,zh;q=0.9",
+                },
+            )
         html = res.text
         idx = html.find("main-1-FutureHeader-Proxy")
         if idx == -1:
@@ -223,10 +234,9 @@ def get_indices() -> list[dict]:
     if cached is not None:
         return cached
 
-    # 5 個 Yahoo 指數 + 台指期同時並發（6 workers）
-    pool = ThreadPoolExecutor(max_workers=6)
-    fut_futures = pool.submit(_fetch_taiwan_futures)
-    futs = {item["id"]: pool.submit(_fetch_index_card, item) for item in INDEX_SYMBOLS}
+    executor = get_executor()
+    fut_futures = executor.submit(_fetch_taiwan_futures)
+    futs = {item["id"]: executor.submit(_fetch_index_card, item) for item in INDEX_SYMBOLS}
 
     cards: dict[str, dict] = {}
     for item_id, fut in futs.items():
@@ -241,7 +251,6 @@ def get_indices() -> list[dict]:
     except Exception:
         futures_card = {"id": "futures", "name": "台指期",
                         "price": None, "change": None, "changePercent": None}
-    pool.shutdown(wait=False)
 
     # 固定順序：twii → 台指期 → nasdaq → sp500 → dji → sox
     ordered = [cards[item["id"]] for item in INDEX_SYMBOLS]
@@ -252,7 +261,8 @@ def get_indices() -> list[dict]:
 
 # ─── 股票歷史 K 線 ─────────────────────────────────────────────────────────────
 
-def get_history_range(stock_id: str, start_date: str | None = None, end_date: str | None = None, interval: str = "1d") -> list[dict]:
+def get_history_range(stock_id: str, start_date: str | None = None,
+                      end_date: str | None = None, interval: str = "1d") -> list[dict]:
     """取得個股指定日期範圍的 OHLCV（period1/period2 方式呼叫 Yahoo v8）"""
     from datetime import datetime, timezone, timedelta
 
@@ -262,14 +272,18 @@ def get_history_range(stock_id: str, start_date: str | None = None, end_date: st
     start_dt = (datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc))                     if start_date else (end_dt - timedelta(days=180))
 
     try:
-        res = requests.get(
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
-            params={"interval": interval, "period1": int(start_dt.timestamp()), "period2": int(end_dt.timestamp())},
-            timeout=10,
-            headers=_YF_HEADERS,
-        )
-        res.raise_for_status()
-        data = (res.json().get("chart", {}).get("result") or [{}])[0]
+        def _call():
+            with yahoo_sem:
+                res = requests.get(
+                    f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+                    params={"interval": interval, "period1": int(start_dt.timestamp()),
+                            "period2": int(end_dt.timestamp())},
+                    timeout=10,
+                    headers=_YF_HEADERS,
+                )
+                res.raise_for_status()
+                return (res.json().get("chart", {}).get("result") or [{}])[0]
+        data = yahoo_cb.call(_call)
         timestamps = data.get("timestamp", [])
         q = data.get("indicators", {}).get("quote", [{}])[0]
         opens, highs, lows, closes, volumes = (q.get(k, []) for k in ("open", "high", "low", "close", "volume"))
@@ -380,54 +394,103 @@ def get_profile(stock_id: str) -> dict:
 
 # ─── 三大法人籌碼 ──────────────────────────────────────────────────────────────
 
-def _fetch_t86_rows(stock_id: str, date_obj) -> list[dict]:
-    """從 TWSE T86 API 取得單月三大法人資料"""
-    date_str = f"{date_obj.year}{str(date_obj.month).zfill(2)}01"
+def _twse_fund_rows(endpoint: str, date_str: str) -> list[list]:
+    """TWSE 三大法人全市場端點單次查詢 — 透過 twse_cb + twse_sem 保護"""
+    def _call():
+        with twse_sem:
+            res = requests.get(
+                f"https://www.twse.com.tw/rwd/zh/fund/{endpoint}",
+                params={"date": date_str, "response": "json"},
+                timeout=10,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            data = res.json()
+            if data.get("stat") != "OK":
+                return []
+            return data.get("data") or []
     try:
-        res = requests.get(
-            "https://www.twse.com.tw/rwd/zh/fund/T86",
-            params={"date": date_str, "stockNo": stock_id, "response": "json"},
-            timeout=10,
-            headers={"User-Agent": "Mozilla/5.0"},
-        )
-        data = res.json()
-        if data.get("stat") != "OK" or not isinstance(data.get("data"), list):
-            return []
-
-        def parse_int(s: str) -> int:
-            try:
-                return int(s.replace(",", "")) if s else 0
-            except Exception:
-                return 0
-
-        rows = []
-        for row in data["data"]:
-            parts = (row[0] or "").split("/")
-            if len(parts) < 3:
-                continue
-            iso_date = f"{int(parts[0]) + 1911}-{parts[1]}-{parts[2]}"
-            rows.append({
-                "date":    iso_date,
-                "foreign": round((parse_int(row[1]) + parse_int(row[2])) / 1000),
-                "trust":   round(parse_int(row[3]) / 1000),
-                "dealer":  round((parse_int(row[4]) + parse_int(row[5])) / 1000),
-            })
-        return rows
+        return twse_cb.call(_call)
     except Exception:
         return []
 
 
+def _ci(s) -> int:
+    try:
+        return int(str(s).replace(",", "").strip()) if s else 0
+    except Exception:
+        return 0
+
+
+def _fetch_chip_day(stock_id: str, date_str: str) -> dict | None:
+    """查詢單一交易日三大法人資料，非交易日回傳 None。
+
+    三個 TWSE 端點順序呼叫（避免與外層共用 executor 產生死鎖）：
+      TWT38U: row[1]=代號, row[11]=外資買賣超
+      TWT44U: row[1]=代號, row[5]=投信買賣超
+      TWT43U: row[0]=代號, row[10]=自營商買賣超
+    """
+    rows38 = _twse_fund_rows("TWT38U", date_str)
+    rows44 = _twse_fund_rows("TWT44U", date_str)
+    rows43 = _twse_fund_rows("TWT43U", date_str)
+
+    if not rows38:  # TWT38U 無資料 → 非交易日
+        return None
+
+    foreign = next(
+        (round(_ci(r[11]) / 1000) for r in rows38 if len(r) > 11 and str(r[1]).strip() == stock_id),
+        0,
+    )
+    trust = next(
+        (round(_ci(r[5]) / 1000) for r in rows44 if len(r) > 5 and str(r[1]).strip() == stock_id),
+        0,
+    )
+    dealer = next(
+        (round(_ci(r[10]) / 1000) for r in rows43 if len(r) > 10 and str(r[0]).strip() == stock_id),
+        0,
+    )
+
+    return {
+        "date":    f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}",
+        "foreign": foreign,
+        "trust":   trust,
+        "dealer":  dealer,
+    }
+
+
 def get_chip(stock_id: str) -> list[dict]:
-    """取得近 20 個交易日三大法人買賣超（單位：張）"""
+    """取得近 20 個交易日三大法人買賣超（單位：張），快取 3600s"""
     from datetime import date, timedelta
+
+    cache_key = f"chip:{stock_id}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     today = date.today()
-    rows = _fetch_t86_rows(stock_id, today)
-    if len(rows) < 20:
-        prev_month = date(today.year if today.month > 1 else today.year - 1,
-                          today.month - 1 if today.month > 1 else 12, 1)
-        prev_rows = _fetch_t86_rows(stock_id, prev_month)
-        rows = prev_rows + rows
-    return rows[-20:]
+    date_strs: list[str] = []
+    d = today
+    while len(date_strs) < 30:
+        if d.weekday() < 5:
+            date_strs.append(d.strftime("%Y%m%d"))
+        d -= timedelta(days=1)
+
+    executor = get_executor()
+    futs = [(ds, executor.submit(_fetch_chip_day, stock_id, ds)) for ds in date_strs]
+
+    results: list[dict] = []
+    for _, fut in futs:
+        try:
+            r = fut.result(timeout=45)   # 序列呼叫 3 個端點，timeout 較長
+            if r is not None:
+                results.append(r)
+        except Exception:
+            pass
+
+    results.sort(key=lambda x: x["date"])
+    final = results[-20:]
+    if final:
+        cache_set(cache_key, final, 3600)
+    return final
 
 
 # ─── 出口景氣燈號 ──────────────────────────────────────────────────────────────
@@ -441,35 +504,42 @@ def get_export_indicator() -> dict:
     fallback = {"period": "-", "score": None, "light": None, "lightLabel": None}
 
     try:
-        session = requests.Session()
-        page = session.get(
-            "https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1",
-            timeout=15,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "zh-TW,zh;q=0.9",
-            },
-        )
-        import re
-        csrf_m = re.search(r'csrf-token"\s+content="([^"]+)"', page.text)
-        if not csrf_m:
+        def _call():
+            with ndc_sem:
+                session = requests.Session()
+                page = session.get(
+                    "https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1",
+                    timeout=15,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language": "zh-TW,zh;q=0.9",
+                    },
+                )
+                import re
+                csrf_m = re.search(r'csrf-token"\s+content="([^"]+)"', page.text)
+                if not csrf_m:
+                    return None
+                csrf = csrf_m.group(1)
+
+                api_res = session.post(
+                    "https://index.ndc.gov.tw/n/json/data/eco/indicators",
+                    timeout=15,
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": csrf,
+                        "Referer": "https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1",
+                        "Accept-Language": "zh-TW,zh;q=0.9",
+                    },
+                    json={},
+                )
+                return api_res.json()
+
+        payload = ndc_cb.call(_call)
+        if payload is None:
             cache_set("market:export-indicator", fallback, 3600)
             return fallback
-        csrf = csrf_m.group(1)
 
-        api_res = session.post(
-            "https://index.ndc.gov.tw/n/json/data/eco/indicators",
-            timeout=15,
-            headers={
-                "Content-Type": "application/json",
-                "X-CSRF-TOKEN": csrf,
-                "Referer": "https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1",
-                "Accept-Language": "zh-TW,zh;q=0.9",
-            },
-            json={},
-        )
-        payload = api_res.json()
         line_obj = payload.get("line", {})
         sr5 = next((v for v in line_obj.values() if v.get("code") == "SR0005"), None)
         if not sr5:

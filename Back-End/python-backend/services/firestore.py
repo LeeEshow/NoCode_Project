@@ -1,9 +1,9 @@
-import os
 import json
 import base64
 import threading
 import firebase_admin
 from firebase_admin import credentials, firestore
+from core.settings import get_settings
 
 _db = None
 _lock = threading.Lock()
@@ -18,7 +18,8 @@ def get_db():
             return _db
 
         if not firebase_admin._apps:
-            cred_json_b64 = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+            s = get_settings()
+            cred_json_b64 = s.google_application_credentials_json
             if cred_json_b64:
                 try:
                     cred_dict = json.loads(base64.b64decode(cred_json_b64).decode())
@@ -26,11 +27,9 @@ def get_db():
                     cred_dict = json.loads(cred_json_b64)
                 cred = credentials.Certificate(cred_dict)
             else:
-                cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "./serviceAccountKey.json")
-                cred = credentials.Certificate(cred_path)
+                cred = credentials.Certificate(s.google_application_credentials)
 
-            project_id = os.getenv("FIRESTORE_PROJECT_ID")
-            options = {"projectId": project_id} if project_id else {}
+            options = {"projectId": s.firestore_project_id} if s.firestore_project_id else {}
             firebase_admin.initialize_app(cred, options)
 
         _db = firestore.client()

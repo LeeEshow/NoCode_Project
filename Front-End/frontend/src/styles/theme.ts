@@ -85,15 +85,16 @@ export const chartUiColors = {
   },
 } as const;
 
-/** 莫蘭迪 6 色板 — ECharts series color palette / 進度條循環色 */
+/** 暗礦 6 色板 — ECharts series color palette / 進度條循環色（深色主題，S:25-87 / L:25-40） */
 export const chartColors = [
-  '#C8ACA4', // 煙粉 Smoky Rose
-  '#A8B4A6', // 苔灰 Moss Grey
-  '#A0ACBA', // 霧藍 Fog Blue
-  '#C4B8A8', // 燕麥 Oatmeal
-  '#B4AEBC', // 薰紫灰 Lavender Smoke
-  '#96A8B4', // 鴿藍 Pigeon Blue
+  '#2d5578', // 青金石 Lapis        — H:208° S:45 L:32
+  '#216226', // 碧玉   Nephrite     — H:125° S:50 L:26
+  '#4c4c7e', // 紫晶   Amethyst     — H:240° S:25 L:40
+  '#ac770c', // 虎眼   Tiger Eye    — H:40°  S:87 L:36
+  '#702837', // 玫瑰石英 Rose Quartz  — H:348° S:47 L:30
+  '#6b3714', // 煙晶   Smoky Quartz  — H:24°  S:68 L:25
 ] as const;
 
 const theme = { colors, fonts, fontSizes, radii, nav, topbarH, chartColors, chartUiColors };
+// chartColors 色相分佈：24°(煙晶) / 40°(虎眼) / 125°(碧玉) / 208°(青金石) / 240°(紫晶) / 348°(玫瑰石英)
 export default theme;
