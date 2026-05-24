@@ -195,6 +195,7 @@ export default function WatchlistTable({
                           profile={profiles[item.stockCode]}
                           chips={chips[item.stockCode]}
                           loadingExpand={loadingExpand}
+                          showTxTab={false}
                         />
                       )}
                     </Fragment>

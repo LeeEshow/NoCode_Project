@@ -5,12 +5,10 @@
 """
 import asyncio
 import logging
-import time
-from datetime import date, timedelta, datetime, timezone
 
 from fastapi import APIRouter
 from services.firestore import get_db
-from services.finmind import fetch_chip, build_stock_fundamental
+from services.finmind import sync_stocks_finmind
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -32,43 +30,7 @@ async def finmind_sync():
         db = get_db()
         holdings = db.collection("holdings").get()
         stock_ids = [doc.id for doc in holdings if doc.exists]
-
-        chip_start = (date.today() - timedelta(days=45)).strftime("%Y-%m-%d")
-        synced = 0
-        errors: list[dict] = []
-
-        for sid in stock_ids:
-            try:
-                # 1. 基本面 → stock_fundamentals/{stockId}
-                fund = build_stock_fundamental(sid)
-                db.collection("stock_fundamentals").document(sid).set(fund, merge=False)
-
-                # 2. 籌碼 → stock_chip/{stockId}/records/{date}（整批覆蓋 45 日）
-                chip_rows = fetch_chip(sid, chip_start)
-                chip_ref = (
-                    db.collection("stock_chip")
-                    .document(sid)
-                    .collection("records")
-                )
-                for row in chip_rows:
-                    chip_ref.document(row["date"]).set(
-                        {
-                            "date":       row["date"],
-                            "foreign":    row["foreign"],
-                            "trust":      row["trust"],
-                            "dealer":     row["dealer"],
-                            "updated_at": datetime.now(tz=timezone.utc).isoformat(),
-                        },
-                        merge=True,
-                    )
-
-                synced += 1
-                time.sleep(0.2)
-            except Exception as exc:
-                logger.error("FinMind sync 失敗 %s: %s", sid, exc)
-                errors.append({"stockId": sid, "error": str(exc)})
-
-        return {"synced": synced, "errors": errors}
+        return sync_stocks_finmind(db, stock_ids)
 
     result = await loop.run_in_executor(None, _sync)
     return {"success": True, "data": result}

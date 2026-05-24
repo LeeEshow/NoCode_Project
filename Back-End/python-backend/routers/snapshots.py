@@ -54,11 +54,42 @@ def _bg_recalculate_risk() -> None:
         logger.error("Background risk recalculation failed: %s", e)
 
 
+def _bg_sync_watchlist_finmind() -> None:
+    """背景任務：同步關注清單（不含持股）的三大法人 & 基本面至 Firestore。
+
+    - 已在 holdings 的股票由 finmind/sync cron 負責，此處略過以節省 FinMind API 配額
+    - 個別股票失敗不中斷整批（由 sync_stocks_finmind 內部處理）
+    """
+    try:
+        from services.firestore import get_db as _get_db
+        from services.finmind import sync_stocks_finmind
+        _db = _get_db()
+
+        watchlist_docs = _db.collection("watchlist").get()
+        holdings_docs  = _db.collection("holdings").get()
+        holdings_ids   = {doc.id for doc in holdings_docs if doc.exists}
+
+        # 只同步「純關注、不在持股」的股票
+        watchlist_ids = [
+            doc.id for doc in watchlist_docs
+            if doc.exists and doc.id not in holdings_ids
+        ]
+        if not watchlist_ids:
+            logger.info("Watchlist FinMind sync: 無獨有關注股，略過")
+            return
+
+        result = sync_stocks_finmind(_db, watchlist_ids)
+        logger.info("Watchlist FinMind sync 完成: %s", result)
+    except Exception as e:
+        logger.error("Background watchlist FinMind sync failed: %s", e)
+
+
 @router.post("/record")
 async def record(background_tasks: BackgroundTasks):
     loop = asyncio.get_event_loop()
     data = await loop.run_in_executor(None, record_snapshot)
     background_tasks.add_task(_bg_recalculate_risk)
+    background_tasks.add_task(_bg_sync_watchlist_finmind)
     return {"success": True, "data": data}
 
 

@@ -5,6 +5,7 @@
 """
 import logging
 import math
+import time
 from datetime import date, timedelta, datetime, timezone
 
 import requests
@@ -254,3 +255,52 @@ def build_stock_fundamental(stock_id: str) -> dict:
         "beta":                beta,
         "updated_at":          now_iso,
     }
+
+
+# ─── 批次同步到 Firestore（供 finmind_sync router 與 snapshot 背景任務共用） ──────
+
+def sync_stocks_finmind(db, stock_ids: list[str], chip_days: int = 45) -> dict:
+    """同步指定股票清單的基本面 + 三大法人籌碼至 Firestore。
+
+    - 每股間隔 200ms 避免 FinMind rate limit
+    - 個別股票失敗不中斷整批，記錄 errors 後繼續
+    - chip_days：回補籌碼的天數範圍（預設 45 天）
+
+    回傳 {"synced": int, "errors": [...]}
+    """
+    chip_start = (date.today() - timedelta(days=chip_days)).strftime("%Y-%m-%d")
+    synced = 0
+    errors: list[dict] = []
+
+    for sid in stock_ids:
+        try:
+            # 1. 基本面 → stock_fundamentals/{stockId}
+            fund = build_stock_fundamental(sid)
+            db.collection("stock_fundamentals").document(sid).set(fund, merge=False)
+
+            # 2. 籌碼 → stock_chip/{stockId}/records/{date}（整批覆蓋 chip_days 日）
+            chip_rows = fetch_chip(sid, chip_start)
+            chip_ref = (
+                db.collection("stock_chip")
+                .document(sid)
+                .collection("records")
+            )
+            for row in chip_rows:
+                chip_ref.document(row["date"]).set(
+                    {
+                        "date":       row["date"],
+                        "foreign":    row["foreign"],
+                        "trust":      row["trust"],
+                        "dealer":     row["dealer"],
+                        "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+                    },
+                    merge=True,
+                )
+
+            synced += 1
+            time.sleep(0.2)
+        except Exception as exc:
+            logger.error("FinMind sync 失敗 %s: %s", sid, exc)
+            errors.append({"stockId": sid, "error": str(exc)})
+
+    return {"synced": synced, "errors": errors}

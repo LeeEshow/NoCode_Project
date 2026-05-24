@@ -361,8 +361,8 @@ function ChipProfileSection({
           <EmptyMsg text="無籌碼資料" />
         )}
       </div>
-      {/* 右側：基本面面板（300px，可獨立捲動）*/}
-      <div style={{ flex: '0 0 300px', padding: '8px 0 8px 16px', overflowY: 'auto' }}>
+      {/* 右側：基本面面板（230px，可獨立捲動）*/}
+      <div style={{ flex: '0 0 230px', padding: '8px 0 8px 16px', overflowY: 'auto' }}>
         {profile
           ? <ProfilePanel profile={profile} />
           : <EmptyMsg text="無基本面資料" />
@@ -584,12 +584,13 @@ export interface StockExpandPanelProps {
   onRemoveHoldingTag?: (stockCode: string, id: string, onSuccess?: () => void) => void;
   overlappingGroups?:  OverlappingTagGroup[];
   concentrationLimit?: number; /* 同質集中度上限（小數），用於定量顯示 */
+  showTxTab?:          boolean; /* false → 隱藏「交易紀錄」Tab（關注清單使用）*/
 }
 
 export default function StockExpandPanel({
   colSpan, code, name, kline, profile, chips, loadingExpand, onAddTx, onChanged,
   holdingTags, allTags, onAddHoldingTag, onUpdateHoldingTag, onRemoveHoldingTag,
-  overlappingGroups, concentrationLimit,
+  overlappingGroups, concentrationLimit, showTxTab = true,
 }: StockExpandPanelProps) {
   const [activeTab, setActiveTab] = useState<ExpandTab>('kline');
   const hasData = kline || profile || chips;
@@ -599,7 +600,7 @@ export default function StockExpandPanel({
   const TABS: TabDef[] = [
     { key: 'kline', label: 'K 線' },
     { key: 'chip',  label: '法人 & 基本面' },
-    { key: 'tx',    label: '交易紀錄' },
+    ...(showTxTab ? [{ key: 'tx' as ExpandTab, label: '交易紀錄' }] : []),
     ...(hasTagTab ? [{ key: 'tags' as ExpandTab, label: '標籤設定' }] : []),
   ];
 
