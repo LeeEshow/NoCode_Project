@@ -20,10 +20,6 @@ echarts.use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasR
 
 /* ── 格式化工具 ── */
 
-function fmt(n: number, decimals = 0) {
-  return n.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-}
-
 function parseChipDate(raw: unknown): string {
   const d = String(raw ?? '');
   const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);

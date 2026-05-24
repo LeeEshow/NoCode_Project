@@ -17,6 +17,16 @@ npm run preview    # 預覽 build 產出（需先 build）
 npx tsc --noEmit   # 型別檢查（不產生輸出檔，用於驗證變更）
 ```
 
+> **⚠️ 每次程式碼異動後、提交前必跑**：
+> ```bash
+> npx tsc --noEmit
+> ```
+> CI/CD（`npm run build`）執行的是 `tsc -b && vite build`，本地跑 `tsc --noEmit` 可提前攔截所有編譯錯誤，避免 push 後才在 GitHub Actions 失敗。
+> 常見破壞 CI 的原因：
+> - 宣告但未使用的變數 / 函式 / 型別（`noUnusedLocals`）
+> - 宣告但未使用的函式參數（`noUnusedParameters`）
+> - 引入但未使用的 import（同上規則）
+
 **安裝新套件**：因為 `react@canary` 與部分套件的 peer dep 宣告衝突，須加 `--legacy-peer-deps`：
 ```bash
 npm install <package> --legacy-peer-deps
@@ -326,7 +336,7 @@ const ps = all.filter(p =>
 
 ## TypeScript 規則
 
-- `tsconfig.app.json` 開啟 `noUnusedLocals / noUnusedParameters`，未使用的 import 必須刪除才能通過編譯。
+- `tsconfig.app.json` 開啟 `noUnusedLocals / noUnusedParameters`。**宣告但未使用的變數、函式、import 一律刪除**，否則 `tsc -b`（CI build）會失敗。重構或移除功能時，必須同步清理孤立的宣告。
 - DTO 型別（後端回傳）與 Payload 型別（前端送出）都定義在 `types/index.ts`（唯一真實來源）。
 - `verbatimModuleSyntax: true`，type-only import 須用 `import type { … }`。
 - `erasableSyntaxOnly: true`，禁止使用需要 emit 的語法（`enum`、`namespace`、帶初始值的建構子參數屬性、experimentalDecorators）。
