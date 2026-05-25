@@ -13,6 +13,84 @@
 
 ---
 
+### STRAT-F — 個股交易策略模組
+
+> AI 透過 MCP 分析後產出結構化策略並存入 DB；前端以圖示入口 + 子視窗顯示最新一筆策略內容。
+> **依賴後端**：STRAT-B-01（REST API）、STRAT-B-02（MCP Tools）需先完成。
+
+---
+
+- **STRAT-F-01** `types/index.ts`：新增 `StockStrategyDTO`
+
+```typescript
+export interface StockStrategyDTO {
+  stockId:          string;
+  date:             string;              // YYYY-MM-DD
+  entryPriceMin:    number;
+  entryPriceMax:    number;
+  stopLossPrice:    number;
+  stopLossPct:      number;              // 負值，e.g. -8.5
+  takeProfitPrice:  number;
+  takeProfitPct:    number;              // 正值，e.g. 15.0
+  holdingPeriod:    'short' | 'swing' | 'long';
+  aiComment:        string;              // max 150 字
+  createdAt:        string;
+  updatedAt:        string;
+}
+```
+
+  新增 `HoldingPeriodLabel` 對應 map（工具函式）：`{ short: '短線', swing: '波段', long: '長期' }`
+
+---
+
+- **STRAT-F-02** `models/strategyModel.ts`：純 API 呼叫（無狀態）
+
+  - `fetchLatestStrategy(stockId: string): Promise<StockStrategyDTO | null>`
+    → `GET /api/v1/strategies/{stockId}`；後端 `data: null` 時回傳 `null`
+  - 回傳直接使用後端 camelCase，不做額外轉換
+
+---
+
+- **STRAT-F-03** `useStrategyViewModel.ts`：管理單支股票的策略讀取狀態
+
+```typescript
+interface UseStrategyViewModelReturn {
+  strategy:  StockStrategyDTO | null;
+  loading:   boolean;
+  error:     string | null;
+  load:      (stockId: string) => Promise<void>;
+}
+```
+
+  - `load()` 呼叫 `fetchLatestStrategy`，結果存入 `strategy`
+  - 每次開啟 Modal 時呼叫一次（不常駐輪詢）
+
+---
+
+- **STRAT-F-04** `StockStrategyModal`：策略詳情子視窗
+
+  **觸發方式**：持股列表與關注清單的「再平衡建議」欄位內，新增策略圖示按鈕（`Icon name="insights"`，`size={16}`）；有策略資料時圖示亮（`--accent`），無資料時淡（`--muted`）；點擊開啟 Modal，`aria-label="查看交易策略"`
+
+  **Modal 規格**：
+  - 使用現有 `Modal` 元件，`size="sm"`
+  - 標題：`{stockId} {stockName} 交易策略`，右上角顯示策略日期（`date`）
+  - **載入中**：`LoadingPanel` spinner
+  - **無資料**：「尚未產生策略，請透過 Claude chat 執行策略分析」（`--muted` 文字）
+  - **有資料**：三個區塊橫向排列（Grid 3 欄）
+
+  | 區塊 | 顯示內容 |
+  |------|---------|
+  | 進場區間 | `NT$ {entryPriceMin} ～ {entryPriceMax}` |
+  | 止損 | `NT$ {stopLossPrice}（{stopLossPct}%）`，色彩 `--up` |
+  | 止盈 | `NT$ {takeProfitPrice}（+{takeProfitPct}%）`，色彩 `--down` |
+
+  下方全寬區塊：持有建議 Badge（`holdingPeriod` → `短線/波段/長期`）+ AI 短評文字（`--muted`，`line-height: 1.6`）
+
+  - 底部 `updatedAt` 顯示「最後更新：YYYY/MM/DD HH:mm」（`--dim`，`text-sm`）
+  - CSS 定義於 `StockStrategyModal.css`，延用 `.ft-panel`、`--up`、`--down`、`--accent` token
+
+---
+
 ## 已完成
 
 ### FIN-F — 基本面 DTO 更新與 UI 對齊

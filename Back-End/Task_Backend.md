@@ -59,135 +59,114 @@ UTC 06:00 / 台灣 14:00，依序執行：
 
 ---
 
-## 待辦：層三架構重構（分批，以 holdings 為試點）
+## 待辦：個股交易策略模組（STRAT）
 
-> 這層改動幅度較大，建議逐 domain 推進。先完成 holdings，驗收通過後再複製模式到 watchlist、transactions。
-> 修改原則：不改前端接口、不改 Firestore 結構、不影響現有 159 通過測試
+> 新功能模組。AI 透過 MCP 分析個股後，將結構化交易策略寫入 DB；前端從 API 讀取並顯示。
 
-#### OPT-09 🔲 Pydantic Request Schema（holdings / transactions / assets）
+---
 
-**問題**：多個 endpoint 使用 `body: dict` 再手動取值，型別錯誤到 runtime 才發現，OpenAPI 文件不完整。
+#### STRAT-B-01 🔲 Firestore Schema + Router（策略 CRUD）
 
-**修改範圍**：`routers/holdings.py`、`routers/transactions.py`、`routers/assets.py`（新增對應 schema file）
+**需求**：提供 REST API 供前端與 MCP 讀寫個股交易策略，每支股票每日一筆（upsert by date），保留歷史紀錄。
+
+**Firestore 集合設計**：
+
+```
+stock_strategies/
+  {stockId}/            ← 文件 ID = 股票代號（e.g. "2330"）
+    records/
+      {YYYY-MM-DD}/     ← 文件 ID = 日期，upsert（同一天再存覆蓋）
+        entry_price_min:    number
+        entry_price_max:    number
+        stop_loss_price:    number
+        stop_loss_pct:      number   # 負值，e.g. -8.5
+        take_profit_price:  number
+        take_profit_pct:    number   # 正值，e.g. 15.0
+        holding_period:     string   # "short" | "swing" | "long"
+        ai_comment:         string   # max 150 字
+        created_at:         string   # ISO datetime（首次建立）
+        updated_at:         string   # ISO datetime（每次更新）
+```
+
+**新增路由**：`routers/strategies.py`，前綴 `/api/v1/strategies`
+
+| Method | Path | 說明 |
+|--------|------|------|
+| `GET` | `/{stockId}` | 取得最新一筆策略（依日期降冪取第一筆）；無資料回 `data: null` |
+| `GET` | `/{stockId}?date=YYYY-MM-DD` | 取得指定日期策略；無資料回 `data: null` |
+| `POST` | `/{stockId}` | 新增/更新策略（upsert today's date）；`updated_at` 每次更新；`created_at` 僅首次寫入 |
 
 **實作規格**：
+
 ```python
-# schemas/transactions.py（示意）
+# schemas/strategies.py
 from pydantic import BaseModel, Field
 from typing import Literal
 
-class TransactionCreate(BaseModel):
-    stock_id: str = Field(alias="stockId")
-    type: Literal["buy", "sell"]
-    date: str                                    # YYYY-MM-DD
-    shares: float = Field(gt=0)
-    price_per_share: float = Field(alias="pricePerShare", gt=0)
-    fee: float = Field(default=0, ge=0)
-    note: str = ""
+class StrategyUpsert(BaseModel):
+    entryPriceMin:    float = Field(alias="entryPriceMin", gt=0)
+    entryPriceMax:    float = Field(alias="entryPriceMax", gt=0)
+    stopLossPrice:    float = Field(alias="stopLossPrice", gt=0)
+    stopLossPct:      float = Field(alias="stopLossPct", lt=0)    # 必須為負
+    takeProfitPrice:  float = Field(alias="takeProfitPrice", gt=0)
+    takeProfitPct:    float = Field(alias="takeProfitPct", gt=0)  # 必須為正
+    holdingPeriod:    Literal["short", "swing", "long"] = Field(alias="holdingPeriod")
+    aiComment:        str   = Field(alias="aiComment", max_length=150)
 
     model_config = {"populate_by_name": True}
 ```
-- router 改用 `body: TransactionCreate`，移除手動 `body.get("xxx")`
-- response 同樣定義 DTO，確保 camelCase 由 schema 統一輸出
 
-**驗收**：送缺欄位 request 回 422；OpenAPI `/docs` 顯示完整 schema；現有測試通過。
+- `POST` 傳入日期由後端決定（`datetime.now(tz=TW).strftime("%Y-%m-%d")`），不由前端指定
+- `GET` 回傳欄位全數轉 camelCase（`_convert_keys` 同 MCP 做法）
+- `created_at` 邏輯：先 `get()` 目標 doc，已存在則保留原 `created_at`；不存在則設為 `updated_at`
+- `main.py` 加入 `app.include_router(strategies_router, prefix="/api/v1/strategies")`
+- Route Map 補充 `/api/v1/strategies`
 
----
-
-#### OPT-10 🔲 Repository 抽離（holdings 試點）
-
-**問題**：`routers/holdings.py` 直接操作 Firestore，路由層同時承擔 HTTP 與資料存取兩種責任，難以單獨測試業務邏輯。
-
-**修改範圍**：新增 `repositories/holdings_repo.py`；修改 `routers/holdings.py`
-
-**實作規格**：
-```python
-# repositories/holdings_repo.py
-from typing import Protocol
-
-class HoldingsRepository(Protocol):
-    async def list_all(self) -> list[dict]: ...
-    async def get(self, stock_id: str) -> dict | None: ...
-    async def upsert(self, stock_id: str, data: dict) -> None: ...
-    async def delete(self, stock_id: str) -> None: ...
-    async def update_order(self, ordered_ids: list[str]) -> int: ...
-
-class FirestoreHoldingsRepository:
-    # 從 holdings.py 搬移 Firestore 操作
-    ...
-
-class FakeHoldingsRepository:
-    # 用於測試，in-memory dict
-    def __init__(self, items: list[dict] = None): ...
-```
-- `routers/holdings.py` 透過 FastAPI `Depends()` 注入 repository
-- 測試可注入 `FakeHoldingsRepository`，不需 Firestore 憑證
-
-**驗收**：`holdings` 測試改用 fake repo 後仍通過；不再需要 Firestore 憑證即可跑 holdings 單元測試。
+**驗收**：
+- `POST /api/v1/strategies/2330` → 200，回傳寫入後的完整 camelCase DTO
+- 同日再次 `POST` → `createdAt` 不變、`updatedAt` 更新
+- `GET /api/v1/strategies/2330` → 200，回傳最新筆
+- `GET /api/v1/strategies/9999` → 200，`data: null`（非 404）
+- `stopLossPct` 傳正值 → 422；`aiComment` 超 150 字 → 422
+- `pytest tests/` 通過（補 `tests/test_strategies.py`）
 
 ---
 
-#### OPT-11 🔲 Service Layer 分離（holdings 試點）
+#### STRAT-B-02 🔲 MCP Tools：get_stock_strategy + save_stock_strategy
 
-**問題**：holdings quote enrichment（並行報價注入）目前散在 router，無法在不啟動 HTTP 的情況下測試。
+**需求**：讓 AI 在 Claude chat 中透過 MCP 讀取並儲存個股交易策略。
 
-**修改範圍**：新增 `services/holdings_service.py`；修改 `routers/holdings.py`
+**新增 Tool**（`services/mcp_service.py`）：
 
-**實作規格**：
+| Tool | 參數 | 說明 |
+|------|------|------|
+| `get_stock_strategy` | `stock_id: str`, `date?: str (YYYY-MM-DD)` | 讀取策略，無資料回 `null` |
+| `save_stock_strategy` | 見下方 | 儲存策略（呼叫內部 upsert 邏輯，與 POST API 共用）|
+
 ```python
-# services/holdings_service.py
-class HoldingsService:
-    def __init__(self, repo: HoldingsRepository, quotes: QuoteProvider):
-        self.repo = repo
-        self.quotes = quotes
-
-    async def list_with_quotes(self) -> list[dict]:
-        holdings = await self.repo.list_all()
-        active = [h["stockId"] for h in holdings if h.get("sharesHeld", 0) > 0]
-        quote_map = await self.quotes.get_quotes(active)
-        for h in holdings:
-            price = quote_map.get(h["stockId"])
-            h["currentPrice"] = price
-            h["currentValue"] = round(h["sharesHeld"] * price, 2) if price else None
-        return holdings
+# save_stock_strategy 參數
+{
+  "stock_id":          str,   # 股票代號
+  "entry_price_min":   float, # 建議進場下限
+  "entry_price_max":   float, # 建議進場上限
+  "stop_loss_price":   float, # 止損價格
+  "stop_loss_pct":     float, # 止損跌幅%（負值）
+  "take_profit_price": float, # 目標獲利價格
+  "take_profit_pct":   float, # 目標獲利漲幅%（正值）
+  "holding_period":    str,   # "short" | "swing" | "long"
+  "ai_comment":        str    # 綜合短評，max 150 字
+}
 ```
-- router 僅保留 HTTP 邊界（status code、request 解析、response 組裝）
-- service 不 import FastAPI，可純 Python 測試
 
-**驗收**：`HoldingsService.list_with_quotes()` 可用 fake repo + fake quote provider 單獨測試，不依賴 Firestore 或 HTTP。
+- `save_stock_strategy` 內部直接呼叫 Firestore upsert 邏輯（不走 HTTP），與 STRAT-B-01 路由共用同一 service function
+- `tools/list` 補充兩個新 Tool 的 schema
+- `_convert_keys()` 已通用，可直接套用
 
----
-
-#### OPT-12 🔲 QuoteProvider 介面化
-
-**問題**：Shioaji/Yahoo fallback 邏輯散落在多個 router/service，新增報價來源需改多個地方。
-
-**修改範圍**：新增 `providers/quotes/base.py`、`yahoo.py`、`shioaji.py`、`switching.py`；修改 `services/api_switch.py`
-
-**實作規格**：
-```python
-# providers/quotes/base.py
-from typing import Protocol
-
-class QuoteProvider(Protocol):
-    async def get_quote(self, stock_id: str) -> float | None: ...
-    async def get_quotes(self, stock_ids: list[str]) -> dict[str, float | None]: ...
-
-# providers/quotes/switching.py
-class SwitchingQuoteProvider:
-    def __init__(self, primary, fallback, market_clock, circuit_breaker): ...
-    async def get_quote(self, stock_id: str) -> float | None:
-        if not self.market_clock.is_open():
-            return await self.fallback.get_quote(stock_id)
-        try:
-            return await self.circuit_breaker.call(lambda: self.primary.get_quote(stock_id))
-        except Exception:
-            return await self.fallback.get_quote(stock_id)
-```
-- holdings/watchlist/stocks router 改從 `Depends()` 取得 `QuoteProvider`
-- 現有 `api_switch_call()` 邏輯移入 `SwitchingQuoteProvider`，不再散落各處
-
-**驗收**：替換 quote provider 不需修改 router；現有所有測試通過。
+**驗收**：
+- `tools/list` 回傳包含 `get_stock_strategy`、`save_stock_strategy`
+- `save_stock_strategy` 呼叫後 Firestore 有對應 doc 寫入
+- `get_stock_strategy` 回傳 camelCase JSON；無資料時回傳 `{"content": [{"type": "text", "text": "null"}]}`
+- `stop_loss_pct` 傳正值 → tool 回傳 error message（不寫入）
 
 ---
 
@@ -200,5 +179,4 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 
 **通用原則**：
 - 每個任務完成後獨立跑一次 `pytest tests/`，確認不破壞現有測試
-- 層三任務每個 domain 做完後補對應測試（用 fake repository/provider）
 - 不修改前端接口結構與 Firestore collection 結構

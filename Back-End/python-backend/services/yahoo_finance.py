@@ -83,7 +83,37 @@ def _yf_chart(symbol: str, interval: str = "1d", range_: str = "1d") -> dict:
 
 
 def get_quote(stock_id: str) -> dict:
-    """取得個股即時報價（與 Node.js StockQuote 結構一致）"""
+    """取得個股即時報價（與 Node.js StockQuote 結構一致）。
+
+    盤後（13:30 以後）優先從 TWSE 官方 API 取得收盤價，
+    避免 Azure 雲端 IP 被 Yahoo Finance 封鎖造成 Timeout。
+    TSE 上市股票走 TWSE；OTC 上櫃股票或 TWSE 失敗時 fallback Yahoo。
+    """
+    from utils.market_hours import is_market_open
+    from services.twse_finance import get_twse_closing_price
+
+    # ── 盤後：優先走 TWSE（TSE 上市股票）──────────────────────────────────────
+    if not is_market_open():
+        symbol = resolve_symbol(stock_id)
+        is_otc = symbol.endswith(".TWO")
+        if not is_otc:
+            twse = get_twse_closing_price(stock_id)
+            if twse is not None:
+                return {
+                    "stockId":       stock_id,
+                    "name":          stock_id,
+                    "price":         twse["price"],
+                    "change":        twse["change"],
+                    "changePercent": twse["changePercent"],
+                    "high":          twse["high"],
+                    "low":           twse["low"],
+                    "volume":        twse["volume"],
+                    "marketStatus":  "CLOSED",
+                    "updatedAt":     int(time.time()),
+                }
+        # OTC 或 TWSE 失敗 → fallthrough 至 Yahoo Finance
+
+    # ── 盤中 or TWSE fallback：Yahoo Finance ──────────────────────────────────
     symbol = resolve_symbol(stock_id)
     data = _yf_chart(symbol, "1d", "1d")
     meta = data["meta"]
