@@ -59,7 +59,10 @@
       "WebFetch(domain:opendata.twse.com.tw)",
       "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('stat:', d.get\\('stat'\\)\\); print\\('fields:', d.get\\('fields'\\)\\); print\\('last_row:', d.get\\('data',[[]]\\)[-1] if d.get\\('data'\\) else 'NO DATA'\\)\")",
       "PowerShell($res = Invoke-WebRequest -Uri \"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date=20260525&stockNo=2330\" -UseBasicParsing; $json = $res.Content | ConvertFrom-Json; Write-Output \"stat: $\\($json.stat\\)\"; Write-Output \"fields: $\\($json.fields -join ', '\\)\"; $last = $json.data[-1]; Write-Output \"last_row: $\\($last -join ', '\\)\")",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/ -v --tb=short)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -v --tb=short)",
+      "Bash(New-Item -ItemType Directory -Force \"D:\\\\Project\\\\NoCode_Project\\\\.vscode\")",
+      "Bash(Out-Null)",
+      "Bash(Write-Output \"done\")"
     ]
   }
 }
