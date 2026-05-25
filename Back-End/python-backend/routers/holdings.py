@@ -11,6 +11,10 @@ from services.api_switch import api_switch_call
 router = APIRouter()
 
 
+class _NoTickYet(Exception):
+    """Shioaji 訂閱成功但 tick 尚未到達，不應計入 Circuit Breaker failure。"""
+
+
 # ─── 工具函式 ──────────────────────────────────────────────────────────────────
 
 def ts_iso(val) -> str:
@@ -80,10 +84,12 @@ async def _fetch_quotes_switched(stock_ids: list[str]) -> dict[str, dict]:
     async def fetch_one(sid: str) -> tuple[str, dict | None]:
         async def primary():
             from services.shioaji_manager import shioaji_manager
+            # subscribe_stock 失敗（連線/合約問題）→ 讓 CB 記錄 failure
             await shioaji_manager.subscribe_stock(sid)
             fresh = shioaji_manager.get_fresh_quote(sid)
             if fresh is None:
-                raise RuntimeError("no fresh tick")
+                # 訂閱成功但 tick 尚未到達（開盤瞬態）→ 不懲罰 CB，直接 fallback
+                raise _NoTickYet()
             return {
                 "stockId": sid, "name": sid,
                 "price":         fresh.get("price", 0),
@@ -103,6 +109,13 @@ async def _fetch_quotes_switched(stock_ids: list[str]) -> dict[str, dict]:
         try:
             q = await api_switch_call(primary, fallback)
             return sid, q
+        except _NoTickYet:
+            # tick 未到，直接走 Yahoo，不觸發 CB failure
+            try:
+                q = await fallback()
+                return sid, q
+            except Exception:
+                return sid, None
         except Exception:
             return sid, None
 

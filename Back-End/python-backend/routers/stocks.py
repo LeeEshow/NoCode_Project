@@ -10,6 +10,10 @@ from services.api_switch import api_switch_call
 router = APIRouter()
 
 
+class _NoTickYet(Exception):
+    """Shioaji 訂閱成功但 tick 尚未到達，不應計入 Circuit Breaker failure。"""
+
+
 def _to_camel(k: str) -> str:
     parts = k.split("_")
     return parts[0] + "".join(p.capitalize() for p in parts[1:])
@@ -88,7 +92,8 @@ async def stock_quote(stock_id: str):
         await shioaji_manager.subscribe_stock(stock_id)
         fresh = shioaji_manager.get_fresh_quote(stock_id)
         if fresh is None:
-            raise RuntimeError("no fresh Shioaji tick")
+            # 訂閱成功但 tick 尚未到達，不懲罰 CB
+            raise _NoTickYet()
         return {
             "stockId":       stock_id,
             "name":          stock_id,
@@ -105,7 +110,10 @@ async def stock_quote(stock_id: str):
     async def fallback():
         return await loop.run_in_executor(None, get_quote, stock_id)
 
-    data = await api_switch_call(primary, fallback)
+    try:
+        data = await api_switch_call(primary, fallback)
+    except _NoTickYet:
+        data = await fallback()
     cache_set(cache_key, data, 10)
     return {"success": True, "data": data}
 

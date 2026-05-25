@@ -1,14 +1,11 @@
 # 個人理財雲端系統 — 後端開發任務清單
 
-> 版本：6.0（2026-05-24）
+> 版本：6.1（2026-05-25）
 > 參考文件：Back-End\CLAUDE.md
 
 ---
 
-## 整合原則（必讀）
-
-> Python FastAPI 是 Node.js Express 的**語言替換**，不是重新設計。
-> 前端接口結構不變、Firestore DB 結構不變，Python 版本只需忠實複製 Node.js 的讀寫邏輯與回傳格式。
+## 開發原則
 
 ### 統一 Response 格式
 
@@ -27,13 +24,14 @@
 
 ---
 
-## 現況（2026-05-24）
+## 現況（2026-05-25）
 
-- **M1–M7 全部完成**：Python FastAPI 後端已完全取代 Node.js
+- **M1–M8 全部完成**：Python FastAPI 後端穩定運作於 Azure App Service
 - **MCP 全部完成**：18 個 Tool + SSE/Streamable HTTP 雙傳輸層
 - **層一、層二優化完成**：MCP fail-closed、Cache LRU、CORS env、Settings 集中、Circuit Breaker 等
-- **M8 完成**：FinMind 三大法人 + 基本面資料同步；`yfinance` 已移除；`pytest tests/` → 159/159 passed
-- **首次回補完成**：5 支持股（0056、00894、00981A、1210、2330）補齊 31 個交易日法人資料 + 最新基本面
+- **FinMind 同步完成**：三大法人 + 基本面資料；`yfinance` 已移除
+- **舊服務清理完成**（2026-05-25）：`Back-End/backend/`（Node.js）、`Back-End/Shioaji_API/` 已移除
+- **Shioaji 啟動修正**（2026-05-25）：`lifespan` 加入 `shioaji_manager.initialize()`；`_NoTickYet` 不計入 CB failure
 
 ### Firestore 新增集合（M8）
 
@@ -197,7 +195,7 @@ class SwitchingQuoteProvider:
 
 ```bash
 cd Back-End/python-backend
-py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures（目前 159/159）
+py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 ```
 
 **通用原則**：

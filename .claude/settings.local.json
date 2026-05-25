@@ -51,7 +51,10 @@
       "Bash(py -3.14 -m pytest tests/ -v --tb=no -q)",
       "Bash(py -3.14 -m pytest tests/test_m1_health.py::test_auth_bypass_allows_api_request tests/test_m2_holdings.py::test_get_holdings_returns_success -v --tb=long)",
       "Bash(py -3.14 -m pytest tests/ -q --tb=line)",
-      "mcp__finance-mcp__get_asset_tags"
+      "mcp__finance-mcp__get_asset_tags",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":8000\")",
+      "Bash(Test-Path *)"
     ]
   }
 }

@@ -92,7 +92,7 @@ GitHub Actions
 
 報價來源切換策略：盤中優先走 Shioaji WebSocket，盤外 fallback Yahoo Finance；Circuit Breaker 自動偵測異常（失敗 3 次 → 冷卻 60 秒）。**未設定 `SJ_API_KEY` 時全程使用 Yahoo Finance（Yahoo-only 模式），無需 Shioaji 帳號。**
 
-另內建 **MCP Server**（`/api/v1/mcp/sse` + `/api/v1/mcp/message`），提供 8 個 AI Tool 供外部 AI Agent 存取理財資料。
+另內建 **MCP Server**（`/api/v1/mcp/sse` + `/api/v1/mcp`），提供 18 個 AI Tool 供外部 AI Agent 存取理財資料。
 
 ---
 
@@ -111,14 +111,12 @@ NoCode_Project/
 │           ├── utils/         # 純函式工具
 │           └── views/         # 元件 / 頁面
 ├── Back-End/
-│   ├── python-backend/        # Python FastAPI 主後端（現役）
-│   │   ├── main.py
-│   │   ├── routers/
-│   │   ├── services/
-│   │   ├── utils/
-│   │   └── tests/             # pytest 測試套件（121 tests）
-│   ├── backend/               # ⚠️ 待清理：Node.js Express（已下線）
-│   └── Shioaji_API/           # ⚠️ 待清理：舊 Shioaji 微服務（已整合進 python-backend）
+│   └── python-backend/        # Python FastAPI 主後端
+│       ├── main.py
+│       ├── routers/
+│       ├── services/
+│       ├── utils/
+│       └── tests/             # pytest 測試套件
 ├── Docs/                      # 架構文件
 └── .github/workflows/         # GitHub Actions CI/CD
 ```
@@ -167,7 +165,7 @@ npm run lint       # ESLint
 npx tsc --noEmit   # 僅型別檢查
 
 # 後端
-py -3.14 -m pytest tests/ -v                  # 全部測試（121 tests）
+py -3.14 -m pytest tests/ -v                  # 全部測試
 py -3.14 -m pytest tests/test_m6_mcp.py       # 單模組測試
 ```
 
@@ -214,7 +212,7 @@ py -3.14 -m pytest tests/test_m6_mcp.py       # 單模組測試
 |------|------|
 | [`Docs/Azure-Deployment.md`](Docs/Azure-Deployment.md) | Azure 部署完整紀錄（架構、參數、除錯） |
 | [`Docs/REQUIREMENTS.md`](Docs/REQUIREMENTS.md) | 功能規劃與設計決策 |
-| [`Docs/Backend-Node.md`](Docs/Backend-Node.md) | 舊 Node.js 後端架構（已下線，供歷史參考） |
+| [`Docs/Backend-Node.md`](Docs/Backend-Node.md) | 舊 Node.js 後端架構（歷史存檔，實際服務已移除） |
 | [`Docs/Frontend-React.md`](Docs/Frontend-React.md) | 前端 MVVM 架構設計原則 |
 | [`Front-End/CLAUDE.md`](Front-End/CLAUDE.md) | 前端開發規範（供 AI 輔助開發） |
 | [`Back-End/CLAUDE.md`](Back-End/CLAUDE.md) | 後端開發規範（供 AI 輔助開發） |

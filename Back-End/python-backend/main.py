@@ -29,15 +29,36 @@ logger = logging.getLogger(__name__)
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+
+    # ── Firestore warm-up ─────────────────────────────────────────────────────
     try:
-        import asyncio
         from services.firestore import get_db
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, lambda: get_db().collection("holdings").limit(1).get())
         logger.info("Firestore warm-up OK")
     except Exception as e:
         logger.warning("Firestore warm-up failed: %s", e)
+
+    # ── Shioaji initialization（SJ_API_KEY 有設定才執行）───────────────────────
+    from services.api_switch import shioaji_enabled
+    if shioaji_enabled():
+        try:
+            from services.shioaji_manager import shioaji_manager
+            s = _get_settings()
+            await shioaji_manager.initialize(s.sj_api_key, s.sj_secret_key)
+            logger.info("Shioaji initialized at startup")
+        except Exception as e:
+            logger.warning("Shioaji startup initialization failed: %s", e)
+
     yield
+
+    # ── Shioaji shutdown ──────────────────────────────────────────────────────
+    try:
+        from services.shioaji_manager import shioaji_manager
+        await shioaji_manager.shutdown()
+    except Exception:
+        pass
 
 
 # ── App ────────────────────────────────────────────────────────────────────────

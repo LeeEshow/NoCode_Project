@@ -65,61 +65,27 @@ Default to surfacing uncertainty, not hiding it.
 
 ---
 
-## Repository Layout（當前狀態）
+## Repository Layout
 
 ```
 Back-End/
-├── python-backend/   # ✅ 現役主後端（Python FastAPI，Azure App Service）
-├── backend/          # ⚠️ 待刪除：Node.js Express（已下線，保留供比對）
-├── Shioaji_API/      # ⚠️ 待刪除：舊 Python Shioaji 微服務（已下線，已整合進 python-backend）
-└── Task_Backend.md   # 開發任務清單與進度（v5.2，Layer 1–2 優化已完成）
+├── python-backend/   # 現役主後端（Python FastAPI，Azure App Service）
+└── Task_Backend.md   # 開發任務清單與進度（Layer 1–2 優化已完成）
 ```
 
----
-
-## ⚠️ 清理計畫（下次上線前執行）
-
-**目標**：驗證 `python-backend` 無重大 Bug 後，刪除舊服務目錄。
-
-### 驗證清單
-
-1. **所有 pytest 通過**
-   ```bash
-   cd Back-End/python-backend
-   .venv\Scripts\activate
-   pytest tests/    # 目前：145/145 passed（2026-05-24）
-   ```
-
-2. **前端實際操作確認**（手動測試）
-   - 持股列表載入、報價輪詢（含盤中 Shioaji / 盤外 Yahoo 切換）
-   - 關注清單、買進判斷
-   - 台股大盤 + 台指期 即時更新
-   - 快照記錄（`POST /snapshots/record`）
-   - 再平衡計算、設定儲存
-
-3. **Azure 監控確認**：App Service Logs 無 5xx 錯誤，回應時間正常
-
-### 驗證通過後執行
-
-```bash
-# 刪除舊服務目錄
-git rm -r Back-End/backend
-git rm -r Back-End/Shioaji_API
-git commit -m "chore: remove deprecated Node.js backend and Shioaji microservice"
-```
-
-> **注意**：刪除前確認 Azure App Service `finance-backend`（Node.js）與 `finance-shioaji` 已停止服務。
+> **已清理**（2026-05-25）：`backend/`（Node.js Express）與 `Shioaji_API/`（舊 Shioaji 微服務）已移除。
+> Shioaji 邏輯已整合至 `python-backend/services/shioaji_manager.py`。
 
 ---
 
 ## Python Backend (`python-backend/`)  ← 現役主後端
 
-### Venv Setup（python-backend 獨立 venv）
+### Venv Setup
 
 ```bash
 cd Back-End/python-backend
-py -3.14 -m venv .venv                  # 首次建立（Shioaji_API 的 venv 不共用）
-.venv\Scripts\activate                  # Windows 啟動
+py -3.14 -m venv .venv       # 首次建立
+.venv\Scripts\activate       # Windows 啟動
 pip install -r requirements.txt
 ```
 
@@ -155,7 +121,7 @@ pytest tests/ -v -k "holdings"          # 關鍵字篩選測試
 
 ```
 python-backend/
-├── main.py                 # FastAPI app + lifespan（Firestore 預熱）+ EasyAuth middleware
+├── main.py                 # FastAPI app + lifespan（Firestore 預熱 + Shioaji init/shutdown）+ EasyAuth middleware
 ├── core/                   # 共用基礎設施（無業務邏輯）
 │   ├── settings.py         # pydantic_settings.BaseSettings + @lru_cache get_settings()
 │   └── executors.py        # 共用 ThreadPoolExecutor(16) + yahoo/twse/ndc Semaphore
@@ -189,7 +155,7 @@ python-backend/
 │   └── mcp_service.py      # MCP 18 個 Tool 實作 + _convert_keys() camelCase 轉換
 ├── utils/
 │   └── market_hours.py     # is_market_open()（週一–五 09:00–13:30 UTC+8）
-└── tests/                  # pytest 測試套件（161 tests，全數通過）
+└── tests/                  # pytest 測試套件（全數通過）
 ```
 
 ### Route Map
@@ -365,18 +331,3 @@ SJ_SECRET_KEY=<永豐金 Secret Key>
 MCP_ACCESS_KEY=<自訂 UUID>
 ```
 
----
-
-## ⚠️ 舊服務（待刪除，僅供比對參考）
-
-### Node.js Backend (`backend/`)
-
-已下線。主要架構供驗證期比對用，確認功能對齊後刪除。
-
-- 框架：Express + TypeScript，port 3001
-- 入口：`src/index.ts`
-- 路由規範與 Firestore 欄位定義詳見 `Task_Backend.md` DTO 對齊規格章節
-
-### Python Microservice (`Shioaji_API/`)
-
-已下線。其 Shioaji 邏輯（ShioajiManager、tick cache、合約訂閱）已整合至 `python-backend/services/shioaji_manager.py`，不再需要獨立部署。`Shioaji_API/.venv` 與 `python-backend/.venv` 完全獨立，勿混用。
