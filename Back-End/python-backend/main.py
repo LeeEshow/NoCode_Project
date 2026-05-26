@@ -35,7 +35,10 @@ async def lifespan(app: FastAPI):
     try:
         from services.firestore import get_db
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: get_db().collection("holdings").limit(1).get())
+        await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: get_db().collection("holdings").limit(1).get()),
+            timeout=10,
+        )
         logger.info("Firestore warm-up OK")
     except Exception as e:
         logger.warning("Firestore warm-up failed: %s", e)
@@ -46,7 +49,10 @@ async def lifespan(app: FastAPI):
         try:
             from services.shioaji_manager import shioaji_manager
             s = _get_settings()
-            await shioaji_manager.initialize(s.sj_api_key, s.sj_secret_key)
+            await asyncio.wait_for(
+                shioaji_manager.initialize(s.sj_api_key, s.sj_secret_key),
+                timeout=15,
+            )
             logger.info("Shioaji initialized at startup")
         except Exception as e:
             logger.warning("Shioaji startup initialization failed: %s", e)
