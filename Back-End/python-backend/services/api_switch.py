@@ -109,7 +109,8 @@ ndc_cb    = SyncCircuitBreaker()     # NDC 國發會
 
 def shioaji_enabled() -> bool:
     """SJ_API_KEY 有設定才啟用 Shioaji（空白時為 Yahoo-only 模式）"""
-    return bool(get_settings().sj_api_key)
+    s = get_settings()
+    return bool(s.sj_api_key and s.sj_secret_key)
 
 
 async def api_switch_call(
