@@ -137,6 +137,33 @@ def get_quote(stock_id: str) -> dict:
     }
 
 
+def get_yahoo_quote(stock_id: str) -> dict:
+    """Yahoo Finance 直接查詢，不走 TWSE fallback。
+    供 quote_service 使用，確保 quoteSource 能正確標記為 "yahoo"。
+    """
+    symbol = resolve_symbol(stock_id)
+    data = _yf_chart(symbol, "1d", "1d")
+    meta = data["meta"]
+
+    price = _f(meta.get("regularMarketPrice"), 0.0)
+    prev  = _f(meta.get("chartPreviousClose"), price)
+    change     = round(price - prev, 2) if price and prev else 0.0
+    change_pct = round((price - prev) / prev * 100, 2) if price and prev else 0.0
+
+    return {
+        "stockId":       stock_id,
+        "name":          stock_id,
+        "price":         price,
+        "change":        change,
+        "changePercent": change_pct,
+        "high":          _f(meta.get("regularMarketDayHigh"), 0.0),
+        "low":           _f(meta.get("regularMarketDayLow"),  0.0),
+        "volume":        _i(meta.get("regularMarketVolume")),
+        "marketStatus":  meta.get("marketState", "CLOSED"),
+        "updatedAt":     int(meta.get("regularMarketTime") or time.time()),
+    }
+
+
 def get_history_closes(stock_id: str, days: int = 90) -> list[float]:
     """取得個股 N 日收盤價序列（用於動態風險計算）"""
     symbol = resolve_symbol(stock_id)

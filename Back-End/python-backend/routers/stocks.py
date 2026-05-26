@@ -1,17 +1,12 @@
 import asyncio
-import time
 from fastapi import APIRouter, HTTPException, Query
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
-from services.yahoo_finance import get_all_stocks, get_quote, get_full_history
-from services.api_switch import api_switch_call
+from services.yahoo_finance import get_all_stocks, get_full_history
+from services.quote_service import get_quote
 
 router = APIRouter()
-
-
-class _NoTickYet(Exception):
-    """Shioaji 訂閱成功但 tick 尚未到達，不應計入 Circuit Breaker failure。"""
 
 
 def _to_camel(k: str) -> str:
@@ -85,36 +80,9 @@ async def stock_quote(stock_id: str):
     if cached is not None:
         return {"success": True, "data": cached}
 
-    loop = asyncio.get_event_loop()
-
-    async def primary():
-        from services.shioaji_manager import shioaji_manager
-        await shioaji_manager.subscribe_stock(stock_id)
-        fresh = shioaji_manager.get_fresh_quote(stock_id)
-        if fresh is None:
-            # 訂閱成功但 tick 尚未到達，不懲罰 CB
-            raise _NoTickYet()
-        return {
-            "stockId":       stock_id,
-            "name":          stock_id,
-            "price":         fresh.get("price", 0),
-            "change":        fresh.get("change") or 0,
-            "changePercent": fresh.get("change_percent") or 0,
-            "high":          fresh.get("high", 0),
-            "low":           fresh.get("low", 0),
-            "volume":        fresh.get("volume", 0),
-            "marketStatus":  "TRADING",
-            "updatedAt":     int(time.time()),
-        }
-
-    async def fallback():
-        return await loop.run_in_executor(None, get_quote, stock_id)
-
-    try:
-        data = await api_switch_call(primary, fallback)
-    except _NoTickYet:
-        data = await fallback()
-    cache_set(cache_key, data, 10)
+    data = await get_quote(stock_id)
+    if data.get("quoteStatus") == "ok":
+        cache_set(cache_key, data, 10)
     return {"success": True, "data": data}
 
 
@@ -134,7 +102,6 @@ async def stock_history(stock_id: str, days: int = Query(default=90, ge=1, le=36
 
 
 # ─── GET /stocks/{id}/profile ─────────────────────────────────────────────────
-# FIN-B-03：從 Firestore stock_fundamentals/{stockId} 讀取（由 FinMind 每日同步寫入）
 
 @router.get("/{stock_id}/profile")
 async def stock_profile(stock_id: str):
@@ -152,7 +119,6 @@ async def stock_profile(stock_id: str):
 
 
 # ─── GET /stocks/{id}/chip ────────────────────────────────────────────────────
-# FIN-B-04：從 Firestore stock_chip/{stockId}/records 讀取（由 FinMind 每日同步寫入）
 
 @router.get("/{stock_id}/chip")
 async def stock_chip(
@@ -183,7 +149,7 @@ async def stock_chip(
                 "dealer":    d.get("dealer", 0),
                 "updatedAt": d.get("updated_at"),
             })
-        rows.reverse()   # 升冪（舊→新）
+        rows.reverse()
         return rows
 
     data = await loop.run_in_executor(None, _read)

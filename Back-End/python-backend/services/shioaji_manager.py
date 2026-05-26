@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-_TICK_MAX_AGE_SECONDS = 120
+_TICK_MAX_AGE_SECONDS = 120  # 盤中 futures / TAIEX tick 有效期（秒）
 
 
 def _is_fresh(cached: dict) -> bool:
@@ -25,10 +25,15 @@ class ShioajiManager:
         self._initialized = False
         self._api_key = ""
         self._secret_key = ""
+        # _quote_cache：僅用於 TAIEX 指數 tick（key="001"）
         self._quote_cache: dict[str, dict] = {}
         self._futures_cache: dict[str, dict] = {}
-        self._subscribed_stocks: set[str] = set()
         self._txf_reference: Optional[float] = None
+        # Snapshot 併發限流：防止 asyncio.wait_for timeout 後底層 thread 持續堆積
+        # batch：同時只允許 1 個批次呼叫；若已在飛行中，回 all-None 直接走 fallback
+        # single：最多 3 個並行單股呼叫；超出時回 None 走 fallback，不計 CB failure
+        self._snap_batch_sem = asyncio.Semaphore(1)
+        self._snap_single_sem = asyncio.Semaphore(3)
 
     @property
     def api(self):
@@ -66,18 +71,20 @@ class ShioajiManager:
 
         @self._api.on_tick_stk_v1()
         def on_stk_tick(exchange: Exchange, tick: TickSTKv1) -> None:
-            self._quote_cache[tick.code] = {
-                "code": tick.code,
-                "price": float(tick.close),
-                "open": float(tick.open),
-                "high": float(tick.high),
-                "low": float(tick.low),
-                "volume": tick.total_volume,
-                "change": float(tick.price_chg),
-                "change_percent": float(tick.pct_chg),
-                "timestamp": tick.datetime.isoformat(),
-                "source": "tick",
-            }
+            # 只快取 TAIEX 加權指數（code="001"）；個股 tick 不再使用
+            if tick.code == "001":
+                self._quote_cache["001"] = {
+                    "code": tick.code,
+                    "price": float(tick.close),
+                    "open": float(tick.open),
+                    "high": float(tick.high),
+                    "low": float(tick.low),
+                    "volume": tick.total_volume,
+                    "change": float(tick.price_chg),
+                    "change_percent": float(tick.pct_chg),
+                    "timestamp": tick.datetime.isoformat(),
+                    "source": "tick",
+                }
 
         @self._api.on_tick_fop_v1()
         def on_fop_tick(exchange: Exchange, tick: TickFOPv1) -> None:
@@ -109,7 +116,7 @@ class ShioajiManager:
             elif event_code == 4:
                 self._connected = True
                 logger.info("Shioaji reconnected, resubscribing...")
-                asyncio.create_task(self._resubscribe_all())
+                asyncio.create_task(self._resubscribe_startup())
 
     def _get_nearest_txf(self):
         try:
@@ -147,32 +154,9 @@ class ShioajiManager:
         except Exception as e:
             logger.warning(f"TAIEX subscribe failed: {e}")
 
-    async def _resubscribe_all(self) -> None:
+    async def _resubscribe_startup(self) -> None:
+        """斷線重連後只重訂閱 TXF 和 TAIEX，不訂閱個股（個股改用 snapshot API）。"""
         await asyncio.to_thread(self._subscribe_startup_contracts)
-        for stock_id in list(self._subscribed_stocks):
-            try:
-                await self.subscribe_stock(stock_id)
-            except Exception as e:
-                logger.warning(f"Resubscribe failed {stock_id}: {e}")
-
-    async def subscribe_stock(self, stock_id: str) -> None:
-        if stock_id in self._subscribed_stocks:
-            return
-        import shioaji as sj
-
-        def _sub() -> None:
-            contract = self._api.Contracts.Stocks[stock_id]
-            self._api.quote.subscribe(contract, quote_type=sj.constant.QuoteType.Tick)
-
-        await asyncio.to_thread(_sub)
-        self._subscribed_stocks.add(stock_id)
-
-    def get_cached_quote(self, stock_id: str) -> Optional[dict]:
-        return self._quote_cache.get(stock_id)
-
-    def get_fresh_quote(self, stock_id: str) -> Optional[dict]:
-        cached = self._quote_cache.get(stock_id)
-        return cached if (cached and _is_fresh(cached)) else None
 
     def get_cached_taiex(self) -> Optional[dict]:
         cached = self._quote_cache.get("001")
@@ -202,18 +186,113 @@ class ShioajiManager:
             logger.warning(f"get_taiex_contract error: {e}")
         return None
 
-    async def get_snapshot(self, contracts: list) -> list:
-        def _snap() -> list:
-            return self._api.snapshots(contracts)
-        return await asyncio.to_thread(_snap)
+    # ─── Snapshot API（取代 tick 作為個股報價來源）──────────────────────────────
+
+    @staticmethod
+    def _normalize_ts(ts) -> int:
+        """
+        將 snap.ts 正規化為 epoch seconds（int）。
+        Shioaji tick/snapshot ts 為 nanosecond int（約 1.7e18）；
+        若已是 seconds（< 1e12）則直接使用；datetime 物件取 .timestamp()。
+        """
+        import time as _time
+        if ts is None:
+            return int(_time.time())
+        if hasattr(ts, "timestamp"):          # datetime object
+            return int(ts.timestamp())
+        ts_int = int(ts)
+        if ts_int > 1_000_000_000_000:        # nanoseconds → seconds
+            return ts_int // 1_000_000_000
+        return ts_int
+
+    def _snap_to_dict(self, snap) -> dict:
+        """將 Shioaji Snapshot 物件轉為標準報價 dict。updatedAt 統一為 epoch seconds。"""
+        return {
+            "price":         float(snap.close),
+            "change":        float(snap.change_price),
+            "changePercent": float(snap.change_rate),
+            "high":          float(snap.high),
+            "low":           float(snap.low),
+            "volume":        int(snap.total_volume),
+            "updatedAt":     self._normalize_ts(snap.ts),
+        }
+
+    async def get_stock_snapshot(self, stock_id: str) -> Optional[dict]:
+        """
+        單股 snapshot 查詢。
+        - 成功且 close > 0：回傳標準報價 dict
+        - 合約不存在（KeyError）或 close <= 0：回傳 None（不計入 CB failure）
+        - API exception：raise（由 quote_service 的 CB 層處理）
+        - Semaphore 滿（3 個並行呼叫已在執行中）：回 None，不計 CB failure
+        """
+        if self._snap_single_sem.locked():
+            logger.debug("Shioaji single snapshot semaphore full, skip: %s", stock_id)
+            return None
+
+        def _snap() -> Optional[dict]:
+            try:
+                contract = self._api.Contracts.Stocks[stock_id]
+            except KeyError:
+                logger.debug("Shioaji contract not found: %s", stock_id)
+                return None
+            snaps = self._api.snapshots([contract])
+            if not snaps:
+                return None
+            snap = snaps[0]
+            if float(snap.close) <= 0:
+                return None
+            return self._snap_to_dict(snap)
+
+        async with self._snap_single_sem:
+            return await asyncio.to_thread(_snap)
+
+    async def get_stock_snapshots(self, stock_ids: list[str]) -> dict[str, Optional[dict]]:
+        """
+        批次 snapshot 查詢（最多 500 支，單次 API 呼叫）。
+        回傳 {stock_id: snap_dict | None}：
+        - snap_dict：有效報價
+        - None：合約不存在或 close <= 0
+        - API exception：raise
+        - Semaphore 鎖定（前一批次仍在執行中）：回 all-None，讓 fallback 補齊，不計 CB failure
+        """
+        if self._snap_batch_sem.locked():
+            logger.debug(
+                "Shioaji batch snapshot semaphore locked (%d stocks), skip to fallback",
+                len(stock_ids),
+            )
+            return {sid: None for sid in stock_ids}
+
+        def _snap() -> dict[str, Optional[dict]]:
+            results: dict[str, Optional[dict]] = {}
+            contracts = []
+            valid_ids: list[str] = []
+
+            for sid in stock_ids:
+                try:
+                    contract = self._api.Contracts.Stocks[sid]
+                    contracts.append(contract)
+                    valid_ids.append(sid)
+                except KeyError:
+                    logger.debug("Shioaji contract not found: %s", sid)
+                    results[sid] = None
+
+            if contracts:
+                snaps = self._api.snapshots(contracts)
+                for sid, snap in zip(valid_ids, snaps):
+                    if float(snap.close) > 0:
+                        results[sid] = self._snap_to_dict(snap)
+                    else:
+                        results[sid] = None
+
+            return results
+
+        async with self._snap_batch_sem:
+            return await asyncio.to_thread(_snap)
 
     def get_status(self) -> dict:
         return {
-            "connected": self._connected,
+            "connected":   self._connected,
             "initialized": self._initialized,
-            "subscribedStocks": len(self._subscribed_stocks),
-            "cachedQuotes": len(self._quote_cache),
-            "cachedFutures": len(self._futures_cache),
         }
 
     async def shutdown(self) -> None:

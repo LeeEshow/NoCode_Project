@@ -1,12 +1,9 @@
 import asyncio
-import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from firebase_admin import firestore as fs
 from services.firestore import get_db
-from services.yahoo_finance import get_quote
-from services.api_switch import api_switch_call
-from services.cache import cache_get, cache_set
+from services.quote_service import get_quotes
 
 router = APIRouter()
 
@@ -44,48 +41,31 @@ async def get_all():
     loop = asyncio.get_event_loop()
     items = await loop.run_in_executor(None, find_all)
 
-    async def enrich(item: dict) -> dict:
-        stock_id = item["stockId"]
+    stock_ids = [item["stockId"] for item in items]
+    quotes = await get_quotes(stock_ids)
 
-        async def primary():
-            from services.shioaji_manager import shioaji_manager
-            await shioaji_manager.subscribe_stock(stock_id)
-            fresh = shioaji_manager.get_fresh_quote(stock_id)
-            if fresh is None:
-                raise RuntimeError("no fresh tick")
-            return {
-                "price":         fresh.get("price", 0),
-                "change":        fresh.get("change") or 0,
-                "changePercent": fresh.get("change_percent") or 0,
-            }
+    result = []
+    for item in items:
+        q = quotes.get(item["stockId"], {})
+        price = q.get("price", 0) or 0
+        if price > 0:
+            live_price  = price
+            change      = q.get("change")
+            change_pct  = q.get("changePercent")
+            judgment    = "買進" if live_price <= item["targetPrice"] else "觀望"
+        else:
+            live_price = change = change_pct = judgment = None
 
-        async def fallback():
-            key = f"stock:quote:{stock_id}"
-            hit = cache_get(key)
-            if hit is not None:
-                return {"price": hit.get("price"), "change": hit.get("change"),
-                        "changePercent": hit.get("changePercent")}
-            q = await loop.run_in_executor(None, get_quote, stock_id)
-            cache_set(key, q, 10)
-            return {"price": q.get("price"), "change": q.get("change"),
-                    "changePercent": q.get("changePercent")}
+        result.append({
+            **item,
+            "livePrice":     live_price,
+            "change":        change,
+            "changePercent": change_pct,
+            "judgment":      judgment,
+            "quoteSource":   q.get("quoteSource", "unknown"),
+            "quoteStatus":   q.get("quoteStatus", "error"),
+        })
 
-        live_price = change = change_pct = judgment = None
-        try:
-            q = await api_switch_call(primary, fallback)
-            price = q.get("price")
-            if price and price > 0:
-                live_price = price
-                change = q.get("change")
-                change_pct = q.get("changePercent")
-                judgment = "買進" if live_price <= item["targetPrice"] else "觀望"
-        except Exception:
-            pass
-
-        return {**item, "livePrice": live_price, "change": change,
-                "changePercent": change_pct, "judgment": judgment}
-
-    result = await asyncio.gather(*[enrich(item) for item in items])
     return {"success": True, "data": list(result)}
 
 

@@ -11,6 +11,12 @@ _FAILURE_THRESHOLD = 3
 _COOL_DOWN_SECONDS = 60
 
 
+# ─── 自訂例外（CB OPEN 專用，與 API 本身的 RuntimeError 區分）────────────────
+
+class CircuitOpenError(RuntimeError):
+    """Circuit Breaker OPEN 時拋出；與 Shioaji API 自身 RuntimeError 區分診斷用。"""
+
+
 # ─── Async Circuit Breaker（Shioaji primary）──────────────────────────────────
 
 class CircuitBreaker:
@@ -26,7 +32,7 @@ class CircuitBreaker:
                 self._state = "HALF_OPEN"
             else:
                 remaining = int(_COOL_DOWN_SECONDS - elapsed)
-                raise RuntimeError(f"Circuit breaker OPEN，冷卻剩餘 {remaining}s")
+                raise CircuitOpenError(f"Circuit breaker OPEN，冷卻剩餘 {remaining}s")
 
         try:
             result = await fn()
@@ -130,13 +136,27 @@ async def api_switch_call(
 
 
 def get_switch_status() -> dict:
+    """
+    回傳系統開關與 Circuit Breaker 狀態。
+    `source` 欄位已移除（現由各 endpoint 回傳的 quoteSource 欄位表達實際來源）。
+    """
     enabled = shioaji_enabled()
     cb = circuit_breaker.get_status()
     market_open = is_market_open()
-    source = "shioaji" if (enabled and market_open and cb["state"] != "OPEN") else "yahoo"
+
+    sj_status: dict = {"enabled": enabled, "initialized": False, "connected": False}
+    try:
+        from services.shioaji_manager import shioaji_manager
+        sj_status["initialized"] = shioaji_manager.initialized
+        sj_status["connected"]   = shioaji_manager.connected
+    except Exception:
+        pass
+
     return {
-        "source": source,
-        "circuit": cb,
-        "marketOpen": market_open,
+        "circuit":        cb,
+        "marketOpen":     market_open,
         "shioajiEnabled": enabled,
+        "providers": {
+            "shioaji": sj_status,
+        },
     }

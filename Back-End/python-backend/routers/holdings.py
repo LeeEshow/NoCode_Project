@@ -1,18 +1,12 @@
 import asyncio
-import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from firebase_admin import firestore as fs
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
-from services.yahoo_finance import get_quote
-from services.api_switch import api_switch_call
+from services.quote_service import get_quote, get_quotes
 
 router = APIRouter()
-
-
-class _NoTickYet(Exception):
-    """Shioaji 訂閱成功但 tick 尚未到達，不應計入 Circuit Breaker failure。"""
 
 
 # ─── 工具函式 ──────────────────────────────────────────────────────────────────
@@ -72,56 +66,7 @@ def find_all_asset_tags(stock_code: str | None = None) -> list[dict]:
     return [deserialize_asset_tag(doc) for doc in snap]
 
 
-
-
 # ─── GET /holdings ─────────────────────────────────────────────────────────────
-
-async def _fetch_quotes_switched(stock_ids: list[str]) -> dict[str, dict]:
-    """並行抓取報價：盤中走 Shioaji tick，其餘走 Yahoo v8"""
-    if not stock_ids:
-        return {}
-
-    async def fetch_one(sid: str) -> tuple[str, dict | None]:
-        async def primary():
-            from services.shioaji_manager import shioaji_manager
-            # subscribe_stock 失敗（連線/合約問題）→ 讓 CB 記錄 failure
-            await shioaji_manager.subscribe_stock(sid)
-            fresh = shioaji_manager.get_fresh_quote(sid)
-            if fresh is None:
-                # 訂閱成功但 tick 尚未到達（開盤瞬態）→ 不懲罰 CB，直接 fallback
-                raise _NoTickYet()
-            return {
-                "stockId": sid, "name": sid,
-                "price":         fresh.get("price", 0),
-                "change":        fresh.get("change") or 0,
-                "changePercent": fresh.get("change_percent") or 0,
-                "high":          fresh.get("high", 0),
-                "low":           fresh.get("low", 0),
-                "volume":        fresh.get("volume", 0),
-                "marketStatus":  "TRADING",
-                "updatedAt":     int(time.time()),
-            }
-
-        async def fallback():
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, get_quote, sid)
-
-        try:
-            q = await api_switch_call(primary, fallback)
-            return sid, q
-        except _NoTickYet:
-            # tick 未到，直接走 Yahoo，不觸發 CB failure
-            try:
-                q = await fallback()
-                return sid, q
-            except Exception:
-                return sid, None
-        except Exception:
-            return sid, None
-
-    results = await asyncio.gather(*[fetch_one(sid) for sid in stock_ids])
-    return {sid: q for sid, q in results if q is not None}
-
 
 @router.get("")
 async def get_all():
@@ -141,7 +86,7 @@ async def get_all():
         })
 
     active_ids = [h["stockId"] for h in holdings if h["sharesHeld"] > 0]
-    quotes = await _fetch_quotes_switched(active_ids)
+    quotes = await get_quotes(active_ids)
 
     result = []
     for h in holdings:
@@ -150,6 +95,8 @@ async def get_all():
             h["currentPrice"]  = q.get("price", 0)
             h["change"]        = q.get("change", 0)
             h["changePercent"] = q.get("changePercent", 0)
+            h["quoteSource"]   = q.get("quoteSource", "unknown")
+            h["quoteStatus"]   = q.get("quoteStatus", "error")
         h["tags"] = tags_by_stock.get(h["stockId"], [])
         result.append(h)
 
@@ -163,20 +110,23 @@ async def get_prices():
     loop = asyncio.get_event_loop()
     holdings = await loop.run_in_executor(None, find_all_holdings)
     active = [h for h in holdings if h["sharesHeld"] > 0]
-    quotes = await _fetch_quotes_switched([h["stockId"] for h in active])
+    quotes = await get_quotes([h["stockId"] for h in active])
 
     result = []
     for h in active:
         q = quotes.get(h["stockId"], {})
-        price = q.get("price", 0) if q else 0
-        if price <= 0:
-            continue
+        price = q.get("price", 0)
+        # price=0 代表報價失敗，unrealizedProfit 設 0；前端需搭配 quoteStatus 判斷
+        unrealized = round(price * h["sharesHeld"] - h["totalCost"]) if price > 0 else 0
         result.append({
             "stockCode":        h["stockId"],
             "currentPrice":     price,
             "change":           q.get("change", 0),
             "changePct":        q.get("changePercent", 0),
-            "unrealizedProfit": round(price * h["sharesHeld"] - h["totalCost"]),
+            "unrealizedProfit": unrealized,
+            "quoteSource":      q.get("quoteSource", "unknown"),
+            "quoteStatus":      q.get("quoteStatus", "error"),
+            "quoteMessage":     q.get("quoteMessage", ""),
         })
 
     return {"success": True, "data": result}
@@ -190,35 +140,12 @@ async def get_by_id(stock_id: str):
     if not h:
         raise HTTPException(status_code=404, detail="庫存不存在")
     if h["sharesHeld"] > 0:
-        loop = asyncio.get_event_loop()
-
-        async def primary():
-            from services.shioaji_manager import shioaji_manager
-            await shioaji_manager.subscribe_stock(stock_id)
-            fresh = shioaji_manager.get_fresh_quote(stock_id)
-            if fresh is None:
-                raise RuntimeError("no fresh tick")
-            return {
-                "price":         fresh.get("price", 0),
-                "change":        fresh.get("change") or 0,
-                "changePercent": fresh.get("change_percent") or 0,
-            }
-
-        async def fallback():
-            q = await loop.run_in_executor(None, get_quote, stock_id)
-            return {"price": q.get("price", 0), "change": q.get("change", 0),
-                    "changePercent": q.get("changePercent", 0)}
-
-        try:
-            q = await api_switch_call(primary, fallback)
-            h["currentPrice"]  = q.get("price", 0)
-            h["change"]        = q.get("change", 0)
-            h["changePercent"] = q.get("changePercent", 0)
-        except Exception:
-            h["currentPrice"]  = 0
-            h["change"]        = 0
-            h["changePercent"] = 0
-
+        q = await get_quote(stock_id)
+        h["currentPrice"]  = q.get("price", 0)
+        h["change"]        = q.get("change", 0)
+        h["changePercent"] = q.get("changePercent", 0)
+        h["quoteSource"]   = q.get("quoteSource", "unknown")
+        h["quoteStatus"]   = q.get("quoteStatus", "error")
     return {"success": True, "data": h}
 
 
@@ -272,7 +199,7 @@ async def recalculate(body: list[dict]):
 
 @router.post("/{stock_code}/tags")
 async def create_asset_tag(stock_code: str, body: dict):
-    tag_name   = body.get("tagName", "").strip()
+    tag_name     = body.get("tagName", "").strip()
     weight_ratio = body.get("weightRatio")
 
     if not tag_name:
