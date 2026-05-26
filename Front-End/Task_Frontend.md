@@ -13,7 +13,148 @@
 
 ---
 
-### STRAT-F — 個股交易策略模組
+### QUOTE-F — Table 報價來源與異常狀態顯示
+
+> 配合後端 QUOTE-B：每輪報價 response 帶 `quoteSource` / `quoteStatus`，前端在 Table 小範圍顯示資料來源與本輪報價狀態。目標是讓使用者能直接看出本輪價格來自 Shioaji、TWSE、Yahoo，或該股票是否 timeout。
+
+---
+
+- **QUOTE-F-01** `types/index.ts`：新增 Quote 型別
+
+```typescript
+export type QuoteSource = 'shioaji' | 'twse' | 'yahoo' | 'unknown';
+export type QuoteStatus = 'ok' | 'stale' | 'timeout' | 'error' | 'unavailable';
+```
+
+  - `HoldingDTO` 新增：
+    - `quoteSource?: QuoteSource`
+    - `quoteStatus?: QuoteStatus`
+    - `quoteMessage?: string`
+  - `WatchlistItemDTO` 新增同樣三個欄位
+  - `HoldingPriceDTO` 新增同樣三個欄位
+
+---
+
+- **QUOTE-F-02** `models/holdingModel.ts` / `watchlistModel.ts`：接收後端報價來源欄位
+
+  - `RawHolding`、`RawWatchlistItem`、`HoldingPriceDTO` 補 `quoteSource`、`quoteStatus`、`quoteMessage`
+  - `toHoldingDTO()`、`toWatchlistItemDTO()` 直接帶入欄位
+  - `refreshPrices()` patch 價格時，同步更新每列的 `quoteSource` / `quoteStatus` / `quoteMessage`
+  - 若 `quoteStatus !== 'ok' && currentPrice === 0`，資料層可保留 0，但 UI 不應顯示為真實價格
+
+---
+
+- **QUOTE-F-03** Table 小型來源 Badge
+
+  **顯示位置**：
+  - `HoldingsTable`：放在現價/漲跌欄位旁的小 badge，不新增獨立大欄位
+  - `WatchlistTable`：放在即時價旁的小 badge
+
+  **Badge 文案**：
+  - `shioaji` + `ok` → `SH`
+  - `twse` + `ok` → `TW`
+  - `yahoo` + `ok` → `YF`
+  - `stale` → 原 source badge + 淡色樣式，例如 `SH*`
+  - `timeout` → `TO`
+  - `error` → `ER`
+  - `unavailable` → `NA`
+  - `unknown` → `--`
+
+  **Tooltip**：
+  - 正常：`資料來源：Shioaji`
+  - stale：`資料來源：Shioaji（舊快取）`
+  - timeout：`本輪報價逾時`
+  - error：顯示 `quoteMessage`，fallback `本輪報價失敗`
+  - unavailable：`本輪無可用報價`
+
+---
+
+- **QUOTE-F-04** 異常報價 UX
+
+  - `quoteStatus !== 'ok' && currentPrice === 0` 時，價格欄顯示 `—`，不要顯示 `0`，避免誤解為股價歸零
+  - 損益、現值、漲跌等衍生值維持既有值或顯示 `—`，不得因本輪 timeout 把整列視覺上變成崩跌
+  - `refreshPrices()` 若收到 timeout 占位資料，只更新 quote 狀態 badge；是否覆蓋現價需保守處理：
+    - 建議：若新資料 `currentPrice <= 0` 且 `quoteStatus !== 'ok'`，保留上一輪有效價格，僅更新 `quoteStatus`
+    - 若初始載入沒有上一輪有效價格，才顯示 `—`
+  - Table 不因部分股票 timeout 顯示全頁錯誤；只在該列顯示 badge/tooltip
+
+---
+
+- **QUOTE-F-05** 本輪來源摘要（選配）
+
+  - 在庫存持股 panel header 右側顯示輕量摘要，例如 `SH 8 / TW 1 / YF 0 / TO 1`
+  - 僅統計目前 Table 列表，不額外打 API
+  - 小螢幕可隱藏摘要，只保留每列 badge
+
+---
+
+### OPS-F — 設定子視窗：Shioaji / API Switch 診斷工具
+
+> 用於釐清 Azure 正式環境盤中 timeout 問題。UI 放在 `SettingsModal` 內，作為維運測試區塊，不影響正式輪詢資料流。
+> **依賴後端（選配但建議）**：若要精準判斷「純 Shioaji direct 是否正常」，需新增後端 debug endpoint；若先不改後端，前端只能以現有 API 狀態推測。
+
+---
+
+- **OPS-F-01** `models/systemModel.ts`：新增系統診斷 API 呼叫
+
+  - `fetchSystemStatus()` → `GET /api/v1/system/status`
+  - `testStockQuote(stockId: string)` → `GET /api/v1/stocks/{stockId}/quote`
+  - `testHoldingPrices()` → `GET /api/v1/holdings/prices`
+  - `testMarketIndices()` → `GET /api/v1/market/indices`
+  - 每個測試都記錄 `elapsedMs`、成功/失敗、錯誤訊息（timeout / network / HTTP error）
+
+---
+
+- **OPS-F-02** `useSystemDiagnosticsViewModel.ts`：管理診斷狀態
+
+  - 狀態包含：`systemStatus`、`stockQuoteResult`、`holdingPricesResult`、`marketIndicesResult`
+  - 提供 `loadStatus()`、`runStockQuoteTest(stockId)`、`runHoldingPricesTest()`、`runMarketIndicesTest()`、`runAllTests(stockId)`
+  - 測試中按鈕 disabled；每次測試保留最後一次結果與時間戳
+  - request timeout 沿用 axios 15s，結果要明確顯示「前端等待超過 15 秒」
+
+---
+
+- **OPS-F-03** `SettingsModal.tsx`：新增「API 診斷」section
+
+  **位置**：設定子視窗內，TabPanel 分頁 名稱:API 診斷。
+
+  **顯示內容**：
+  - API Switch：`source`、`marketOpen`、`shioajiEnabled`
+  - Circuit Breaker：`state`、`failureCount`
+  - Shioaji Manager：`connected`、`initialized`、`subscribedStocks`、`cachedQuotes`、`cachedFutures`
+  - 單股測試輸入框：預設 `2330`
+  - 操作按鈕：`重新讀取狀態`、`測單股報價`、`測持股批次報價`、`測市場指數`、`全部測試`
+
+  **結果呈現**：
+  - 使用扁平 `settings-row` 風格，不新增巢狀 card
+  - 每個測試顯示：狀態（成功/失敗/timeout）、耗時 ms、摘要資料
+  - `/holdings/prices` 顯示回傳筆數與前 3 筆價格摘要
+  - `/stocks/{id}/quote` 顯示 `price/change/changePercent/marketStatus/updatedAt/quoteSource/quoteStatus`
+  - `/market/indices` 顯示回傳筆數與 `twii/futures` 是否有價格
+  - timeout 或 network error 以 `--up` 顯示；成功以 `--down` 顯示；中性資訊以 `--muted`
+  - 若後端已回 `quoteStatus: "timeout"` 而非前端 axios timeout，需顯示為「後端已降級回應」，不是整個 API 失敗
+
+---
+
+- **OPS-F-04** UI/UX 注意事項
+
+  - 此功能定位為維運診斷，不在主要頁面顯示，不加入 5 秒輪詢
+  - icon-only loading 使用現有 `Icon name="progress_activity"` 並加 `aria-label`
+  - 測試按鈕需避免文字擠壓，必要時在小螢幕換行
+  - 不顯示敏感資訊（API key、secret、auth header）
+
+---
+
+- **OPS-F-05（後端協作建議）** 若現有 endpoint 無法辨識資料來源，新增後端任務：
+
+  - `GET /api/v1/system/shioaji-test?stockId=2330`
+  - 回傳 Shioaji direct 訂閱狀態、是否有 fresh tick、quote、elapsedMs
+  - 不經 Yahoo fallback，避免診斷時混淆「Shioaji 正常」與「fallback 成功」
+  - 若後端新增此 endpoint，前端診斷面板增加「Shioaji Direct」測試列
+
+---
+
+### STRAT-F — 個股交易策略模組 (暫不開發)
 
 > AI 透過 MCP 分析後產出結構化策略並存入 DB；前端以圖示入口 + 子視窗顯示最新一筆策略內容。
 > **依賴後端**：STRAT-B-01（REST API）、STRAT-B-02（MCP Tools）需先完成。
