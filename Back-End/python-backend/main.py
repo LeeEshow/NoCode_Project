@@ -114,9 +114,16 @@ class EasyAuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(EasyAuthMiddleware)
 
 _allowed_origins = [o.strip() for o in _s.allowed_origins.split(",") if o.strip()]
+# allow_origins=["*"] 搭配 allow_credentials=True 會觸發 Starlette ValueError；
+# 改用 allow_origin_regex=".*" 可允許任意來源同時保留 credentials header。
+_cors_kwargs = (
+    {"allow_origin_regex": ".*"}
+    if "*" in _allowed_origins
+    else {"allow_origins": _allowed_origins}
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins,
+    **_cors_kwargs,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
