@@ -1,52 +1,168 @@
 /* ── Settings Modal size override ── */
 .settings-modal {
-  width:      80vw;
-  height:     80vh;
-  max-width:  80vw;
-  max-height: 80vh;
+  width:      960px;
+  height:     720px;
+  max-width:  calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+}
+
+/* ── Tab Bar ── */
+.settings-tabs {
+  display:       flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  gap:           0;
+  flex-shrink:   0;
+}
+
+.settings-tab {
+  padding:        8px 18px;
+  background:     none;
+  border:         none;
+  border-bottom:  2px solid transparent;
+  color:          var(--muted);
+  font-size:      var(--text-sm);
+  font-family:    var(--font-sans);
+  cursor:         pointer;
+  transition:     color 0.15s, border-color 0.15s;
+  white-space:    nowrap;
+}
+
+.settings-tab:hover            { color: var(--text); }
+.settings-tab[aria-selected="true"] {
+  color:        var(--text);
+  border-bottom-color: var(--accent);
 }
 
 /* ── Settings Modal Layout ── */
 
 /* Section */
 .settings-section + .settings-section {
-  margin-top: 20px;
+  margin-top:  20px;
   padding-top: 20px;
-  border-top: 1px solid var(--border);
+  border-top:  1px solid var(--border);
 }
 
 .settings-section__label {
-  color: var(--label);
-  font-size: 11px;
-  font-weight: 600;
+  color:          var(--label);
+  font-size:      11px;
+  font-weight:    600;
   letter-spacing: 0.07em;
-  margin-bottom: 12px;
+  margin-bottom:  12px;
   text-transform: uppercase;
 }
 
 /* Row */
 .settings-row {
-  align-items: center;
-  display: flex;
-  gap: 12px;
+  align-items:   center;
+  display:       flex;
+  gap:           12px;
   margin-bottom: 8px;
-  min-height: 32px;
+  min-height:    32px;
 }
 .settings-row:last-child { margin-bottom: 0; }
 
 .settings-row__label {
-  color: var(--muted);
+  color:      var(--muted);
   flex-shrink: 0;
-  font-size: var(--text-sm);
-  width: 90px;
+  font-size:  var(--text-sm);
+  width:      90px;
 }
 
 .settings-row__value {
-  color: var(--text-value);
-  flex: 1;
+  color:       var(--text-value);
+  flex:        1;
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  font-size:   var(--text-sm);
 }
 
 .settings-row__action { margin-left: auto; }
 
+/* ── API 診斷 Tab ── */
+
+.diag-controls {
+  display:     flex;
+  flex-wrap:   wrap;
+  gap:         8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.diag-stock-input {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  font-size:   var(--text-sm);
+  color:       var(--muted);
+}
+
+.diag-stock-input input {
+  width:            72px;
+  padding:          4px 8px;
+  background:       var(--surface);
+  border:           1px solid var(--border);
+  border-radius:    var(--radius-xs);
+  color:            var(--text-value);
+  font-family:      var(--font-mono);
+  font-size:        var(--text-sm);
+  text-align:       center;
+}
+
+.diag-stock-input input:focus {
+  outline:      none;
+  border-color: var(--accent-bd);
+}
+
+.diag-result-list {
+  display:       flex;
+  flex-direction: column;
+  gap:           2px;
+}
+
+.diag-result-row {
+  display:       flex;
+  align-items:   baseline;
+  gap:           10px;
+  padding:       7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size:     var(--text-sm);
+}
+.diag-result-row:last-child { border-bottom: none; }
+
+.diag-result-row__name {
+  width:      110px;
+  flex-shrink: 0;
+  color:       var(--muted);
+}
+
+.diag-result-row__status {
+  width:       56px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.diag-result-row__elapsed {
+  width:       56px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  color:       var(--dim);
+}
+
+.diag-result-row__detail {
+  flex:        1;
+  color:       var(--muted);
+  font-family: var(--font-mono);
+  word-break:  break-all;
+}
+
+.diag-status-grid {
+  display:               grid;
+  grid-template-columns: 140px 1fr 140px 1fr;
+  gap:                   4px 12px;
+  font-size:             var(--text-sm);
+  margin-bottom:         4px;
+}
+
+.diag-status-grid__key   { color: var(--muted); }
+.diag-status-grid__value { color: var(--text-value); font-family: var(--font-mono); }

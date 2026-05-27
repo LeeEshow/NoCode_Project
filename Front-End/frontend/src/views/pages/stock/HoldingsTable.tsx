@@ -95,6 +95,9 @@ const HoldingRow = memo(function HoldingRow({
   const arrow = h.changePct === 0 ? '—' : (h.isUp ? '▲' : '▼');
   const sign  = h.changePct > 0 ? '+' : '';
 
+  /* QUOTE-F-04：無效報價（初始載入無上輪價格）時顯示 — */
+  const hasBadQuote = h.currentPrice === 0 && h.quoteStatus != null && h.quoteStatus !== 'ok';
+
   return (
     <tr
       ref={setNodeRef}
@@ -129,20 +132,26 @@ const HoldingRow = memo(function HoldingRow({
         </div>
       </td>
       <td className="right">
-        <ValTooltip label="市值" value={h.currentValue}>
-          <span className="num-value">{fmt(h.currentPrice, 2)}</span>
-        </ValTooltip>
+        {hasBadQuote
+          ? <span className="num-value" style={{ color: 'var(--dim)' }}>—</span>
+          : <ValTooltip label="市值" value={h.currentValue}>
+              <span className="num-value">{fmt(h.currentPrice, 2)}</span>
+            </ValTooltip>
+        }
       </td>
       <td className="right">
-        <ValTooltip
-          label="漲跌"
-          value={(h.isUp ? 1 : -1) * Math.abs(h.change) * h.shares}
-          color={h.changePct === 0 ? 'var(--dim)' : (h.isUp ? 'var(--up)' : 'var(--down)')}
-        >
-          <span className={`change-tag ${cls}`}>
-            {arrow}&nbsp;{fmt(Math.abs(h.change), 2)}&nbsp;&nbsp;{sign}{fmt(h.changePct, 2)}%
-          </span>
-        </ValTooltip>
+        {hasBadQuote
+          ? <span style={{ color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>—</span>
+          : <ValTooltip
+              label="漲跌"
+              value={(h.isUp ? 1 : -1) * Math.abs(h.change) * h.shares}
+              color={h.changePct === 0 ? 'var(--dim)' : (h.isUp ? 'var(--up)' : 'var(--down)')}
+            >
+              <span className={`change-tag ${cls}`}>
+                {arrow}&nbsp;{fmt(Math.abs(h.change), 2)}&nbsp;&nbsp;{sign}{fmt(h.changePct, 2)}%
+              </span>
+            </ValTooltip>
+        }
       </td>
       <td className="center">
         {sparkline.length > 1
@@ -159,16 +168,19 @@ const HoldingRow = memo(function HoldingRow({
       </td>
       <td className="right num-value" style={{ color: 'var(--muted)' }}>{fmt(h.shares, 0)}</td>
       <td className="right">
-        <ValTooltip
-          label="損益"
-          value={h.unrealizedProfit}
-          color={h.returnPct === 0 ? undefined : (h.returnPct > 0 ? 'var(--up)' : 'var(--down)')}
-        >
-          <span className={`mono ${h.returnPct === 0 ? 'txt-flat' : (h.returnPct > 0 ? 'txt-up' : 'txt-down')}`}
-            style={{ fontWeight: 600 }}>
-            {h.returnPct > 0 ? '+' : ''}{fmt(h.returnPct, 2)}%
-          </span>
-        </ValTooltip>
+        {hasBadQuote
+          ? <span style={{ color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>—</span>
+          : <ValTooltip
+              label="損益"
+              value={h.unrealizedProfit}
+              color={h.returnPct === 0 ? undefined : (h.returnPct > 0 ? 'var(--up)' : 'var(--down)')}
+            >
+              <span className={`mono ${h.returnPct === 0 ? 'txt-flat' : (h.returnPct > 0 ? 'txt-up' : 'txt-down')}`}
+                style={{ fontWeight: 600 }}>
+                {h.returnPct > 0 ? '+' : ''}{fmt(h.returnPct, 2)}%
+              </span>
+            </ValTooltip>
+        }
       </td>
       <td className="center">
         <SuggestionCell s={suggestion} />

@@ -1,11 +1,13 @@
 import asyncio
 import logging
+import time
 from typing import Optional
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-_TICK_MAX_AGE_SECONDS = 120  # 盤中 futures / TAIEX tick 有效期（秒）
+_TICK_MAX_AGE_SECONDS = 120  # 盤中 TXF futures tick 有效期（秒）
+_TAIEX_SNAP_TTL = 5          # TAIEX snapshot 內部快取 TTL（秒）
 
 
 def _is_fresh(cached: dict) -> bool:
@@ -25,10 +27,11 @@ class ShioajiManager:
         self._initialized = False
         self._api_key = ""
         self._secret_key = ""
-        # _quote_cache：僅用於 TAIEX 指數 tick（key="001"）
-        self._quote_cache: dict[str, dict] = {}
         self._futures_cache: dict[str, dict] = {}
         self._txf_reference: Optional[float] = None
+        # TAIEX snapshot 快取（Index 合約不支援 Tick，改用 api.snapshots()）
+        self._taiex_snap_data: Optional[dict] = None
+        self._taiex_snap_ts: float = 0.0
         # Snapshot 併發限流：防止 asyncio.wait_for timeout 後底層 thread 持續堆積
         # batch：同時只允許 1 個批次呼叫；若已在飛行中，回 all-None 直接走 fallback
         # single：最多 3 個並行單股呼叫；超出時回 None 走 fallback，不計 CB failure
@@ -67,24 +70,7 @@ class ShioajiManager:
 
     def _setup_callbacks(self) -> None:
         import shioaji as sj
-        from shioaji import Exchange, TickFOPv1, TickSTKv1
-
-        @self._api.on_tick_stk_v1()
-        def on_stk_tick(exchange: Exchange, tick: TickSTKv1) -> None:
-            # 只快取 TAIEX 加權指數（code="001"）；個股 tick 不再使用
-            if tick.code == "001":
-                self._quote_cache["001"] = {
-                    "code": tick.code,
-                    "price": float(tick.close),
-                    "open": float(tick.open),
-                    "high": float(tick.high),
-                    "low": float(tick.low),
-                    "volume": tick.total_volume,
-                    "change": float(tick.price_chg),
-                    "change_percent": float(tick.pct_chg),
-                    "timestamp": tick.datetime.isoformat(),
-                    "source": "tick",
-                }
+        from shioaji import Exchange, TickFOPv1
 
         @self._api.on_tick_fop_v1()
         def on_fop_tick(exchange: Exchange, tick: TickFOPv1) -> None:
@@ -110,7 +96,7 @@ class ShioajiManager:
             logger.info(f"Shioaji event [{event_code}]: {info}")
             if event_code == 2:
                 self._connected = False
-                self._quote_cache.clear()
+                self._taiex_snap_ts = 0.0
                 self._futures_cache.clear()
                 logger.warning("Shioaji disconnected, cache cleared")
             elif event_code == 4:
@@ -146,27 +132,48 @@ class ShioajiManager:
         except Exception as e:
             logger.warning(f"TXF subscribe failed: {e}")
 
-        # 加權指數
-        try:
-            contract = self._api.Contracts.Indexs["TSE001"]
-            self._api.quote.subscribe(contract, quote_type=sj.constant.QuoteType.Tick)
-            logger.info("Subscribed TAIEX TSE001")
-        except Exception as e:
-            logger.warning(f"TAIEX subscribe failed: {e}")
-
     async def _resubscribe_startup(self) -> None:
-        """斷線重連後只重訂閱 TXF 和 TAIEX，不訂閱個股（個股改用 snapshot API）。"""
+        """斷線重連後重訂閱 TXF（個股與 TAIEX 改用 snapshot API，不需重訂閱）。"""
         await asyncio.to_thread(self._subscribe_startup_contracts)
-
-    def get_cached_taiex(self) -> Optional[dict]:
-        cached = self._quote_cache.get("001")
-        return cached if (cached and _is_fresh(cached)) else None
 
     def get_cached_futures(self) -> Optional[dict]:
         for code, data in self._futures_cache.items():
             if "TXF" in code and _is_fresh(data):
                 return data
         return None
+
+    async def get_taiex_snapshot(self) -> Optional[dict]:
+        """
+        透過 api.snapshots() 取得加權指數即時資料（_TAIEX_SNAP_TTL 秒內部快取）。
+        Index 合約不支援 Tick 訂閱，改用 HTTP snapshot 查詢。
+        回傳 snake_case dict，供 market.py 的 _sj_to_index_card() 使用。
+        """
+        if self._taiex_snap_data and (time.time() - self._taiex_snap_ts) < _TAIEX_SNAP_TTL:
+            return self._taiex_snap_data
+
+        def _snap() -> Optional[dict]:
+            try:
+                contract = self._api.Contracts.Indexs["TSE001"]
+                snaps = self._api.snapshots([contract])
+                if not snaps:
+                    return None
+                snap = snaps[0]
+                if float(snap.close) <= 0:
+                    return None
+                return {
+                    "price":          float(snap.close),
+                    "change":         float(snap.change_price),
+                    "change_percent": float(snap.change_rate),
+                }
+            except Exception as e:
+                logger.warning("get_taiex_snapshot error: %s", e)
+                return None
+
+        result = await asyncio.to_thread(_snap)
+        if result is not None:
+            self._taiex_snap_data = result
+            self._taiex_snap_ts = time.time()
+        return result
 
     def get_nearest_txf_contract(self):
         return self._get_nearest_txf()

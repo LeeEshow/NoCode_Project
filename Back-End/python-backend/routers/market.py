@@ -22,11 +22,12 @@ async def market_indices():
     loop = asyncio.get_event_loop()
     cards = await loop.run_in_executor(None, get_indices)
 
-    # 盤中且 Shioaji 已啟用時，以 tick 資料覆蓋 TAIEX（index 0）和台指期（index 1）
+    # 盤中且 Shioaji 已啟用時，覆蓋 TAIEX（index 0）和台指期（index 1）
+    # TAIEX：api.snapshots()（Index 不支援 Tick）；台指期：WebSocket tick
     if shioaji_enabled() and is_market_open():
         from services.shioaji_manager import shioaji_manager
         if shioaji_manager.initialized:
-            taiex = shioaji_manager.get_cached_taiex()
+            taiex = await shioaji_manager.get_taiex_snapshot()
             if taiex:
                 cards[0] = _sj_to_index_card("twii", "台股大盤", taiex)
             futures = shioaji_manager.get_cached_futures()

@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import type { ApiResponse, WatchlistItemDTO, CreateWatchlistPayload } from '../types';
+import type { ApiResponse, WatchlistItemDTO, CreateWatchlistPayload, QuoteSource, QuoteStatus } from '../types';
 
 /* 後端 Watchlist 回傳（含即時報價注入） */
 interface RawWatchlistItem {
@@ -13,6 +13,9 @@ interface RawWatchlistItem {
   change?:        number | null;
   changePercent?: number | null;
   judgment?:      string | null;
+  quoteSource?:   string;
+  quoteStatus?:   string;
+  quoteMessage?:  string;
 }
 
 function toWatchlistItemDTO(raw: RawWatchlistItem): WatchlistItemDTO {
@@ -30,6 +33,9 @@ function toWatchlistItemDTO(raw: RawWatchlistItem): WatchlistItemDTO {
     isUp:   changePct > 0,
     signal: raw.judgment === '買進' ? 'buy' : 'wait',
     note:   raw.note || undefined,
+    quoteSource:  raw.quoteSource  as QuoteSource | undefined,
+    quoteStatus:  raw.quoteStatus  as QuoteStatus | undefined,
+    quoteMessage: raw.quoteMessage,
   };
 }
 

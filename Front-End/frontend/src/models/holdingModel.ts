@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import type { ApiResponse, HoldingDTO, HoldingTagDTO, KLineDTO, StockProfileDTO, StockSearchResultDTO, ChipDTO } from '../types';
+import type { ApiResponse, HoldingDTO, HoldingTagDTO, KLineDTO, StockProfileDTO, StockSearchResultDTO, ChipDTO, QuoteSource, QuoteStatus } from '../types';
 
 /* ── 後端原始型別 ── */
 interface RawHolding {
@@ -15,6 +15,9 @@ interface RawHolding {
   change?:        number;
   changePercent?: number;
   tags?:          HoldingTagDTO[];
+  quoteSource?:   string;
+  quoteStatus?:   string;
+  quoteMessage?:  string;
 }
 
 interface RawHistoryPoint {
@@ -97,6 +100,9 @@ function toHoldingDTO(raw: RawHolding): HoldingDTO {
     changePct,
     isUp: changePct > 0,
     tags:            raw.tags ?? [],
+    quoteSource:     raw.quoteSource  as QuoteSource | undefined,
+    quoteStatus:     raw.quoteStatus  as QuoteStatus | undefined,
+    quoteMessage:    raw.quoteMessage,
   };
 }
 
@@ -204,6 +210,9 @@ export interface HoldingPriceDTO {
   change:           number;
   changePct:        number;
   unrealizedProfit: number;
+  quoteSource?:     string;
+  quoteStatus?:     string;
+  quoteMessage?:    string;
 }
 
 export async function fetchHoldingPrices(): Promise<HoldingPriceDTO[]> {

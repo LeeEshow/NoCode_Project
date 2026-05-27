@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import { isTradingHours } from '../../utils/tradingHours';
 import { useLatest } from '../../utils/useLatest';
 import PanelHeader from '../components/PanelHeader';
@@ -22,7 +23,104 @@ import WatchlistTable       from './stock/WatchlistTable';
 import WatchlistModal       from './stock/WatchlistModal';
 import RiskPanel from './stock/RiskPanel';
 import { toast } from '../components/Toast/toastStore';
-import type { WatchlistItemDTO, CreateWatchlistPayload, RebalanceSuggestion } from '../../types';
+import type { WatchlistItemDTO, CreateWatchlistPayload, RebalanceSuggestion, QuoteSource, QuoteStatus } from '../../types';
+
+/* ── QUOTE-F-05：報價來源摘要 ── */
+
+interface QuoteSummary {
+  sj: number; tw: number; yf: number; er: number;
+  erDetail: { timeout: number; error: number; unavailable: number; unknown: number; stale: number };
+}
+
+function computeQuoteSummary(
+  items: Array<{ quoteSource?: QuoteSource; quoteStatus?: QuoteStatus }>
+): QuoteSummary | null {
+  if (items.length === 0) return null;
+  /* 至少一筆有 quoteSource 才顯示 */
+  if (!items.some(i => i.quoteSource != null)) return null;
+  const s: QuoteSummary = { sj: 0, tw: 0, yf: 0, er: 0, erDetail: { timeout: 0, error: 0, unavailable: 0, unknown: 0, stale: 0 } };
+  for (const item of items) {
+    const status = item.quoteStatus ?? 'ok';
+    const source = item.quoteSource ?? 'unknown';
+    if (status === 'ok') {
+      if      (source === 'shioaji') s.sj++;
+      else if (source === 'twse')    s.tw++;
+      else if (source === 'yahoo')   s.yf++;
+      else                           s.er++;   // ok + unknown → ER
+    } else {
+      s.er++;
+      if      (status === 'timeout')     s.erDetail.timeout++;
+      else if (status === 'error')       s.erDetail.error++;
+      else if (status === 'unavailable') s.erDetail.unavailable++;
+      else if (status === 'stale')       s.erDetail.stale++;
+      else                               s.erDetail.unknown++;
+    }
+  }
+  return s;
+}
+
+const TOOLTIP_STYLE: React.CSSProperties = {
+  background: 'var(--surface)',
+  border: '1px solid var(--border-hi)',
+  borderRadius: 'var(--radius-sm)',
+  padding: '6px 10px',
+  fontSize: 'var(--text-sm)',
+  color: 'var(--muted)',
+  zIndex: 9999,
+  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+  lineHeight: 1.7,
+  whiteSpace: 'nowrap',
+};
+
+function QuoteSummaryBadge({ summary }: { summary: QuoteSummary }) {
+  const { sj, tw, yf, er, erDetail } = summary;
+
+  const tooltipContent = (
+    <div>
+      <div>
+        {[
+          sj > 0 && `Shioaji ${sj} 支`,
+          tw > 0 && `TWSE ${tw} 支`,
+          yf > 0 && `Yahoo ${yf} 支`,
+        ].filter(Boolean).join(' ／ ') || '無正常報價'}
+      </div>
+      {er > 0 && (
+        <div style={{ marginTop: 2, borderTop: '1px solid var(--border)', paddingTop: 2 }}>
+          {erDetail.timeout     > 0 && <div>timeout {erDetail.timeout} 支</div>}
+          {erDetail.error       > 0 && <div>error {erDetail.error} 支</div>}
+          {erDetail.unavailable > 0 && <div>unavailable {erDetail.unavailable} 支</div>}
+          {erDetail.stale       > 0 && <div>stale {erDetail.stale} 支</div>}
+          {erDetail.unknown     > 0 && <div>unknown {erDetail.unknown} 支</div>}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>
+        <span style={{
+          fontSize: 'var(--text-xs)',
+          color: 'var(--muted)',
+          fontFamily: 'var(--font-mono)',
+          letterSpacing: '0.03em',
+          cursor: 'default',
+          userSelect: 'none',
+        }}>
+          {sj > 0 && <span>SJ {sj}&nbsp;&nbsp;</span>}
+          {tw > 0 && <span>TW {tw}&nbsp;&nbsp;</span>}
+          {yf > 0 && <span>YF {yf}&nbsp;&nbsp;</span>}
+          {er > 0 && <span style={{ color: 'var(--up)' }}>ER {er}</span>}
+        </span>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content sideOffset={6} style={TOOLTIP_STYLE}>
+          {tooltipContent}
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -178,6 +276,10 @@ export default function StockOverviewPage() {
     return () => clearInterval(id);
   }, []);
 
+  /* QUOTE-F-05：報價來源摘要（純前端計算，零額外 API） */
+  const holdingQuoteSummary  = useMemo(() => computeQuoteSummary(holdings.items),  [holdings.items]);
+  const watchlistQuoteSummary = useMemo(() => computeQuoteSummary(watchlist.items), [watchlist.items]);
+
   /* PanelHeader 財務數值 */
   const { totalCurrentValue, totalDailyAmt, totalUnrealizedProfit } = useMemo(() => ({
     totalCurrentValue:    holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 0.997, 0),
@@ -327,7 +429,14 @@ export default function StockOverviewPage() {
         {/* ── 庫存持股 Panel（P2-12 ~ P2-16）── */}
         <div className="ft-panel" style={{ marginBottom: 16 }}>
           <div className="ft-section-header">
-            <span className="ft-section-title">庫存持股</span>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+              <span className="ft-section-title">庫存持股</span>
+              {holdingQuoteSummary && (
+                <Tooltip.Provider delayDuration={300}>
+                  <QuoteSummaryBadge summary={holdingQuoteSummary} />
+                </Tooltip.Provider>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="btn-ghost" onClick={() => { holdings.refreshPrices(); market.silentReload(); }}>重新整理</button>
               <button className="btn-ghost" onClick={() => setAddHoldingOpen(true)}>＋ 新增</button>
@@ -369,7 +478,14 @@ export default function StockOverviewPage() {
         {/* ── 關注清單 Panel（P2-23）── */}
         <div className="ft-panel">
           <div className="ft-section-header">
-            <span className="ft-section-title">關注清單</span>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+              <span className="ft-section-title">關注清單</span>
+              {watchlistQuoteSummary && (
+                <Tooltip.Provider delayDuration={300}>
+                  <QuoteSummaryBadge summary={watchlistQuoteSummary} />
+                </Tooltip.Provider>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 className="btn-ghost"

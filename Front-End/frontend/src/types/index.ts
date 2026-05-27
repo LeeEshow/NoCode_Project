@@ -42,6 +42,11 @@ export interface StockSearchResultDTO {
   name: string;
 }
 
+/* ── 報價來源與狀態（QUOTE-F-01）──────────────────────────── */
+
+export type QuoteSource = 'shioaji' | 'twse' | 'yahoo' | 'unknown';
+export type QuoteStatus = 'ok' | 'stale' | 'timeout' | 'error' | 'unavailable';
+
 /* ── 即時報價 ───────────────────────────────────────────────── */
 
 export interface StockQuoteDTO {
@@ -175,6 +180,9 @@ export interface HoldingDTO {
   changePct:      number;
   isUp:           boolean;
   tags:           HoldingTagDTO[];
+  quoteSource?:   QuoteSource;
+  quoteStatus?:   QuoteStatus;
+  quoteMessage?:  string;
 }
 
 export interface RecalculatePayload {
@@ -199,6 +207,9 @@ export interface WatchlistItemDTO {
   isUp:         boolean;
   signal:       'buy' | 'wait';
   note?:        string;
+  quoteSource?:  QuoteSource;
+  quoteStatus?:  QuoteStatus;
+  quoteMessage?: string;
 }
 
 export interface CreateWatchlistPayload {

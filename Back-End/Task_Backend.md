@@ -24,7 +24,7 @@
 
 ---
 
-## 現況（2026-05-26）
+## 現況（2026-05-27）
 
 - **M1–M8 全部完成**：Python FastAPI 後端穩定運作於 Azure App Service
 - **MCP 全部完成**：18 個 Tool + SSE/Streamable HTTP 雙傳輸層
@@ -32,6 +32,7 @@
 - **FinMind 同步完成**：三大法人 + 基本面資料；`yfinance` 已移除
 - **舊服務清理完成**（2026-05-25）：`Back-End/backend/`（Node.js）、`Back-End/Shioaji_API/` 已移除
 - **報價來源重構完成**（2026-05-26）：`services/quote_service.py` 集中報價邏輯；Shioaji 改用 `api.snapshots()` 取代 WebSocket tick；`CircuitOpenError` 與 API RuntimeError 分流；Semaphore 防止 hung thread 堆積；盤中 TWSE fallback 跳過修正；`tests/test_quote_service.py` 15 個 mock 測試全通過（161 passed）
+- **TAIEX 大盤指數修正完成**（2026-05-27）：Shioaji Index 合約不支援 Tick 訂閱，`get_cached_taiex()`（tick 快取）改為 `get_taiex_snapshot()`（`api.snapshots()`，5s TTL）；移除無效的 TSE001 Tick 訂閱；176 passed
 
 ### 報價 Provider 順位
 

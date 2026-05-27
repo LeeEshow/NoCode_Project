@@ -44,31 +44,6 @@ export type QuoteStatus = 'ok' | 'stale' | 'timeout' | 'error' | 'unavailable';
 
 ---
 
-- **QUOTE-F-03** Table 小型來源 Badge
-
-  **顯示位置**：
-  - `HoldingsTable`：放在現價/漲跌欄位旁的小 badge，不新增獨立大欄位
-  - `WatchlistTable`：放在即時價旁的小 badge
-
-  **Badge 文案**：
-  - `shioaji` + `ok` → `SH`
-  - `twse` + `ok` → `TW`
-  - `yahoo` + `ok` → `YF`
-  - `stale` → 原 source badge + 淡色樣式，例如 `SH*`
-  - `timeout` → `TO`
-  - `error` → `ER`
-  - `unavailable` → `NA`
-  - `unknown` → `--`
-
-  **Tooltip**：
-  - 正常：`資料來源：Shioaji`
-  - stale：`資料來源：Shioaji（舊快取）`
-  - timeout：`本輪報價逾時`
-  - error：顯示 `quoteMessage`，fallback `本輪報價失敗`
-  - unavailable：`本輪無可用報價`
-
----
-
 - **QUOTE-F-04** 異常報價 UX
 
   - `quoteStatus !== 'ok' && currentPrice === 0` 時，價格欄顯示 `—`，不要顯示 `0`，避免誤解為股價歸零
@@ -76,15 +51,32 @@ export type QuoteStatus = 'ok' | 'stale' | 'timeout' | 'error' | 'unavailable';
   - `refreshPrices()` 若收到 timeout 占位資料，只更新 quote 狀態 badge；是否覆蓋現價需保守處理：
     - 建議：若新資料 `currentPrice <= 0` 且 `quoteStatus !== 'ok'`，保留上一輪有效價格，僅更新 `quoteStatus`
     - 若初始載入沒有上一輪有效價格，才顯示 `—`
-  - Table 不因部分股票 timeout 顯示全頁錯誤；只在該列顯示 badge/tooltip
+  - Table 不因部分股票 timeout 顯示全頁錯誤；只更新 Header 摘要的 ER 計數
 
 ---
 
-- **QUOTE-F-05** 本輪來源摘要（選配）
+- **QUOTE-F-05** Panel Header 本輪來源摘要
 
-  - 在庫存持股 panel header 右側顯示輕量摘要，例如 `SH 8 / TW 1 / YF 0 / TO 1`
+  **顯示位置**：`HoldingsTable` 與 `WatchlistTable` 各自的 panel header 右側。
+
+  **格式**：`SJ 8  TW 1  YF 0  ER 2`
   - 僅統計目前 Table 列表，不額外打 API
-  - 小螢幕可隱藏摘要，只保留每列 badge
+  - 各來源數值為 0 時仍顯示（讓使用者確認來源分佈）
+
+  **簡寫對照**：
+  - `shioaji` + `ok` → `SJ`
+  - `twse` + `ok` → `TW`
+  - `yahoo` + `ok` → `YF`
+  - 所有異常（`timeout` / `error` / `unavailable` / `unknown` / `stale`）→ 統計為 `ER`
+
+  **樣式**：
+  - 字體：`text-sm` + `var(--muted)`
+  - `ER` 數值 > 0 時改用 `var(--up)` 凸顯
+
+  **Tooltip**（Radix Tooltip，hover 觸發）：
+  - 各來源完整名稱與支數：`Shioaji 8 支 ／ TWSE 1 支 ／ Yahoo 0 支`
+  - 異常細節分拆（各類型分行）：`timeout 1 支 ／ error 1 支`
+  - 無異常時不顯示異常列
 
 ---
 
@@ -114,11 +106,18 @@ export type QuoteStatus = 'ok' | 'stale' | 'timeout' | 'error' | 'unavailable';
 
 ---
 
-- **OPS-F-03** `SettingsModal.tsx`：新增「API 診斷」section
+- **OPS-F-03** `SettingsModal.tsx`：重構為 Tab 結構並新增「API 診斷」分頁
 
-  **位置**：設定子視窗內，TabPanel 分頁 名稱:API 診斷。
+  **Modal 尺寸**：改為固定值 `width: 960px; height: 720px`（含 `max-width/max-height`），更新 `SettingsModal.css` 的 `.settings-modal`。
 
-  **顯示內容**：
+  **Tab 結構**：現有扁平 section（股票清單、每日快照）拆為獨立 Tab，新增第三個 Tab：
+  - Tab 1：`股票清單`（現有內容不動）
+  - Tab 2：`每日快照`（現有內容不動）
+  - Tab 3：`API 診斷`（新增）
+
+  使用 `role="tablist"` / `role="tab"` / `role="tabpanel"` / `aria-selected`，樣式沿用 `global.css` 既有 Tab class。
+
+  **API 診斷 Tab 顯示內容**：
   - API Switch：`source`、`marketOpen`、`shioajiEnabled`
   - Circuit Breaker：`state`、`failureCount`
   - Shioaji Manager：`connected`、`initialized`、`subscribedStocks`、`cachedQuotes`、`cachedFutures`

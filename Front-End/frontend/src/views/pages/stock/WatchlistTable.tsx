@@ -63,6 +63,9 @@ const WatchlistRow = memo(function WatchlistRow({ item, sparkline, isExpanded, o
   const arrow = item.changePct === 0 ? '—' : (item.isUp ? '▲' : '▼');
   const sign  = item.changePct > 0 ? '+' : '';
 
+  /* QUOTE-F-04：無效報價時顯示 — */
+  const hasBadQuote = item.currentPrice === 0 && item.quoteStatus != null && item.quoteStatus !== 'ok';
+
   return (
     <tr
       ref={setNodeRef}
@@ -96,11 +99,19 @@ const WatchlistRow = memo(function WatchlistRow({ item, sparkline, isExpanded, o
           </a>
         </div>
       </td>
-      <td className="right"><span className="num-value">{fmt(item.currentPrice)}</span></td>
       <td className="right">
-        <span className={`change-tag ${cls}`}>
-          {arrow} {fmt(Math.abs(item.change))}&nbsp;&nbsp;{sign}{fmt(item.changePct)}%
-        </span>
+        {hasBadQuote
+          ? <span className="num-value" style={{ color: 'var(--dim)' }}>—</span>
+          : <span className="num-value">{fmt(item.currentPrice)}</span>
+        }
+      </td>
+      <td className="right">
+        {hasBadQuote
+          ? <span style={{ color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>—</span>
+          : <span className={`change-tag ${cls}`}>
+              {arrow} {fmt(Math.abs(item.change))}&nbsp;&nbsp;{sign}{fmt(item.changePct)}%
+            </span>
+        }
       </td>
       <td className="center">
         {sparkline.length > 1
