@@ -96,13 +96,10 @@ def record_snapshot() -> dict:
     executor = get_executor()
     vix_fut = executor.submit(_get_vix)
     quote_futures = {executor.submit(fetch_quote, sid): sid for sid in needed_ids}
-    try:
-        vix, market_state_auto = vix_fut.result(timeout=10)
-    except Exception:
-        vix, market_state_auto = None, None
+    vix, market_state_auto = vix_fut.result()
     for fut in quote_futures:
         try:
-            sid, q = fut.result(timeout=10)
+            sid, q = fut.result()
             quotes[sid] = q
         except Exception:
             pass

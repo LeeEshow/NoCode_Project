@@ -75,7 +75,7 @@ def _fetch_twse(stock_id: str, date_str: str) -> dict | None:
             res = requests.get(
                 "https://www.twse.com.tw/exchangeReport/STOCK_DAY",
                 params={"response": "json", "date": date_str, "stockNo": stock_id},
-                timeout=3,
+                timeout=10,
                 headers=_HEADERS,
             )
             res.raise_for_status()
