@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -8,6 +9,12 @@ logger = logging.getLogger(__name__)
 
 _TICK_MAX_AGE_SECONDS = 120  # 盤中 TXF futures tick 有效期（秒）
 _TAIEX_SNAP_TTL = 5          # TAIEX snapshot 內部快取 TTL（秒）
+
+# Shioaji api.snapshots() 專用 thread pool，與 asyncio 預設 executor 隔離。
+# Shioaji hang 時 thread 只卡在此 pool，不影響 Firestore / Yahoo Finance 等其他 IO。
+# max_workers=4：批次(1) + TAIEX(1) + 單股(3) 的正常並發上限；
+# pool 滿時後續任務進 queue，wait_for 觸發後 Future.cancel() 對 queued 任務有效。
+_sj_snap_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sj-snap")
 
 
 def _is_fresh(cached: dict) -> bool:
@@ -33,8 +40,10 @@ class ShioajiManager:
         self._taiex_snap_data: Optional[dict] = None
         self._taiex_snap_ts: float = 0.0
         # Snapshot 併發限流：防止 asyncio.wait_for timeout 後底層 thread 持續堆積
-        # batch：同時只允許 1 個批次呼叫；若已在飛行中，回 all-None 直接走 fallback
+        # taiex ：同時只允許 1 個 TAIEX 查詢；若已在飛行中，回傳舊快取
+        # batch ：同時只允許 1 個批次呼叫；若已在飛行中，回 all-None 直接走 fallback
         # single：最多 3 個並行單股呼叫；超出時回 None 走 fallback，不計 CB failure
+        self._taiex_snap_sem = asyncio.Semaphore(1)
         self._snap_batch_sem = asyncio.Semaphore(1)
         self._snap_single_sem = asyncio.Semaphore(3)
 
@@ -169,7 +178,12 @@ class ShioajiManager:
                 logger.warning("get_taiex_snapshot error: %s", e)
                 return None
 
-        result = await asyncio.to_thread(_snap)
+        if self._taiex_snap_sem.locked():
+            return self._taiex_snap_data  # 已有查詢在執行中，回傳舊快取
+
+        loop = asyncio.get_event_loop()
+        async with self._taiex_snap_sem:
+            result = await loop.run_in_executor(_sj_snap_executor, _snap)
         if result is not None:
             self._taiex_snap_data = result
             self._taiex_snap_ts = time.time()
@@ -250,8 +264,9 @@ class ShioajiManager:
                 return None
             return self._snap_to_dict(snap)
 
+        loop = asyncio.get_event_loop()
         async with self._snap_single_sem:
-            return await asyncio.to_thread(_snap)
+            return await loop.run_in_executor(_sj_snap_executor, _snap)
 
     async def get_stock_snapshots(self, stock_ids: list[str]) -> dict[str, Optional[dict]]:
         """
@@ -293,8 +308,9 @@ class ShioajiManager:
 
             return results
 
+        loop = asyncio.get_event_loop()
         async with self._snap_batch_sem:
-            return await asyncio.to_thread(_snap)
+            return await loop.run_in_executor(_sj_snap_executor, _snap)
 
     def get_status(self) -> dict:
         return {
