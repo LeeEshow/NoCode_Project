@@ -9,8 +9,6 @@ import type { DailySnapshotDTO } from '../../types';
 import type { DiagResult, SystemStatusDTO, QuoteDiagData, HoldingPricesDiagData, MarketIndicesDiagData } from '../../models/systemModel';
 import './SettingsModal.css';
 
-type ActiveTab = 'stocklist' | 'snapshot' | 'diagnostics';
-
 /* ── 工具 ── */
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '尚未更新';
@@ -25,7 +23,7 @@ function todayStr(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/* ── 股票清單 Section ── */
+/* ── 股票清單 Card ── */
 function StockListSection() {
   const { count, updatedAt, loading, refreshing, refresh } = useStockListViewModel();
 
@@ -39,31 +37,31 @@ function StockListSection() {
   }
 
   return (
-    <div className="settings-section">
-      <div className="settings-section__label">股票清單</div>
-      <div className="settings-row">
-        <span className="settings-row__label">上次更新</span>
-        <span className="settings-row__value">{loading ? '載入中…' : formatDateTime(updatedAt)}</span>
-      </div>
-      <div className="settings-row">
-        <span className="settings-row__label">總筆數</span>
-        <span className="settings-row__value">{loading ? '—' : `${count.toLocaleString()} 筆`}</span>
+    <div className="settings-card">
+      <div className="settings-card__header">
+        <span className="settings-card__title">股票清單</span>
         <button
-          className="btn-ghost settings-row__action"
+          className="btn-ghost"
           onClick={handleRefresh}
           disabled={loading || refreshing}
-          style={{ minWidth: 88 }}
+          aria-label={refreshing ? '更新中' : undefined}
         >
           {refreshing
-            ? <Icon name="progress_activity" size={15} aria-label="更新中" style={{ animation: 'spin 1s linear infinite' }} />
+            ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
             : '立即更新'}
         </button>
+      </div>
+      <div className="settings-kv">
+        <span className="settings-kv__key">上次更新</span>
+        <span className="settings-kv__val">{loading ? '載入中…' : formatDateTime(updatedAt)}</span>
+        <span className="settings-kv__key">總筆數</span>
+        <span className="settings-kv__val">{loading ? '—' : `${count.toLocaleString()} 筆`}</span>
       </div>
     </div>
   );
 }
 
-/* ── 每日快照 Section ── */
+/* ── 每日快照 Card ── */
 function SnapshotSection() {
   const [snapshot, setSnapshot]   = useState<DailySnapshotDTO | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -102,23 +100,25 @@ function SnapshotSection() {
   const recordedAt = snapshot?.recordedAt ?? null;
 
   return (
-    <div className="settings-section">
-      <div className="settings-section__label">每日快照</div>
-      <div className="settings-row">
-        <span className="settings-row__label">今日狀態</span>
-        <span className="settings-row__value">
-          {loading ? '載入中…' : (recordedAt ? formatDateTime(recordedAt) : '尚未記錄')}
-        </span>
+    <div className="settings-card">
+      <div className="settings-card__header">
+        <span className="settings-card__title">每日快照</span>
         <button
-          className="btn-ghost settings-row__action"
+          className="btn-ghost"
           onClick={handleRecord}
           disabled={loading || recording}
-          style={{ minWidth: 100 }}
+          aria-label={recording ? '記錄中' : undefined}
         >
           {recording
-            ? <Icon name="progress_activity" size={15} aria-label="記錄中" style={{ animation: 'spin 1s linear infinite' }} />
+            ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
             : '記錄快照'}
         </button>
+      </div>
+      <div className="settings-kv">
+        <span className="settings-kv__key">今日狀態</span>
+        <span className="settings-kv__val">
+          {loading ? '載入中…' : (recordedAt ? formatDateTime(recordedAt) : '尚未記錄')}
+        </span>
       </div>
     </div>
   );
@@ -143,21 +143,21 @@ function DiagResultRow<T>({
   let detail = '';
 
   if (loading) {
-    statusEl   = <Icon name="progress_activity" size={14} aria-label="測試中" style={{ animation: 'spin 1s linear infinite' }} />;
+    statusEl    = <span className="icon-spin" aria-label="測試中" role="img"><Icon name="progress_activity" size={14} aria-hidden="true" /></span>;
     statusColor = 'var(--muted)';
   } else if (!result) {
     return null;
   } else if (!result.ok) {
     const isTimeout = result.error?.toLowerCase().includes('timeout') || result.error?.toLowerCase().includes('15');
-    statusEl   = isTimeout ? 'TIMEOUT' : 'ERROR';
+    statusEl    = isTimeout ? 'TIMEOUT' : 'ERROR';
     statusColor = 'var(--up)';
     detail      = isTimeout ? '前端等待超過 15 秒' : (result.error ?? '未知錯誤');
   } else if (result.degraded) {
-    statusEl   = 'DEGRADED';
+    statusEl    = 'DEGRADED';
     statusColor = 'var(--accent)';
     detail      = result.data ? `後端已降級回應  ${renderDetail(result.data)}` : '後端已降級回應';
   } else {
-    statusEl   = 'OK';
+    statusEl    = 'OK';
     statusColor = 'var(--down)';
     detail      = result.data ? renderDetail(result.data) : '';
   }
@@ -185,25 +185,22 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
   const cb = data.circuitBreaker;
   const sm = data.shioajiManager;
 
-  /* 後端結構不符時，顯示原始 JSON 供診斷 */
   if (!sw && !cb && !sm) {
     return (
-      <div className="settings-section">
-        <div className="settings-section__label">系統狀態（原始回應）</div>
-        <div className="settings-row">
-          <span className="settings-row__value" style={{ wordBreak: 'break-all' }}>
-            {JSON.stringify(data)}
-          </span>
-        </div>
+      <div className="diag-status-block">
+        <span className="diag-status-block__group">系統狀態（原始回應）</span>
+        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
+          {JSON.stringify(data)}
+        </span>
       </div>
     );
   }
 
   return (
-    <>
+    <div className="diag-status-block">
       {sw && (
-        <div className="settings-section">
-          <div className="settings-section__label">API Switch</div>
+        <>
+          <span className="diag-status-block__group">API Switch</span>
           <div className="diag-status-grid">
             <span className="diag-status-grid__key">source</span>
             <span className="diag-status-grid__value">{sw.source ?? '—'}</span>
@@ -212,22 +209,22 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
             <span className="diag-status-grid__key">shioajiEnabled</span>
             <span className="diag-status-grid__value">{boolLabel(sw.shioajiEnabled)}</span>
           </div>
-        </div>
+        </>
       )}
       {cb && (
-        <div className="settings-section">
-          <div className="settings-section__label">Circuit Breaker</div>
+        <>
+          <span className="diag-status-block__group">Circuit Breaker</span>
           <div className="diag-status-grid">
             <span className="diag-status-grid__key">state</span>
             <span className="diag-status-grid__value">{cb.state ?? '—'}</span>
             <span className="diag-status-grid__key">failureCount</span>
             <span className="diag-status-grid__value">{cb.failureCount ?? '—'}</span>
           </div>
-        </div>
+        </>
       )}
       {sm && (
-        <div className="settings-section">
-          <div className="settings-section__label">Shioaji Manager</div>
+        <>
+          <span className="diag-status-block__group">Shioaji Manager</span>
           <div className="diag-status-grid">
             <span className="diag-status-grid__key">connected</span>
             <span className="diag-status-grid__value">{boolLabel(sm.connected)}</span>
@@ -237,14 +234,12 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
             <span className="diag-status-grid__value">{boolLabel(sm.initialized)}</span>
             <span className="diag-status-grid__key">cachedQuotes</span>
             <span className="diag-status-grid__value">{sm.cachedQuotes ?? '—'}</span>
-            <span className="diag-status-grid__key" />
-            <span className="diag-status-grid__value" />
             <span className="diag-status-grid__key">cachedFutures</span>
             <span className="diag-status-grid__value">{sm.cachedFutures ?? '—'}</span>
           </div>
-        </div>
+        </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -258,7 +253,6 @@ function ApiDiagnosticsSection() {
     diag.holdingPricesResult !== null ||
     diag.marketIndicesResult !== null;
 
-  /* renderDetail helpers */
   const renderQuote = (d: QuoteDiagData) =>
     `${d.price} / ${d.change >= 0 ? '+' : ''}${d.change} / ${d.marketStatus} / ${d.quoteSource} / ${d.quoteStatus}`;
 
@@ -271,32 +265,29 @@ function ApiDiagnosticsSection() {
     `共 ${d.count} 筆  加權 ${d.hasTwii ? '✓' : '✗'}  期貨 ${d.hasFutures ? '✓' : '✗'}`;
 
   return (
-    <div>
+    <div className="settings-section">
+      <div className="settings-section__label">API 診斷</div>
+
       {/* 系統狀態 */}
       {diag.statusResult?.data && (
         <SystemStatusDisplay data={diag.statusResult.data} />
       )}
       {diag.statusResult && !diag.statusResult.ok && (
-        <div className="settings-section">
-          <div className="settings-section__label">系統狀態</div>
-          <div className="settings-row">
-            <span style={{ color: 'var(--up)', fontSize: 'var(--text-sm)' }}>
-              無法取得：{diag.statusResult.error}
-            </span>
-          </div>
-        </div>
+        <p className="diag-error">無法取得系統狀態：{diag.statusResult.error}</p>
       )}
 
-      {/* 操作列 */}
-      <div className="settings-section">
-        <div className="settings-section__label">診斷操作</div>
-        <div className="diag-controls">
+      {/* 操作 */}
+      <div className="diag-controls">
+        <div className="diag-controls__row">
           <label className="diag-stock-input">
-            單股代號
+            股票代號
             <input
               type="text"
+              name="stockId"
               value={stockId}
               maxLength={6}
+              autoComplete="off"
+              spellCheck={false}
               onChange={e => setStockId(e.target.value.trim())}
               aria-label="單股代號"
             />
@@ -305,45 +296,52 @@ function ApiDiagnosticsSection() {
             className="btn-ghost"
             onClick={diag.loadStatus}
             disabled={diag.anyTesting}
+            aria-label={diag.loadingStatus ? '載入中' : undefined}
           >
             {diag.loadingStatus
-              ? <Icon name="progress_activity" size={14} aria-label="載入中" style={{ animation: 'spin 1s linear infinite' }} />
+              ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
               : '重新讀取狀態'}
           </button>
+        </div>
+        <div className="diag-controls__row">
           <button
             className="btn-ghost"
             onClick={() => diag.runStockQuoteTest(stockId)}
             disabled={diag.anyTesting || !stockId}
+            aria-label={diag.testingStock ? '測試中' : undefined}
           >
             {diag.testingStock
-              ? <Icon name="progress_activity" size={14} aria-label="測試中" style={{ animation: 'spin 1s linear infinite' }} />
+              ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
               : '測單股報價'}
           </button>
           <button
             className="btn-ghost"
             onClick={diag.runHoldingPricesTest}
             disabled={diag.anyTesting}
+            aria-label={diag.testingHoldings ? '測試中' : undefined}
           >
             {diag.testingHoldings
-              ? <Icon name="progress_activity" size={14} aria-label="測試中" style={{ animation: 'spin 1s linear infinite' }} />
+              ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
               : '測持股批次報價'}
           </button>
           <button
             className="btn-ghost"
             onClick={diag.runMarketIndicesTest}
             disabled={diag.anyTesting}
+            aria-label={diag.testingMarket ? '測試中' : undefined}
           >
             {diag.testingMarket
-              ? <Icon name="progress_activity" size={14} aria-label="測試中" style={{ animation: 'spin 1s linear infinite' }} />
+              ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
               : '測市場指數'}
           </button>
           <button
-            className="btn-ghost btn-ghost--accent"
+            className="btn-ghost btn-ghost--accent diag-run-all"
             onClick={() => diag.runAllTests(stockId)}
             disabled={diag.anyTesting || !stockId}
+            aria-label={diag.anyTesting ? '測試中' : undefined}
           >
             {diag.anyTesting
-              ? <Icon name="progress_activity" size={14} aria-label="測試中" style={{ animation: 'spin 1s linear infinite' }} />
+              ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
               : '全部測試'}
           </button>
         </div>
@@ -351,8 +349,8 @@ function ApiDiagnosticsSection() {
 
       {/* 測試結果 */}
       {(hasAnyResult || diag.testingStock || diag.testingHoldings || diag.testingMarket) && (
-        <div className="settings-section">
-          <div className="settings-section__label">測試結果</div>
+        <div className="diag-results">
+          <div className="diag-results__label">測試結果</div>
           <div className="diag-result-list">
             <DiagResultRow
               label={`單股報價（${diag.lastTestedStock || stockId}）`}
@@ -386,35 +384,13 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('stocklist');
-
   return (
     <Modal open={open} onClose={onClose} title="設定" size="md" className="settings-modal">
-      {/* Tab Bar */}
-      <div role="tablist" className="settings-tabs">
-        {([
-          ['stocklist',   '股票清單'],
-          ['snapshot',    '每日快照'],
-          ['diagnostics', 'API 診斷'],
-        ] as [ActiveTab, string][]).map(([id, label]) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={activeTab === id}
-            className="settings-tab"
-            onClick={() => setActiveTab(id)}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="settings-cards">
+        <StockListSection />
+        <SnapshotSection />
       </div>
-
-      {/* Tab Panels（條件渲染，避免未選中的 tab 在背景打 API） */}
-      <div role="tabpanel">
-        {activeTab === 'stocklist'   && <StockListSection />}
-        {activeTab === 'snapshot'    && <SnapshotSection />}
-        {activeTab === 'diagnostics' && <ApiDiagnosticsSection />}
-      </div>
+      <ApiDiagnosticsSection />
     </Modal>
   );
 }

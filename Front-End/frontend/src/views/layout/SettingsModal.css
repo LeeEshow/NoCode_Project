@@ -1,92 +1,144 @@
-/* ── Settings Modal size override ── */
-.settings-modal {
-  width:      960px;
-  height:     720px;
-  max-width:  calc(100vw - 48px);
-  max-height: calc(100vh - 48px);
+/* ── Settings Modal ── */
+.settings-modal { max-width: 620px; }
+
+/* ── 上方雙欄 Card 區 ── */
+.settings-cards {
+  display:               grid;
+  grid-template-columns: 1fr 1fr;
+  gap:                   12px;
 }
 
-/* ── Tab Bar ── */
-.settings-tabs {
-  display:       flex;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
-  gap:           0;
+.settings-card {
+  background:    var(--surface);
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding:       14px 16px;
+}
+
+.settings-card__header {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  margin-bottom:   14px;
+}
+
+.settings-card__title {
+  color:          var(--muted);
+  font-size:      11px;
+  font-weight:    700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  display:        flex;
+  align-items:    center;
+  gap:            7px;
+}
+
+.settings-card__title::before {
+  content:       '';
+  display:       block;
+  width:         3px;
+  height:        12px;
+  background:    var(--accent);
+  border-radius: 2px;
   flex-shrink:   0;
 }
 
-.settings-tab {
-  padding:        8px 18px;
-  background:     none;
-  border:         none;
-  border-bottom:  2px solid transparent;
-  color:          var(--muted);
-  font-size:      var(--text-sm);
-  font-family:    var(--font-sans);
-  cursor:         pointer;
-  transition:     color 0.15s, border-color 0.15s;
-  white-space:    nowrap;
+/* KV 格 */
+.settings-kv {
+  display:               grid;
+  grid-template-columns: auto 1fr;
+  gap:                   7px 14px;
+  align-items:           baseline;
 }
 
-.settings-tab:hover            { color: var(--text); }
-.settings-tab[aria-selected="true"] {
-  color:        var(--text);
-  border-bottom-color: var(--accent);
+.settings-kv__key {
+  color:       var(--dim);
+  font-size:   var(--text-sm);
+  white-space: nowrap;
 }
 
-/* ── Settings Modal Layout ── */
+.settings-kv__val {
+  color:                var(--text-value);
+  font-family:          var(--font-mono);
+  font-size:            var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
 
-/* Section */
-.settings-section + .settings-section {
+/* ── API 診斷 Section ── */
+.settings-section {
   margin-top:  20px;
   padding-top: 20px;
   border-top:  1px solid var(--border);
 }
 
 .settings-section__label {
-  color:          var(--label);
+  color:          var(--muted);
   font-size:      11px;
-  font-weight:    600;
+  font-weight:    700;
   letter-spacing: 0.07em;
-  margin-bottom:  12px;
   text-transform: uppercase;
+  display:        flex;
+  align-items:    center;
+  gap:            7px;
+  margin-bottom:  14px;
 }
 
-/* Row */
-.settings-row {
-  align-items:   center;
-  display:       flex;
-  gap:           12px;
-  margin-bottom: 8px;
-  min-height:    32px;
-}
-.settings-row:last-child { margin-bottom: 0; }
-
-.settings-row__label {
-  color:      var(--muted);
-  flex-shrink: 0;
-  font-size:  var(--text-sm);
-  width:      90px;
+.settings-section__label::before {
+  content:       '';
+  display:       block;
+  width:         3px;
+  height:        12px;
+  background:    var(--accent);
+  border-radius: 2px;
+  flex-shrink:   0;
 }
 
-.settings-row__value {
-  color:       var(--text-value);
-  flex:        1;
-  font-family: var(--font-mono);
-  font-size:   var(--text-sm);
+/* ── 系統狀態 Block ── */
+.diag-status-block {
+  background:    var(--surface);
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding:       12px 14px;
+  margin-bottom: 14px;
 }
 
-.settings-row__action { margin-left: auto; }
+.diag-status-block__group {
+  display:        block;
+  color:          var(--dim);
+  font-size:      10px;
+  font-weight:    600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top:     12px;
+  margin-bottom:  7px;
+}
 
-/* ── API 診斷 Tab ── */
+.diag-status-block__group:first-child { margin-top: 0; }
 
+.diag-status-grid {
+  display:               grid;
+  grid-template-columns: 130px 1fr;
+  gap:                   5px 12px;
+  font-size:             var(--text-sm);
+}
+
+.diag-status-grid__key   { color: var(--dim); }
+.diag-status-grid__value { color: var(--text-value); font-family: var(--font-mono); }
+
+/* ── 診斷操作 ── */
 .diag-controls {
-  display:     flex;
-  flex-wrap:   wrap;
-  gap:         8px;
-  align-items: center;
-  margin-bottom: 16px;
+  display:        flex;
+  flex-direction: column;
+  gap:            8px;
 }
+
+.diag-controls__row {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+}
+
+.diag-run-all { margin-left: auto; }
 
 .diag-stock-input {
   display:     flex;
@@ -97,26 +149,49 @@
 }
 
 .diag-stock-input input {
-  width:            72px;
-  padding:          4px 8px;
-  background:       var(--surface);
-  border:           1px solid var(--border);
-  border-radius:    var(--radius-xs);
-  color:            var(--text-value);
-  font-family:      var(--font-mono);
-  font-size:        var(--text-sm);
-  text-align:       center;
+  width:         68px;
+  padding:       4px 8px;
+  background:    var(--surface);
+  border:        1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color:         var(--text-value);
+  font-family:   var(--font-mono);
+  font-size:     var(--text-sm);
+  text-align:    center;
 }
 
-.diag-stock-input input:focus {
-  outline:      none;
-  border-color: var(--accent-bd);
+.diag-stock-input input:focus-visible {
+  outline:        1px solid var(--accent-bd);
+  outline-offset: 0;
+  border-color:   var(--accent-bd);
+}
+
+/* ── 診斷錯誤訊息 ── */
+.diag-error {
+  color:       var(--up);
+  font-size:   var(--text-sm);
+  margin:      0 0 12px;
+}
+
+/* ── 測試結果 ── */
+.diag-results {
+  margin-top:  16px;
+  padding-top: 14px;
+  border-top:  1px solid var(--border);
+}
+
+.diag-results__label {
+  color:          var(--dim);
+  font-size:      10px;
+  font-weight:    600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom:  8px;
 }
 
 .diag-result-list {
-  display:       flex;
+  display:        flex;
   flex-direction: column;
-  gap:           2px;
 }
 
 .diag-result-row {
@@ -127,16 +202,17 @@
   border-bottom: 1px solid var(--border);
   font-size:     var(--text-sm);
 }
+
 .diag-result-row:last-child { border-bottom: none; }
 
 .diag-result-row__name {
-  width:      110px;
+  width:       110px;
   flex-shrink: 0;
   color:       var(--muted);
 }
 
 .diag-result-row__status {
-  width:       56px;
+  width:       60px;
   flex-shrink: 0;
   font-family: var(--font-mono);
   font-weight: 600;
@@ -156,13 +232,12 @@
   word-break:  break-all;
 }
 
-.diag-status-grid {
-  display:               grid;
-  grid-template-columns: 140px 1fr 140px 1fr;
-  gap:                   4px 12px;
-  font-size:             var(--text-sm);
-  margin-bottom:         4px;
+/* ── Spinner ── */
+.icon-spin {
+  animation: spin 1s linear infinite;
+  display:   inline-flex;
 }
 
-.diag-status-grid__key   { color: var(--muted); }
-.diag-status-grid__value { color: var(--text-value); font-family: var(--font-mono); }
+@media (prefers-reduced-motion: reduce) {
+  .icon-spin { animation: none; }
+}
