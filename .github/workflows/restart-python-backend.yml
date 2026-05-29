@@ -16,20 +16,23 @@ jobs:
 
           profile = os.environ["PUBLISH_PROFILE"]
           root = ET.fromstring(profile)
-          user = pwd = None
+          user = pwd = scm_host = None
           for p in root.findall("publishProfile"):
               if p.get("publishMethod") == "MSDeploy":
-                  user = p.get("userName")
-                  pwd  = p.get("userPWD")
+                  user     = p.get("userName")
+                  pwd      = p.get("userPWD")
+                  # publishUrl 格式：hostname:443，取 hostname 部分
+                  scm_host = p.get("publishUrl", "").split(":")[0]
                   break
-          if not user:
+          if not user or not scm_host:
               print("ERROR: Cannot find MSDeploy credentials in publish profile")
               sys.exit(1)
 
+          url = f"https://{scm_host}/api/processes/0"
+          print(f"Calling: DELETE {url}")
           r = subprocess.run(
               ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-               "-X", "DELETE",
-               "https://finance-backend-py.scm.azurewebsites.net/api/processes/0",
+               "-X", "DELETE", url,
                "-u", f"{user}:{pwd}"],
               capture_output=True, text=True
           )
