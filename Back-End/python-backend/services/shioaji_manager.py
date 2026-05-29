@@ -26,6 +26,7 @@ class ShioajiManager:
         self._initialized = False
         self._api_key = ""
         self._secret_key = ""
+        self._loop = None  # 由 initialize() 設定，供 on_event callback 使用
         self._futures_cache: dict[str, dict] = {}
         self._stock_cache: dict[str, dict] = {}
         self._subscribed_stocks: set[str] = set()
@@ -50,6 +51,7 @@ class ShioajiManager:
     async def initialize(self, api_key: str, secret_key: str) -> None:
         self._api_key = api_key
         self._secret_key = secret_key
+        self._loop = asyncio.get_running_loop()
         await asyncio.to_thread(self._login)
         self._setup_callbacks()
         await asyncio.to_thread(self._subscribe_startup_contracts)
@@ -111,7 +113,8 @@ class ShioajiManager:
             elif event_code == 4:
                 self._connected = True
                 logger.info("Shioaji reconnected, resubscribing...")
-                asyncio.create_task(self._resubscribe_startup())
+                if self._loop and not self._loop.is_closed():
+                    asyncio.run_coroutine_threadsafe(self._resubscribe_startup(), self._loop)
 
     def _get_nearest_txf(self):
         try:

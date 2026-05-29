@@ -70,7 +70,10 @@
       "Bash(.venv\\\\Scripts\\\\python.exe -m pytest tests/ -v)",
       "Bash(python -m pytest tests/ -v)",
       "Bash(.venv/Scripts/pytest.exe tests/test_quote_service.py -v --tb=short)",
-      "Bash(.venv/Scripts/pytest.exe tests/ --tb=short -q)"
+      "Bash(.venv/Scripts/pytest.exe tests/ --tb=short -q)",
+      "Bash(Get-Content \"D:\\\\Project\\\\NoCode_Project\\\\Back-End\\\\Task_Backend.md\")",
+      "Bash(Measure-Object -Line)",
+      "PowerShell(\\(Get-Content \"D:\\\\Project\\\\NoCode_Project\\\\Back-End\\\\Task_Backend.md\" | Measure-Object -Line\\).Lines)"
     ]
   }
 }

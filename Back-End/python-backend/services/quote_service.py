@@ -133,13 +133,9 @@ async def get_quote(stock_id: str) -> dict:
             if cached is not None:
                 return _from_snap(stock_id, cached)
 
-            # 尚未訂閱 → 訂閱 WebSocket tick（不佔 thread pool 阻塞）
+            # 尚未訂閱 → 背景訂閱 WebSocket tick，本次請求直接 fallback（不阻塞熱路徑）
             if not shioaji_manager.is_subscribed(stock_id):
-                try:
-                    await shioaji_manager.subscribe_stock(stock_id)
-                    # 剛訂閱，tick 尚未到達，繼續 fallback（不計入任何 failure）
-                except Exception as e:
-                    logger.warning("subscribe_stock %s: %s", stock_id, e)
+                asyncio.ensure_future(shioaji_manager.subscribe_stock(stock_id))
 
     # ── 2. TWSE（盤後 TSE only；盤中 TWSE 只有昨收，跳過）─────────────────────
     if not is_market_open() and _is_tse(stock_id):
@@ -198,13 +194,10 @@ async def get_quotes(stock_ids: list[str]) -> dict[str, dict]:
     if shioaji_enabled():
         from services.shioaji_manager import shioaji_manager
         if shioaji_manager.initialized:
-            # 訂閱尚未訂閱的股票（WebSocket，單一 thread 依序執行）
+            # 尚未訂閱的股票 → 背景訂閱，本次請求直接 fallback（不阻塞熱路徑）
             unsubscribed = [sid for sid in pending if not shioaji_manager.is_subscribed(sid)]
             if unsubscribed:
-                try:
-                    await shioaji_manager.subscribe_stocks(unsubscribed)
-                except Exception as e:
-                    logger.warning("subscribe_stocks: %s", e)
+                asyncio.ensure_future(shioaji_manager.subscribe_stocks(unsubscribed))
 
             # 批次讀 tick cache
             cached_all = shioaji_manager.get_cached_stocks(pending)
