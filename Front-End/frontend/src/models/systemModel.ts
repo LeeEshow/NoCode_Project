@@ -4,21 +4,24 @@ import type { ApiResponse } from '../types';
 /* ── 診斷專用型別（不入全域 types/index.ts）── */
 
 export interface SystemStatusDTO {
+  /** 後端 /system/status 實際結構（apiSwitch = get_switch_status() 回傳值） */
   apiSwitch: {
     source:         string;
     marketOpen:     boolean;
     shioajiEnabled: boolean;
-  };
-  circuitBreaker: {
-    state:        string;
-    failureCount: number;
-  };
-  shioajiManager: {
-    connected:        boolean;
-    initialized:      boolean;
-    subscribedStocks: number;
-    cachedQuotes:     number;
-    cachedFutures:    number;
+    circuit: {
+      state:        string;
+      failureCount: number;
+    };
+    providers: {
+      shioaji: {
+        enabled:          boolean;
+        initialized:      boolean;
+        connected:        boolean;
+        subscribedStocks: number;
+        cachedStocks:     number;
+      };
+    };
   };
 }
 

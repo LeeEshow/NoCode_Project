@@ -181,11 +181,11 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
       ? <span style={{ color: 'var(--dim)' }}>—</span>
       : <span style={{ color: v ? 'var(--down)' : 'var(--up)' }}>{v ? 'true' : 'false'}</span>;
 
-  const sw = data.apiSwitch;
-  const cb = data.circuitBreaker;
-  const sm = data.shioajiManager;
+  const sw      = data.apiSwitch;
+  const circuit = sw?.circuit;
+  const shioaji = sw?.providers?.shioaji;
 
-  if (!sw && !cb && !sm) {
+  if (!sw) {
     return (
       <div className="diag-status-block">
         <span className="diag-status-block__group">系統狀態（原始回應）</span>
@@ -198,44 +198,46 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
 
   return (
     <div className="diag-status-block">
-      {sw && (
-        <>
-          <span className="diag-status-block__group">API Switch</span>
-          <div className="diag-status-grid">
-            <span className="diag-status-grid__key">source</span>
-            <span className="diag-status-grid__value">{sw.source ?? '—'}</span>
-            <span className="diag-status-grid__key">marketOpen</span>
-            <span className="diag-status-grid__value">{boolLabel(sw.marketOpen)}</span>
-            <span className="diag-status-grid__key">shioajiEnabled</span>
-            <span className="diag-status-grid__value">{boolLabel(sw.shioajiEnabled)}</span>
-          </div>
-        </>
-      )}
-      {cb && (
+      {/* API Switch */}
+      <span className="diag-status-block__group">API Switch</span>
+      <div className="diag-status-grid">
+        <span className="diag-status-grid__key">source</span>
+        <span className="diag-status-grid__value">{sw.source ?? '—'}</span>
+        <span className="diag-status-grid__key">marketOpen</span>
+        <span className="diag-status-grid__value">{boolLabel(sw.marketOpen)}</span>
+        <span className="diag-status-grid__key">shioajiEnabled</span>
+        <span className="diag-status-grid__value">{boolLabel(sw.shioajiEnabled)}</span>
+      </div>
+
+      {/* Circuit Breaker */}
+      {circuit && (
         <>
           <span className="diag-status-block__group">Circuit Breaker</span>
           <div className="diag-status-grid">
             <span className="diag-status-grid__key">state</span>
-            <span className="diag-status-grid__value">{cb.state ?? '—'}</span>
+            <span className="diag-status-grid__value"
+              style={{ color: circuit.state === 'OPEN' ? 'var(--up)' : circuit.state === 'HALF_OPEN' ? 'var(--accent)' : undefined }}>
+              {circuit.state ?? '—'}
+            </span>
             <span className="diag-status-grid__key">failureCount</span>
-            <span className="diag-status-grid__value">{cb.failureCount ?? '—'}</span>
+            <span className="diag-status-grid__value">{circuit.failureCount ?? '—'}</span>
           </div>
         </>
       )}
-      {sm && (
+
+      {/* Shioaji Manager */}
+      {shioaji && (
         <>
           <span className="diag-status-block__group">Shioaji Manager</span>
           <div className="diag-status-grid">
             <span className="diag-status-grid__key">connected</span>
-            <span className="diag-status-grid__value">{boolLabel(sm.connected)}</span>
-            <span className="diag-status-grid__key">subscribedStocks</span>
-            <span className="diag-status-grid__value">{sm.subscribedStocks ?? '—'}</span>
+            <span className="diag-status-grid__value">{boolLabel(shioaji.connected)}</span>
             <span className="diag-status-grid__key">initialized</span>
-            <span className="diag-status-grid__value">{boolLabel(sm.initialized)}</span>
-            <span className="diag-status-grid__key">cachedQuotes</span>
-            <span className="diag-status-grid__value">{sm.cachedQuotes ?? '—'}</span>
-            <span className="diag-status-grid__key">cachedFutures</span>
-            <span className="diag-status-grid__value">{sm.cachedFutures ?? '—'}</span>
+            <span className="diag-status-grid__value">{boolLabel(shioaji.initialized)}</span>
+            <span className="diag-status-grid__key">subscribedStocks</span>
+            <span className="diag-status-grid__value">{shioaji.subscribedStocks ?? '—'}</span>
+            <span className="diag-status-grid__key">cachedStocks</span>
+            <span className="diag-status-grid__value">{shioaji.cachedStocks ?? '—'}</span>
           </div>
         </>
       )}
@@ -247,6 +249,10 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
 function ApiDiagnosticsSection() {
   const [stockId, setStockId] = useState('2330');
   const diag = useSystemDiagnosticsViewModel();
+
+  // 開啟 modal 時自動載入系統狀態（modal 關閉時 Radix Portal 會 unmount，重開即重載）
+  const { loadStatus } = diag;
+  useEffect(() => { loadStatus(); }, [loadStatus]);
 
   const hasAnyResult =
     diag.stockQuoteResult    !== null ||
