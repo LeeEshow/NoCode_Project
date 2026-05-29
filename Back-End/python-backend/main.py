@@ -57,6 +57,32 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Shioaji startup initialization failed: %s", e)
 
+    # ── Shioaji 個股暖身（訂閱持股 + 關注清單 tick，並呼叫一次 snapshot 填充 cache）
+    from services.api_switch import shioaji_enabled as _sj_enabled
+    if _sj_enabled():
+        try:
+            from services.shioaji_manager import shioaji_manager as _sj
+            if _sj.initialized:
+                from services.firestore import get_db as _get_db
+
+                def _read_stock_ids() -> list[str]:
+                    db = _get_db()
+                    holdings  = db.collection("holdings").get()
+                    watchlist = db.collection("watchlist").get()
+                    return list({doc.id for doc in list(holdings) + list(watchlist) if doc.exists})
+
+                stock_ids = await asyncio.wait_for(
+                    loop.run_in_executor(None, _read_stock_ids),
+                    timeout=10,
+                )
+                await asyncio.wait_for(
+                    _sj.warmup_stocks(stock_ids),
+                    timeout=35,
+                )
+                logger.info("Shioaji warmup complete: %d stocks", len(stock_ids))
+        except Exception as e:
+            logger.warning("Shioaji warmup failed (non-critical): %s", e)
+
     yield
 
     # ── Shioaji shutdown ──────────────────────────────────────────────────────

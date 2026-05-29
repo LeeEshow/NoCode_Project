@@ -2,20 +2,12 @@
 Quote Service — 集中報價取得邏輯
 
 Provider 順位：
-  盤中：Shioaji api.snapshots() → Yahoo
-        （TWSE STOCK_DAY 盤中只有昨收，跳過）
-  盤後：Shioaji api.snapshots() → TWSE（TSE only，4s）→ Yahoo（5s）
+  盤中：Shioaji tick cache（記憶體，無 HTTP）→ Yahoo
+  盤後：Shioaji tick cache（記憶體）→ TWSE（TSE only，4s）→ Yahoo（5s）
 
-snap.close 語意：盤中 = 最新成交價；盤後 = 當日收盤價；同一欄位，不需分支。
-
-Circuit Breaker 規則：
-  - Shioaji API exception 或 timeout → 計入 circuit_breaker failure
-  - 合約不存在（KeyError，回 None）或 close<=0 → 不計入
-  - CB OPEN → 整批跳過 Shioaji，直接走 fallback
-
-Timeout 規格（最壞總時間 < 前端 15s axios timeout）：
-  - get_quote  : 3s + 4s + 5s = 12s 最壞
-  - get_quotes : 5s Shioaji + 9s fallback deadline = 14s 最壞
+個股報價完全不走 HTTP REST；Shioaji 資料由 WebSocket tick push 填入 memory cache。
+未訂閱股票會即時訂閱 WebSocket（快速），首次訂閱後 tick 尚未到達時直接走 fallback。
+TAIEX 大盤指數由 Yahoo Finance ^TWII 提供（Index 不支援 Tick 訂閱）。
 """
 
 import asyncio
@@ -23,7 +15,7 @@ import logging
 import time
 from typing import Literal
 
-from services.api_switch import CircuitOpenError, circuit_breaker, shioaji_enabled
+from services.api_switch import shioaji_enabled
 from utils.market_hours import is_market_open
 
 logger = logging.getLogger(__name__)
@@ -31,11 +23,9 @@ logger = logging.getLogger(__name__)
 QuoteSource = Literal["shioaji", "twse", "yahoo", "unknown"]
 QuoteStatus = Literal["ok", "stale", "timeout", "error", "unavailable"]
 
-_SJ_SINGLE_TIMEOUT  = 3.0   # 單股 Shioaji snapshot timeout（秒）
-_SJ_BATCH_TIMEOUT   = 5.0   # 批次 Shioaji snapshot timeout（秒）
-_TWSE_TIMEOUT       = 4.0   # TWSE API timeout（有 cache，通常命中後幾乎 0ms）
-_YAHOO_TIMEOUT      = 5.0   # Yahoo Finance timeout
-_FALLBACK_DEADLINE  = 9.0   # 批次 fallback 並行總 deadline（確保 get_quotes ≤ 14s）
+_TWSE_TIMEOUT      = 4.0   # TWSE API timeout（有 cache，通常命中後幾乎 0ms）
+_YAHOO_TIMEOUT     = 5.0   # Yahoo Finance timeout
+_FALLBACK_DEADLINE = 9.0   # 批次 fallback 並行總 deadline
 
 
 # ─── DTO 建構工具 ──────────────────────────────────────────────────────────────
@@ -69,6 +59,7 @@ def _placeholder(
 
 
 def _from_snap(stock_id: str, snap: dict) -> dict:
+    """從 Shioaji tick cache dict 建構 quote DTO（camelCase 欄位，與 snapshot 版相容）"""
     return {
         "stockId":       stock_id,
         "name":          stock_id,
@@ -114,7 +105,7 @@ def _from_yahoo(stock_id: str, yahoo: dict) -> dict:
 
 
 def _is_tse(stock_id: str) -> bool:
-    """回傳 True 代表 TSE 上市；False 為 OTC 上櫃。resolve_symbol() 有 3600s cache，不打網路。"""
+    """回傳 True 代表 TSE 上市；False 為 OTC 上櫃。resolve_symbol() 有 3600s cache。"""
     from services.yahoo_finance import resolve_symbol
     return not resolve_symbol(stock_id).endswith(".TWO")
 
@@ -126,34 +117,29 @@ async def get_quote(stock_id: str) -> dict:
     取得單一個股報價。
 
     Provider 順位：
-      Shioaji snapshot（3s）→ TWSE（盤後 TSE only，4s）→ Yahoo（5s）
+      Shioaji tick cache（記憶體）→ TWSE（盤後 TSE only，4s）→ Yahoo（5s）
 
-    永遠回傳 dict，不拋例外。失敗時回 quoteStatus: timeout / error。
-    Shioaji exception/timeout 計入 circuit_breaker failure；合約不存在（None）不計。
+    Shioaji 報價從 WebSocket tick memory cache 讀取，不走 HTTP REST。
+    未訂閱則即時訂閱 WebSocket（快速），但首次訂閱後 tick 尚未到達時直接 fallback Yahoo。
+    永遠回傳 dict，不拋例外。
     """
     loop = asyncio.get_event_loop()
 
-    # ── 1. Shioaji snapshot ────────────────────────────────────────────────────
+    # ── 1. Shioaji tick cache（記憶體讀取，無 HTTP）────────────────────────────
     if shioaji_enabled():
-        try:
-            from services.shioaji_manager import shioaji_manager
-            if shioaji_manager.initialized:
-                async def _sj_call():
-                    return await asyncio.wait_for(
-                        shioaji_manager.get_stock_snapshot(stock_id),
-                        timeout=_SJ_SINGLE_TIMEOUT,
-                    )
-                snap = await circuit_breaker.call(_sj_call)
-                if snap is not None:
-                    return _from_snap(stock_id, snap)
-                # snap=None → 合約不存在或停牌；不計 CB failure，繼續 fallback
-                logger.debug("Shioaji snapshot unavailable: %s", stock_id)
-        except CircuitOpenError:
-            # CB OPEN — 跳過 Shioaji，直接走 fallback
-            logger.debug("Shioaji CB open, skip single: %s", stock_id)
-        except (asyncio.TimeoutError, Exception) as e:
-            # TimeoutError / API exception → 已計入 CB failure，繼續 fallback
-            logger.warning("Shioaji snapshot error %s: %s", stock_id, e)
+        from services.shioaji_manager import shioaji_manager
+        if shioaji_manager.initialized:
+            cached = shioaji_manager.get_cached_stock(stock_id)
+            if cached is not None:
+                return _from_snap(stock_id, cached)
+
+            # 尚未訂閱 → 訂閱 WebSocket tick（不佔 thread pool 阻塞）
+            if not shioaji_manager.is_subscribed(stock_id):
+                try:
+                    await shioaji_manager.subscribe_stock(stock_id)
+                    # 剛訂閱，tick 尚未到達，繼續 fallback（不計入任何 failure）
+                except Exception as e:
+                    logger.warning("subscribe_stock %s: %s", stock_id, e)
 
     # ── 2. TWSE（盤後 TSE only；盤中 TWSE 只有昨收，跳過）─────────────────────
     if not is_market_open() and _is_tse(stock_id):
@@ -191,16 +177,15 @@ async def get_quotes(stock_ids: list[str]) -> dict[str, dict]:
     批次取得個股報價。
 
     流程：
-      1. Shioaji 一次批次呼叫（timeout 5s）
-         - CB OPEN         → 跳過 Shioaji，走 fallback
-         - 整批 timeout    → 所有股票回 quoteStatus:timeout，直接返回（不再等 fallback）
-         - API exception   → 繼續走 fallback
+      1. Shioaji tick cache 批次讀取（記憶體，即時，無 HTTP）
+         - 有新鮮 cache（< 120s）→ Shioaji 資料
+         - 尚未訂閱的股票 → 批次訂閱 WebSocket（一次性）
+         - 首次訂閱後 tick 尚未到達 → 進入 fallback
       2. 缺口股票並行（總 deadline 9s，asyncio.wait 保留部分結果）：
          - 盤後 TSE：TWSE（4s）→ Yahoo（5s）
          - 盤中或 OTC：直接 Yahoo（5s）
 
     永遠回傳完整 {stock_id: dict}，單股失敗不影響其他股票。
-    最壞總時間：5s（Shioaji）+ 9s（fallback deadline）= 14s < 15s axios timeout。
     """
     if not stock_ids:
         return {}
@@ -209,43 +194,34 @@ async def get_quotes(stock_ids: list[str]) -> dict[str, dict]:
     results: dict[str, dict] = {}
     pending: list[str] = list(stock_ids)
 
-    # ── 1. Shioaji batch snapshot ─────────────────────────────────────────────
+    # ── 1. Shioaji tick cache ─────────────────────────────────────────────────
     if shioaji_enabled():
-        try:
-            from services.shioaji_manager import shioaji_manager
-            if shioaji_manager.initialized:
-                async def _sj_batch():
-                    return await asyncio.wait_for(
-                        shioaji_manager.get_stock_snapshots(pending),
-                        timeout=_SJ_BATCH_TIMEOUT,
-                    )
-                snaps = await circuit_breaker.call(_sj_batch)
-                for sid, snap in snaps.items():
-                    if snap is not None:
-                        results[sid] = _from_snap(sid, snap)
-                pending = [sid for sid in pending if sid not in results]
-        except CircuitOpenError:
-            # CB OPEN — 跳過 Shioaji，直接走 fallback（不回占位，讓 fallback 補齊）
-            logger.debug("Shioaji CB open, skipping batch (%d stocks)", len(pending))
-        except asyncio.TimeoutError:
-            # 整批 timeout → 全部回占位，直接返回，不再等 fallback
-            logger.warning("Shioaji batch snapshot timeout (%d stocks)", len(pending))
-            for sid in pending:
-                results[sid] = _placeholder(sid, "unknown", "timeout", "本輪報價逾時")
-            return results
-        except Exception as e:
-            # API exception → 繼續走 fallback
-            logger.warning("Shioaji batch snapshot error: %s", e)
+        from services.shioaji_manager import shioaji_manager
+        if shioaji_manager.initialized:
+            # 訂閱尚未訂閱的股票（WebSocket，單一 thread 依序執行）
+            unsubscribed = [sid for sid in pending if not shioaji_manager.is_subscribed(sid)]
+            if unsubscribed:
+                try:
+                    await shioaji_manager.subscribe_stocks(unsubscribed)
+                except Exception as e:
+                    logger.warning("subscribe_stocks: %s", e)
+
+            # 批次讀 tick cache
+            cached_all = shioaji_manager.get_cached_stocks(pending)
+            for sid, snap in cached_all.items():
+                if snap is not None:
+                    results[sid] = _from_snap(sid, snap)
+            pending = [sid for sid in pending if sid not in results]
 
     if not pending:
         return results
 
     # ── 2. 缺口：TWSE / Yahoo 並行（總 deadline _FALLBACK_DEADLINE）────────────
 
-    _market_open = is_market_open()   # 呼叫一次，對整批一致
+    _market_open = is_market_open()
 
     async def _fallback_one(sid: str) -> tuple[str, dict]:
-        """盤後 TSE：TWSE → Yahoo；盤中或 OTC：直接 Yahoo。_fallback_one 永遠 return，不 raise。"""
+        """盤後 TSE：TWSE → Yahoo；盤中或 OTC：直接 Yahoo。永遠 return，不 raise。"""
         if not _market_open and _is_tse(sid):
             try:
                 from services.twse_finance import get_twse_closing_price
@@ -260,7 +236,6 @@ async def get_quotes(stock_ids: list[str]) -> dict[str, dict]:
             except Exception as e:
                 logger.warning("TWSE error %s: %s", sid, e)
 
-        # Yahoo（盤後 TSE TWSE 失敗、盤中股票、或 OTC）
         try:
             from services.yahoo_finance import get_yahoo_quote
             q = await asyncio.wait_for(
@@ -273,7 +248,6 @@ async def get_quotes(stock_ids: list[str]) -> dict[str, dict]:
         except Exception as e:
             return sid, _placeholder(sid, "unknown", "error", str(e))
 
-    # asyncio.wait 保留已完成任務的結果；超過 deadline 的未完成任務補占位
     tasks = {asyncio.ensure_future(_fallback_one(sid)): sid for sid in pending}
     done, not_done = await asyncio.wait(tasks.keys(), timeout=_FALLBACK_DEADLINE)
 
@@ -283,7 +257,7 @@ async def get_quotes(stock_ids: list[str]) -> dict[str, dict]:
         results[sid] = _placeholder(sid, "unknown", "timeout", "批次報價逾時")
 
     for task in done:
-        sid_result, q = task.result()   # _fallback_one 永遠 return (sid, dict)，不 raise
+        sid_result, q = task.result()
         results[sid_result] = q
 
     return results

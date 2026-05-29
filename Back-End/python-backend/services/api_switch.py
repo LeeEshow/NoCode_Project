@@ -137,22 +137,39 @@ async def api_switch_call(
 
 def get_switch_status() -> dict:
     """
-    回傳系統開關與 Circuit Breaker 狀態。
-    `source` 欄位已移除（現由各 endpoint 回傳的 quoteSource 欄位表達實際來源）。
+    回傳系統開關、Circuit Breaker 與 Shioaji Manager 狀態。
+    `source` 依當前 Shioaji 連線狀態推導：
+      - shioaji enabled + connected → "shioaji"
+      - 其他 → "yahoo"
     """
-    enabled = shioaji_enabled()
-    cb = circuit_breaker.get_status()
+    enabled     = shioaji_enabled()
+    cb          = circuit_breaker.get_status()
     market_open = is_market_open()
 
-    sj_status: dict = {"enabled": enabled, "initialized": False, "connected": False}
+    sj_status: dict = {
+        "enabled":          enabled,
+        "initialized":      False,
+        "connected":        False,
+        "subscribedStocks": 0,
+        "cachedStocks":     0,
+    }
     try:
         from services.shioaji_manager import shioaji_manager
-        sj_status["initialized"] = shioaji_manager.initialized
-        sj_status["connected"]   = shioaji_manager.connected
+        sm = shioaji_manager.get_status()
+        sj_status.update({
+            "initialized":      sm["initialized"],
+            "connected":        sm["connected"],
+            "subscribedStocks": sm.get("subscribedStocks", 0),
+            "cachedStocks":     sm.get("cachedStocks", 0),
+        })
     except Exception:
         pass
 
+    active = enabled and sj_status["connected"]
+    source = "shioaji" if active else "yahoo"
+
     return {
+        "source":         source,
         "circuit":        cb,
         "marketOpen":     market_open,
         "shioajiEnabled": enabled,

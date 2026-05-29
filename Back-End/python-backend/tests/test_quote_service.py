@@ -80,12 +80,12 @@ class TestGetQuote:
         assert result["price"] == 950.0
 
     async def test_sj_ok_returns_shioaji_source(self, monkeypatch):
-        """Shioaji ok → source=shioaji，不打 TWSE/Yahoo。"""
+        """Shioaji tick cache 命中 → source=shioaji，不打 TWSE/Yahoo。"""
         monkeypatch.setattr(qs, "shioaji_enabled", lambda: True)
 
         manager_mock = MagicMock()
         manager_mock.initialized = True
-        manager_mock.get_stock_snapshot = AsyncMock(return_value=_snap_dict())
+        manager_mock.get_cached_stock = MagicMock(return_value=_snap_dict())
 
         with patch("services.shioaji_manager.shioaji_manager", manager_mock):
             twse_mock = MagicMock(side_effect=AssertionError("不應呼叫 TWSE"))
@@ -99,13 +99,14 @@ class TestGetQuote:
         assert result["price"] == 980.0
 
     async def test_sj_unavailable_falls_back_to_yahoo_during_market(self, monkeypatch):
-        """盤中 Shioaji unavailable → 跳過 TWSE，直接走 Yahoo。"""
+        """盤中 tick cache 無資料（已訂閱但 tick 尚未到達）→ 跳過 TWSE，直接走 Yahoo。"""
         monkeypatch.setattr(qs, "shioaji_enabled", lambda: True)
         monkeypatch.setattr(qs, "is_market_open", lambda: True)
 
         manager_mock = MagicMock()
         manager_mock.initialized = True
-        manager_mock.get_stock_snapshot = AsyncMock(return_value=None)
+        manager_mock.get_cached_stock = MagicMock(return_value=None)
+        manager_mock.is_subscribed = MagicMock(return_value=True)  # 已訂閱，tick 尚未到達
 
         with patch("services.shioaji_manager.shioaji_manager", manager_mock):
             twse_mock = MagicMock(side_effect=AssertionError("盤中不應呼叫 TWSE"))
@@ -117,14 +118,15 @@ class TestGetQuote:
         assert result["quoteSource"] == "yahoo"
 
     async def test_sj_unavailable_falls_back_to_twse_after_hours(self, monkeypatch):
-        """盤後 TSE Shioaji unavailable → 走 TWSE。"""
+        """盤後 TSE tick cache 無資料 → 走 TWSE。"""
         monkeypatch.setattr(qs, "shioaji_enabled", lambda: True)
         monkeypatch.setattr(qs, "is_market_open", lambda: False)
         monkeypatch.setattr(qs, "_is_tse", lambda sid: True)
 
         manager_mock = MagicMock()
         manager_mock.initialized = True
-        manager_mock.get_stock_snapshot = AsyncMock(return_value=None)
+        manager_mock.get_cached_stock = MagicMock(return_value=None)
+        manager_mock.is_subscribed = MagicMock(return_value=True)  # 已訂閱，tick 尚未到達
 
         with patch("services.shioaji_manager.shioaji_manager", manager_mock):
             twse_mock = MagicMock(return_value=_twse_dict())
@@ -135,14 +137,16 @@ class TestGetQuote:
         assert result["quoteStatus"] == "ok"
         assert result["price"] == 960.0
 
-    async def test_sj_exception_records_cb_failure(self, monkeypatch):
-        """Shioaji API exception → CB failure 計數增加，繼續走 Yahoo fallback。"""
+    async def test_sj_subscribe_exception_falls_back_to_yahoo(self, monkeypatch):
+        """subscribe_stock 拋例外 → 繼續走 Yahoo fallback，CB 計數不受影響。"""
         monkeypatch.setattr(qs, "shioaji_enabled", lambda: True)
         monkeypatch.setattr(qs, "is_market_open", lambda: True)   # 盤中 → TWSE 跳過
 
         manager_mock = MagicMock()
         manager_mock.initialized = True
-        manager_mock.get_stock_snapshot = AsyncMock(side_effect=RuntimeError("API連線中斷"))
+        manager_mock.get_cached_stock = MagicMock(return_value=None)
+        manager_mock.is_subscribed = MagicMock(return_value=False)
+        manager_mock.subscribe_stock = AsyncMock(side_effect=RuntimeError("WebSocket 連線中斷"))
 
         cb_before = circuit_breaker._failure_count
 
@@ -151,23 +155,19 @@ class TestGetQuote:
             with patch("services.yahoo_finance.get_yahoo_quote", yahoo_mock):
                 result = await qs.get_quote("2330")
 
-        assert circuit_breaker._failure_count > cb_before
         assert result["quoteSource"] == "yahoo"
+        assert circuit_breaker._failure_count == cb_before  # tick cache 不計入 CB
 
-    async def test_cb_open_skips_shioaji(self, monkeypatch):
-        """CB OPEN → skip Shioaji，直接走 fallback。"""
+    async def test_new_stock_subscribe_success_no_tick_yet_falls_back(self, monkeypatch):
+        """未訂閱股票：subscribe_stock 成功，但 tick 尚未到達 → Yahoo fallback。"""
         monkeypatch.setattr(qs, "shioaji_enabled", lambda: True)
         monkeypatch.setattr(qs, "is_market_open", lambda: True)   # 盤中 → TWSE 跳過
 
-        # 強制 CB OPEN
-        circuit_breaker._state = "OPEN"
-        circuit_breaker._opened_at = time.time()
-
         manager_mock = MagicMock()
         manager_mock.initialized = True
-        manager_mock.get_stock_snapshot = AsyncMock(
-            side_effect=AssertionError("CB OPEN 時不應呼叫 Shioaji")
-        )
+        manager_mock.get_cached_stock = MagicMock(return_value=None)
+        manager_mock.is_subscribed = MagicMock(return_value=False)
+        manager_mock.subscribe_stock = AsyncMock()  # 訂閱成功，但 tick 尚未到達
 
         with patch("services.shioaji_manager.shioaji_manager", manager_mock):
             yahoo_mock = MagicMock(return_value=_yahoo_dict())
@@ -175,6 +175,7 @@ class TestGetQuote:
                 result = await qs.get_quote("2330")
 
         assert result["quoteSource"] == "yahoo"
+        manager_mock.subscribe_stock.assert_awaited_once_with("2330")
 
     async def test_all_providers_fail_returns_error_placeholder(self, monkeypatch):
         """全部 provider 失敗 → 回 quoteStatus: error，不拋例外。"""
@@ -204,14 +205,15 @@ class TestGetQuotes:
         assert result == {}
 
     async def test_batch_sj_ok_fills_all(self, monkeypatch):
-        """Shioaji 批次成功 → 全部 source=shioaji，不打 fallback。"""
+        """Shioaji tick cache 批次命中 → 全部 source=shioaji，不打 fallback。"""
         monkeypatch.setattr(qs, "shioaji_enabled", lambda: True)
 
         snaps = {"2330": _snap_dict(980.0), "2317": _snap_dict(60.0)}
 
         manager_mock = MagicMock()
         manager_mock.initialized = True
-        manager_mock.get_stock_snapshots = AsyncMock(return_value=snaps)
+        manager_mock.is_subscribed = MagicMock(return_value=True)  # 已訂閱，跳過 subscribe_stocks
+        manager_mock.get_cached_stocks = MagicMock(return_value=snaps)
 
         with patch("services.shioaji_manager.shioaji_manager", manager_mock):
             twse_mock = MagicMock(side_effect=AssertionError("不應呼叫 TWSE"))
@@ -223,34 +225,29 @@ class TestGetQuotes:
         assert result["2330"]["quoteSource"] == "shioaji"
         assert result["2317"]["quoteSource"] == "shioaji"
 
-    async def test_batch_sj_timeout_returns_all_placeholder(self, monkeypatch):
-        """Shioaji 整批 timeout → 所有股票回占位，不等 fallback。"""
+    async def test_batch_no_cache_falls_back_to_yahoo(self, monkeypatch):
+        """tick cache 無資料（已訂閱但尚無 tick）→ 缺口股票全數走 Yahoo fallback。"""
         monkeypatch.setattr(qs, "shioaji_enabled", lambda: True)
-
-        async def _slow(*_):
-            await asyncio.sleep(100)
+        monkeypatch.setattr(qs, "is_market_open", lambda: True)
 
         manager_mock = MagicMock()
         manager_mock.initialized = True
-        manager_mock.get_stock_snapshots = _slow
+        manager_mock.is_subscribed = MagicMock(return_value=True)
+        manager_mock.get_cached_stocks = MagicMock(
+            return_value={"2330": None, "2317": None}
+        )
 
-        original_timeout = qs._SJ_BATCH_TIMEOUT
-        qs._SJ_BATCH_TIMEOUT = 0.05   # 縮短以加快測試
+        with patch("services.shioaji_manager.shioaji_manager", manager_mock):
+            yahoo_mock = MagicMock(side_effect=lambda sid: _yahoo_dict(sid, 100.0))
+            with patch("services.yahoo_finance.get_yahoo_quote", yahoo_mock):
+                result = await qs.get_quotes(["2330", "2317"])
 
-        try:
-            with patch("services.shioaji_manager.shioaji_manager", manager_mock):
-                yahoo_mock = MagicMock(side_effect=AssertionError("timeout 後不應呼叫 Yahoo"))
-                with patch("services.yahoo_finance.get_yahoo_quote", yahoo_mock):
-                    result = await qs.get_quotes(["2330", "2317"])
-        finally:
-            qs._SJ_BATCH_TIMEOUT = original_timeout
-
-        assert result["2330"]["quoteStatus"] == "timeout"
-        assert result["2330"]["quoteSource"] == "unknown"
-        assert result["2317"]["quoteStatus"] == "timeout"
+        assert result["2330"]["quoteSource"] == "yahoo"
+        assert result["2330"]["quoteStatus"] == "ok"
+        assert result["2317"]["quoteSource"] == "yahoo"
 
     async def test_batch_sj_partial_fills_fallback_for_gaps(self, monkeypatch):
-        """Shioaji 部分成功（2330 ok，2317 None）→ 2330=shioaji，2317 走 Yahoo fallback。"""
+        """tick cache 部分命中（2330 ok，2317 None）→ 2330=shioaji，2317 走 Yahoo fallback。"""
         monkeypatch.setattr(qs, "shioaji_enabled", lambda: True)
         monkeypatch.setattr(qs, "is_market_open", lambda: True)  # 盤中，跳過 TWSE
 
@@ -258,7 +255,8 @@ class TestGetQuotes:
 
         manager_mock = MagicMock()
         manager_mock.initialized = True
-        manager_mock.get_stock_snapshots = AsyncMock(return_value=snaps)
+        manager_mock.is_subscribed = MagicMock(return_value=True)  # 已訂閱，跳過 subscribe_stocks
+        manager_mock.get_cached_stocks = MagicMock(return_value=snaps)
 
         with patch("services.shioaji_manager.shioaji_manager", manager_mock):
             yahoo_mock = MagicMock(return_value=_yahoo_dict("2317", 60.0))
