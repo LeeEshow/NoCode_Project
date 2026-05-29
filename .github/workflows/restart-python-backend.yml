@@ -28,16 +28,25 @@ jobs:
               print("ERROR: Cannot find MSDeploy credentials in publish profile")
               sys.exit(1)
 
-          url = f"https://{scm_host}/api/processes/0"
-          print(f"Calling: DELETE {url}")
+          import json, base64
+          url = f"https://{scm_host}/api/command"
+          cred = base64.b64encode(f"{user}:{pwd}".encode()).decode()
+          body = json.dumps({"command": "pkill -f uvicorn; sleep 2; echo done", "dir": "/home/site/wwwroot"})
+
+          print(f"Calling: POST {url}")
           r = subprocess.run(
-              ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-               "-X", "DELETE", url,
-               "-u", f"{user}:{pwd}"],
+              ["curl", "-s", "-w", "\n%{http_code}",
+               "-X", "POST", url,
+               "-H", "Content-Type: application/json",
+               "-H", f"Authorization: Basic {cred}",
+               "-d", body],
               capture_output=True, text=True
           )
-          code = r.stdout.strip()
+          lines = r.stdout.strip().split("\n")
+          code  = lines[-1]
+          body_out = "\n".join(lines[:-1])
           print(f"Kudu API response: HTTP {code}")
+          print(body_out)
           if code not in ("200", "204"):
               print(f"stderr: {r.stderr}")
               sys.exit(1)
