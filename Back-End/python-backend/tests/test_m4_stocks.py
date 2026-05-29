@@ -82,6 +82,27 @@ async def test_get_history_items_camel(client):
         assert_no_snake(item)
 
 
+async def test_get_history_date_range_returns_list(client):
+    res = await client.get(f"/api/v1/stocks/{TEST_STOCK}/history?start=2026-01-01&end=2026-05-29")
+    data = assert_success(res)
+    assert isinstance(data, list)
+
+
+async def test_get_history_date_range_items_camel(client):
+    res = await client.get(f"/api/v1/stocks/{TEST_STOCK}/history?start=2026-01-01&end=2026-05-29")
+    data = assert_success(res)
+    for item in data:
+        assert_keys(item, HISTORY_KEYS)
+        assert_no_snake(item)
+
+
+async def test_get_history_start_only(client):
+    """end 省略時應正常回傳（預設今日）"""
+    res = await client.get(f"/api/v1/stocks/{TEST_STOCK}/history?start=2026-04-01")
+    data = assert_success(res)
+    assert isinstance(data, list)
+
+
 async def test_get_profile_returns_success(client):
     """M8：profile 讀 Firestore；未同步時 data=null，同步後 data 為 camelCase dict"""
     res = await client.get(f"/api/v1/stocks/{TEST_STOCK}/profile")

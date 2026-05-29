@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import type { ApiResponse, HoldingDTO, HoldingTagDTO, KLineDTO, StockProfileDTO, StockSearchResultDTO, ChipDTO, QuoteSource, QuoteStatus } from '../types';
+import type { ApiResponse, HoldingDTO, HoldingTagDTO, KLineDTO, StockProfileDTO, StockSearchResultDTO, ChipDTO, QuoteSource, QuoteStatus, StockDailyPoint } from '../types';
 
 /* ── 後端原始型別 ── */
 interface RawHolding {
@@ -198,6 +198,22 @@ export async function recalculateHoldings(
     costMethod:     'profit-return',
   }));
   await api.post('/holdings/recalculate', payload);
+}
+
+export async function fetchStockInfo(stockId: string): Promise<{ stockId: string; name: string } | null> {
+  const res = await api.get<ApiResponse<RawSearchResult[]>>('/stocks/search', { params: { q: stockId } });
+  return res.data.data.find(r => r.stockId === stockId) ?? null;
+}
+
+export async function fetchStockDailyHistory(stockId: string, start: string, end: string): Promise<StockDailyPoint[]> {
+  const res = await api.get<ApiResponse<RawHistoryPoint[]>>(
+    `/stocks/${stockId}/history`,
+    { params: { start, end } },
+  );
+  return res.data.data.map(p => ({
+    date:  new Date(p.timestamp * 1000).toISOString().slice(0, 10),
+    close: p.close,
+  }));
 }
 
 export async function reorderHoldings(order: string[]): Promise<void> {

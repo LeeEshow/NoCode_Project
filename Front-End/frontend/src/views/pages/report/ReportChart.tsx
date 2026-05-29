@@ -14,41 +14,45 @@ import { colors, chartColors } from '../../../styles';
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer]);
 
 export interface ChartDayData {
-  dayIndex: number;
+  date:       string;
   returnRate: number;
-  netReturn: number;
-  date: string;
+  netReturn?: number;
 }
 
 export interface SeriesEntry {
   label: string;
-  data: ChartDayData[];
+  type:  'portfolio' | 'stock';
+  data:  ChartDayData[];
 }
 
 interface Props {
-  seriesList: SeriesEntry[];
-  targetRate: number;
-  height?: number;
+  portfolioSeries: SeriesEntry[];
+  stockSeries:     SeriesEntry[];
+  targetRate:      number;
+  height?:         number;
 }
 
-function buildDense(
+function buildDenseByDate(
   data: ChartDayData[],
-  totalDays: number,
+  allDates: string[],
   key: 'returnRate' | 'netReturn',
 ): (number | null)[] {
-  const map = new Map(data.map(d => [d.dayIndex, d]));
-  return Array.from({ length: totalDays }, (_, i) => {
-    const d = map.get(i + 1);
+  const map = new Map(data.map(d => [d.date, d]));
+  return allDates.map(date => {
+    const d = map.get(date);
     if (!d) return null;
+    const v = key === 'returnRate' ? d.returnRate : (d.netReturn ?? null);
+    if (v === null) return null;
     return key === 'returnRate'
-      ? parseFloat((d.returnRate * 100).toFixed(3))
-      : d.netReturn;
+      ? parseFloat((v * 100).toFixed(3))
+      : v;
   });
 }
 
-function buildDenseDates(data: ChartDayData[], totalDays: number): (string | null)[] {
-  const map = new Map(data.map(d => [d.dayIndex, d.date]));
-  return Array.from({ length: totalDays }, (_, i) => map.get(i + 1) ?? null);
+function shiftToZero(dense: (number | null)[]): (number | null)[] {
+  const base = dense.find(v => v !== null);
+  if (base === undefined || base === 0) return dense;
+  return dense.map(v => v !== null ? parseFloat((v - base).toFixed(3)) : null);
 }
 
 function fmtAxisWan(v: number): string {
@@ -60,13 +64,15 @@ function fmtAxisWan(v: number): string {
   return String(v);
 }
 
-export default memo(function ReportChart({ seriesList, targetRate, height = 320 }: Props) {
-  const totalDays = seriesList.reduce((max, s) => {
-    if (s.data.length === 0) return max;
-    return Math.max(max, s.data[s.data.length - 1].dayIndex);
-  }, 0);
+export default memo(function ReportChart({ portfolioSeries, stockSeries, targetRate, height = 320 }: Props) {
+  const hasStocks = stockSeries.length > 0;
 
-  if (totalDays === 0) {
+  // 有個股時以個股交易日為主軸（跳過非交易日），否則用快照日期
+  const allDates = hasStocks
+    ? [...new Set(stockSeries.flatMap(s => s.data.map(d => d.date)))].sort()
+    : [...new Set(portfolioSeries.flatMap(s => s.data.map(d => d.date)))].sort();
+
+  if (allDates.length === 0) {
     return (
       <div style={{
         height,
@@ -82,58 +88,42 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
     );
   }
 
-  const xData         = Array.from({ length: totalDays }, (_, i) => `第 ${i + 1} 日`);
-  const targetPct     = parseFloat((targetRate * 100).toFixed(2));
-  const denseNetList  = seriesList.map(s => buildDense(s.data, totalDays, 'netReturn'));
-  const denseRateList = seriesList.map(s => buildDense(s.data, totalDays, 'returnRate'));
-  const denseDateList = seriesList.map(s => buildDenseDates(s.data, totalDays));
+  const targetPct = parseFloat((targetRate * 100).toFixed(2));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const seriesOptions: any[] = [];
   const legendData: string[] = [];
 
-  seriesList.forEach((seg, i) => {
+  portfolioSeries.forEach((seg, i) => {
     const netColor = chartColors[(i * 2)     % chartColors.length];
     const ratColor = chartColors[(i * 2 + 1) % chartColors.length];
-    const netKey   = `淨損益 (${seg.label})`;
     const ratKey   = `報酬率 (${seg.label})`;
 
-    seriesOptions.push({
-      name: netKey,
-      type: 'line',
-      yAxisIndex: 0,
-      data: denseNetList[i],
-      connectNulls: false,
-      smooth: false,
-      symbol: 'none',
-      lineStyle: { color: netColor, width: 1.4, type: 'solid' },
-      z: 2,
-    });
-    legendData.push(netKey);
+    const denseRate = hasStocks
+      ? shiftToZero(buildDenseByDate(seg.data, allDates, 'returnRate'))
+      : buildDenseByDate(seg.data, allDates, 'returnRate');
 
-    seriesOptions.push({
-      name: `__gap_net_${i}`,
-      type: 'line',
-      yAxisIndex: 0,
-      data: denseNetList[i],
-      connectNulls: true,
-      smooth: false,
-      symbol: 'none',
-      lineStyle: { color: netColor, width: 1.2, type: 'dashed', opacity: 0.4 },
-      z: 1,
-    });
+    if (!hasStocks) {
+      const netKey   = `淨損益 (${seg.label})`;
+      const denseNet = buildDenseByDate(seg.data, allDates, 'netReturn');
+      seriesOptions.push(
+        { name: netKey, type: 'line', yAxisIndex: 0, data: denseNet, connectNulls: false, smooth: false, symbol: 'none', lineStyle: { color: netColor, width: 1.4, type: 'solid' }, z: 2 },
+        { name: `__gap_net_${i}`, type: 'line', yAxisIndex: 0, data: denseNet, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: netColor, width: 1.2, type: 'dashed', opacity: 0.4 }, z: 1 },
+      );
+      legendData.push(netKey);
+    }
 
     seriesOptions.push({
       name: ratKey,
       type: 'line',
       yAxisIndex: 1,
-      data: denseRateList[i],
+      data: denseRate,
       connectNulls: false,
       smooth: false,
       symbol: 'none',
       lineStyle: { color: ratColor, width: 1.8, type: 'solid' },
       z: 3,
-      ...(i === 0 ? {
+      ...(!hasStocks && i === 0 ? {
         markLine: {
           silent: true,
           data: [{ yAxis: targetPct }],
@@ -148,20 +138,25 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
         },
       } : {}),
     });
+    seriesOptions.push({ name: `__gap_rate_${i}`, type: 'line', yAxisIndex: 1, data: denseRate, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: ratColor, width: 1.4, type: 'dashed', opacity: 0.5 }, z: 2 });
     legendData.push(ratKey);
-
-    seriesOptions.push({
-      name: `__gap_rate_${i}`,
-      type: 'line',
-      yAxisIndex: 1,
-      data: denseRateList[i],
-      connectNulls: true,
-      smooth: false,
-      symbol: 'none',
-      lineStyle: { color: ratColor, width: 1.4, type: 'dashed', opacity: 0.5 },
-      z: 2,
-    });
   });
+
+  stockSeries.forEach((stock, i) => {
+    const colorIdx = portfolioSeries.length * 2 + i;
+    const color    = chartColors[colorIdx % chartColors.length];
+    const key      = stock.label;
+
+    const denseRate = shiftToZero(buildDenseByDate(stock.data, allDates, 'returnRate'));
+
+    seriesOptions.push(
+      { name: key, type: 'line', yAxisIndex: 1, data: denseRate, connectNulls: false, smooth: false, symbol: 'none', lineStyle: { color, width: 2, type: 'solid' }, z: 4 },
+      { name: `__gap_stock_${i}`, type: 'line', yAxisIndex: 1, data: denseRate, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color, width: 1.5, type: 'dashed', opacity: 0.5 }, z: 3 },
+    );
+    legendData.push(key);
+  });
+
+  const xLabels = allDates.map(d => d.slice(5).replace('-', '/'));
 
   const option = {
     animation: false,
@@ -170,38 +165,30 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
     grid: { left: 68, right: 72, top: 28, bottom: 56 },
     xAxis: {
       type: 'category',
-      data: xData,
+      data: xLabels,
       axisLine: { lineStyle: { color: colors.border } },
       axisTick: { show: false },
       axisLabel: {
         color: colors.dim,
         fontSize: 10,
-        interval: Math.max(0, Math.floor(totalDays / 8) - 1),
+        interval: Math.max(0, Math.floor(allDates.length / 8) - 1),
       },
       splitLine: { show: false },
     },
     yAxis: [
       {
         type: 'value',
-        name: '淨損益',
+        name: hasStocks ? '' : '淨損益',
         nameTextStyle: { color: colors.dim, fontSize: 10, padding: [0, 0, 0, 40] },
-        axisLabel: { color: colors.dim, fontSize: 10, formatter: fmtAxisWan },
+        axisLabel: { show: !hasStocks, color: colors.dim, fontSize: 10, formatter: fmtAxisWan },
         splitLine: { show: false },
         axisLine: { show: false },
         axisTick: { show: false },
       },
       {
         type: 'value',
-        name: '報酬率',
+        name: '相對報酬',
         nameTextStyle: { color: colors.dim, fontSize: 10, padding: [0, 40, 0, 0] },
-        min: (value: { min: number }) => {
-          const d = isFinite(value.min) ? value.min : 0;
-          return parseFloat((Math.min(d, 0) * 1.2).toFixed(2));
-        },
-        max: (value: { max: number }) => {
-          const d = isFinite(value.max) ? value.max : 0;
-          return parseFloat(Math.max(d * 1.15, targetPct * 1.3).toFixed(2));
-        },
         axisLabel: {
           color: colors.dim,
           fontSize: 10,
@@ -221,16 +208,9 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
       appendTo: () => document.body,
       formatter: (params: unknown) => {
         if (!Array.isArray(params) || !params.length) return '';
-        const all = params as { seriesName: string; value: unknown; color: string; axisValue: string; dataIndex: number }[];
+        const all = params as { seriesName: string; value: unknown; color: string; dataIndex: number }[];
         const idx = all[0].dataIndex ?? 0;
-
-        const dateStr = seriesList
-          .map((seg, i) => {
-            const d = denseDateList[i]?.[idx];
-            return d ? `${seg.label} ${d.replace(/-/g, '/')}` : null;
-          })
-          .filter(Boolean)
-          .join('　');
+        const dateStr = allDates[idx]?.replace(/-/g, '/') ?? '';
 
         const ps = all.filter(p =>
           !p.seriesName.startsWith('__') &&
@@ -240,18 +220,15 @@ export default memo(function ReportChart({ seriesList, targetRate, height = 320 
 
         const lines = ps.map(p => {
           const v      = p.value as number;
-          const isRate = p.seriesName.includes('報酬率');
-          const display = isRate
-            ? `${v.toFixed(2)}%`
-            : `${v >= 0 ? '+' : ''}${v.toLocaleString('zh-TW')}`;
+          const isNet  = p.seriesName.startsWith('淨損益');
+          const display = isNet
+            ? `${v >= 0 ? '+' : ''}${v.toLocaleString('zh-TW')}`
+            : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
           return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:5px"></span>${p.seriesName}：<b>${display}</b>`;
         });
 
-        const header = `<div style="font-size:10px;color:${colors.dim};margin-bottom:2px">${all[0].axisValue}</div>`;
-        const dateLine = dateStr
-          ? `<div style="font-size:11px;color:${colors.muted};margin-bottom:5px;letter-spacing:0.02em">${dateStr}</div>`
-          : '';
-        return header + dateLine + lines.join('<br/>');
+        const header = `<div style="font-size:11px;color:${colors.muted};margin-bottom:4px">${dateStr}</div>`;
+        return header + lines.join('<br/>');
       },
     },
     legend: {

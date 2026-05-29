@@ -394,6 +394,17 @@ export interface UpdateSnapshotPayload {
   note?:        string;
 }
 
+export interface StockDailyPoint {
+  date:  string;
+  close: number;
+}
+
+export interface StockComparisonItem {
+  stockId: string;
+  name:    string;
+  data:    StockDailyPoint[];
+}
+
 /* ── Tag ────────────────────────────────────────────────────── */
 
 export type FallbackBehavior = 'hold' | 'exclude';

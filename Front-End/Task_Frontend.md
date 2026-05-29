@@ -13,6 +13,88 @@
 
 ---
 
+### [完成] PERF-F — 績效比較：個股成長比較 ＆ 備註 Inline 編輯
+
+> 前置後端任務：`PERF-B-01`（`/stocks/:id/history` 支援日期範圍）需先完成，前端才能實作個股歷史資料請求。
+
+#### PERF-F-01 — `types/index.ts`：新增個股比較相關型別
+
+- 新增 `StockDailyPoint`：`{ date: string; close: number }`
+- 新增 `StockComparisonItem`：`{ stockId: string; name: string; data: StockDailyPoint[] }`
+
+#### PERF-F-02 — `models/holdingModel.ts`：新增 `fetchStockDailyHistory`
+
+- `fetchStockDailyHistory(stockId: string, start: string, end: string): Promise<StockDailyPoint[]>`
+- 呼叫 `GET /stocks/:id/history?start=&end=`，將 `RawHistoryPoint[]` 映射為 `{ date, close }`（`timestamp * 1000` → ISO 日期字串取前 10 碼）
+
+#### PERF-F-03 — `viewmodels/useReportViewModel.ts`：擴充個股比較狀態
+
+新增以下狀態與方法：
+
+| 項目 | 說明 |
+|------|------|
+| `comparisonStart / comparisonEnd` | 個股比較共用時間區間（預設：當年度首末日），localStorage 持久化（key: `report_comparison_range`） |
+| `stockComparisons: StockComparisonItem[]` | 已加入的個股清單，localStorage 持久化（key: `report_comparison_stocks`，只存 `stockId`，載入時重新 fetch） |
+| `comparisonLoading: boolean` | 任一個股資料 fetch 中為 true |
+| `addStockComparison(stockId)` | 驗證代碼是否已存在 → `fetchStockDailyHistory` → 加入清單；代碼無資料時 `toast.error` |
+| `removeStockComparison(stockId)` | 從清單移除，更新 localStorage |
+| `updateComparisonRange(start, end)` | 更新時間區間並重新 fetch 所有個股資料 |
+| `updateSnapshotNote(date, note)` | 呼叫 `updateSnapshot(date, { note })`；成功後 optimistic update `state.snapshots` 對應項的 `note` 欄位，不重新 fetch |
+
+**localStorage 持久化規則**：僅存 `stockId` 陣列，`name` 與 `data` 每次 mount 重新 fetch（避免 stale 價格）；若某 `stockId` fetch 失敗，靜默跳過並從清單移除。
+
+#### PERF-F-04 — `views/pages/report/ReportChart.tsx`：圖表 X 軸改實際日期
+
+**架構改動**：
+
+- `ChartDayData` 移除 `dayIndex`，改用 `date: string` 作為定位鍵
+- `SeriesEntry` 新增 `type: 'portfolio' | 'stock'`；`portfolio` 系列雙 Y 軸（淨損益 + 報酬率），`stock` 只有報酬率右軸
+- X 軸：收集所有系列涵蓋的日期，排序後建成分類軸（`type: 'category'`，格式 `MM/DD`）
+- **報酬率基準**：各系列各自以第一筆資料點為 0%，後續資料點 `= (currentRate - baseRate)`（組合）或 `= (close - baseClose) / baseClose`（個股）
+
+**缺失資料橋接**：
+
+- 組合快照缺失：沿用現有 `connectNulls` 虛線模式
+- 個股非交易日（周末 / 假日）：對應日期值為 `null`，同樣虛線橋接
+
+**Props 調整**：
+
+```ts
+interface Props {
+  portfolioSeries: SeriesEntry[];   // 原 seriesList（組合段落）
+  stockSeries: SeriesEntry[];       // 新增（個股）
+  targetRate: number;
+  height?: number;
+}
+```
+
+**圖例**：組合顯示「段 N」，個股顯示「XXXX 個股名稱」；ghost series（`__` 前綴）從圖例過濾
+
+#### PERF-F-05 — `views/pages/ReportPage.tsx`：個股比較控制列 ＆ 備註 Inline 編輯
+
+**個股比較控制列**（加在現有日期段落控制區下方，同一 `.ft-panel`）：
+
+```
+[個股比較] 2026/01/01 — 2026/12/31    [+新增個股: 輸入代碼] [確認按鈕]
+已加入：[2330 台積電 ×] [2454 聯發科 ×]
+```
+
+- 時間區間輸入：`<input type="date">`，onChange 呼叫 `updateComparisonRange`
+- 代碼輸入框：按 Enter 或點「＋」按鈕呼叫 `addStockComparison`；`comparisonLoading` 時 disabled
+- 已加入個股：`[代碼 名稱 ×]` 標籤，× 點擊呼叫 `removeStockComparison`
+
+**ReportChart 傳入調整**：
+
+- 原 `seriesList` → 拆分為 `portfolioSeries`（段落）與 `stockSeries`（個股）分開傳入
+
+**備註欄 Inline 編輯**（`SnapshotTable` 元件內）：
+
+- 備註 `<td>` 由靜態文字改為可編輯狀態：預設顯示文字（灰色）；點擊後替換為 `<input type="text">`，`onBlur` / `onKeyDown(Enter)` 觸發 `updateSnapshotNote`；`Escape` 取消還原原文
+- 儲存中（per-row loading）顯示微型 spinner 取代輸入框，完成後回到文字顯示
+- 空備註時顯示「+」提示文字（hover 才出現，`--dim` 色）
+
+---
+
 ## 已完成
 
 ### OPS-F2 — 設定子視窗：Shioaji 重新初始化

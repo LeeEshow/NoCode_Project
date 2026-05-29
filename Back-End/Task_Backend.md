@@ -92,6 +92,35 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 
 ---
 
+### [完成] PERF-B-01 — `GET /stocks/:id/history` 新增日期範圍查詢參數
+
+**背景**：前端績效比較頁新增個股成長比較功能，需要取得指定日期區間的個股收盤價歷史，現有 `?days=N` 參數無法精確對應區間。
+
+**修改範圍**：`routers/stocks.py`、`services/yahoo_finance.py`（或對應的 history fetch 函式）
+
+**新增查詢參數**：
+
+| 參數 | 型別 | 說明 |
+|------|------|------|
+| `start` | `str \| None` | 起始日（`YYYY-MM-DD`），選填 |
+| `end` | `str \| None` | 結束日（`YYYY-MM-DD`），選填 |
+
+**行為規則**：
+
+- `start` / `end` 與現有 `days` 互斥：若同時傳入 `start`，忽略 `days`，改以 `start`～`end` 區間查詢
+- `end` 未填時預設為今日
+- `days` 仍保留且維持現有預設行為（向下相容）
+- Cache key 改為 `stock:history:{stock_id}:start={start}:end={end}` / `stock:history:{stock_id}:days={days}`（兩種 key 並存，各自 TTL 300s）
+
+**回傳格式不變**：`{ timestamp, open, high, low, close, volume }[]`
+
+**驗收條件**：
+- `GET /stocks/2330/history?start=2026-01-01&end=2026-05-29` → 回傳該區間日 K 陣列，筆數與區間相符
+- `GET /stocks/2330/history?days=90` → 行為與修改前完全相同（向下相容）
+- `pytest tests/` 全數通過（現有測試不破壞）
+
+---
+
 ### [完成] Shioaji 前端觸發重新初始化
 
 **背景**：診斷畫面出現 `connected: true` 但 `initialized: false` 時（通常因 TXF 合約訂閱失敗），目前只能重啟整個後端進程。前端希望能在 SettingsModal 診斷區直接觸發重新初始化，免 SSH。

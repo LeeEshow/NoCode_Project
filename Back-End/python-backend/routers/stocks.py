@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
-from services.yahoo_finance import get_all_stocks, get_full_history
+from services.yahoo_finance import get_all_stocks, get_full_history, get_history_range
 from services.quote_service import get_quote
 
 router = APIRouter()
@@ -41,7 +41,7 @@ async def search(q: str = Query(default="")):
             "market":  s.get("market", "TSE"),
         }
         for s in all_stocks
-        if s.get("code", "").startswith(keyword) or keyword in s.get("name", "").lower()
+        if s.get("code", "").lower().startswith(keyword) or keyword in s.get("name", "").lower()
     ]
     return {"success": True, "data": results[:20]}
 
@@ -86,16 +86,28 @@ async def stock_quote(stock_id: str):
     return {"success": True, "data": data}
 
 
-# ─── GET /stocks/{id}/history?days=90 ────────────────────────────────────────
+# ─── GET /stocks/{id}/history?days=90 | ?start=YYYY-MM-DD&end=YYYY-MM-DD ─────
 
 @router.get("/{stock_id}/history")
-async def stock_history(stock_id: str, days: int = Query(default=90, ge=1, le=365)):
-    cache_key = f"stock:history:{stock_id}:{days}"
-    cached = cache_get(cache_key)
-    if cached is not None:
-        return {"success": True, "data": cached}
-    loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, get_full_history, stock_id, days)
+async def stock_history(
+    stock_id: str,
+    days:  int      = Query(default=90, ge=1, le=365),
+    start: str | None = Query(default=None),
+    end:   str | None = Query(default=None),
+):
+    loop = asyncio.get_running_loop()
+    if start:
+        cache_key = f"stock:history:{stock_id}:start={start}:end={end or ''}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return {"success": True, "data": cached}
+        data = await loop.run_in_executor(None, get_history_range, stock_id, start, end)
+    else:
+        cache_key = f"stock:history:{stock_id}:days={days}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return {"success": True, "data": cached}
+        data = await loop.run_in_executor(None, get_full_history, stock_id, days)
     if data:
         cache_set(cache_key, data, 300)
     return {"success": True, "data": data}
