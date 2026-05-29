@@ -1,0 +1,46 @@
+name: Daily Backend Restart
+
+on:
+  schedule:
+    - cron: '0 21 * * *'   # 每天台灣時間 05:00（UTC+8 = UTC 21:00）
+  workflow_dispatch:         # 支援手動觸發
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restart Azure Backend via Kudu API
+        run: |
+          python3 - <<'EOF'
+          import xml.etree.ElementTree as ET, subprocess, os, sys
+
+          profile = os.environ["PUBLISH_PROFILE"]
+          root = ET.fromstring(profile)
+          user = pwd = None
+          for p in root.findall("publishProfile"):
+              if p.get("publishMethod") == "MSDeploy":
+                  user = p.get("userName")
+                  pwd  = p.get("userPWD")
+                  break
+          if not user:
+              print("ERROR: Cannot find MSDeploy credentials in publish profile")
+              sys.exit(1)
+
+          r = subprocess.run(
+              ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+               "-X", "DELETE",
+               "https://finance-backend-py.scm.azurewebsites.net/api/processes/0",
+               "-u", f"{user}:{pwd}"],
+              capture_output=True, text=True
+          )
+          code = r.stdout.strip()
+          print(f"Kudu API response: HTTP {code}")
+          if code not in ("200", "204"):
+              print(f"stderr: {r.stderr}")
+              sys.exit(1)
+          EOF
+        env:
+          PUBLISH_PROFILE: ${{ secrets.AZURE_PYTHON_BACKEND_PUBLISH_PROFILE }}
+
+      - name: Log restart time
+        run: echo "Backend restarted at $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S %Z')"
