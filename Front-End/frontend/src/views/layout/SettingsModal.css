@@ -1,11 +1,11 @@
 /* ── Settings Modal ── */
 .settings-modal { max-width: 620px; }
 
-/* ── 上方雙欄 Card 區 ── */
-.settings-cards {
-  display:               grid;
-  grid-template-columns: 1fr 1fr;
-  gap:                   12px;
+/* ── Card 堆疊區 ── */
+.settings-stack {
+  display:        flex;
+  flex-direction: column;
+  gap:            12px;
 }
 
 .settings-card {
@@ -43,12 +43,19 @@
   flex-shrink:   0;
 }
 
-/* KV 格 */
-.settings-kv {
-  display:               grid;
-  grid-template-columns: auto 1fr;
-  gap:                   7px 14px;
-  align-items:           baseline;
+/* KV 橫向列 */
+.settings-kv-row {
+  display:         flex;
+  align-items:     baseline;
+  justify-content: space-between;
+  gap:             8px;
+  flex-wrap:       wrap;
+}
+
+.settings-kv-pair {
+  display:     flex;
+  align-items: baseline;
+  gap:         8px;
 }
 
 .settings-kv__key {
@@ -64,42 +71,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── API 診斷 Section ── */
-.settings-section {
-  margin-top:  20px;
-  padding-top: 20px;
-  border-top:  1px solid var(--border);
-}
-
-.settings-section__label {
-  color:          var(--muted);
-  font-size:      11px;
-  font-weight:    700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  display:        flex;
-  align-items:    center;
-  gap:            7px;
-  margin-bottom:  14px;
-}
-
-.settings-section__label::before {
-  content:       '';
-  display:       block;
-  width:         3px;
-  height:        12px;
-  background:    var(--accent);
-  border-radius: 2px;
-  flex-shrink:   0;
-}
-
 /* ── 系統狀態 Block ── */
 .diag-status-block {
   background:    var(--surface);
   border:        1px solid var(--border);
   border-radius: var(--radius-sm);
   padding:       12px 14px;
-  margin-bottom: 14px;
+  margin-top:    14px;
 }
 
 .diag-status-block__group {

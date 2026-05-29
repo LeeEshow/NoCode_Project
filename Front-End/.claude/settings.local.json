@@ -66,7 +66,11 @@
       "Bash(python -m json.tool)",
       "PowerShell(Invoke-RestMethod -Uri \"http://localhost:3001/api/v1/stocks/2330/profile\" -Method GET | ConvertTo-Json -Depth 5)",
       "PowerShell(Invoke-RestMethod -Uri \"http://localhost:8000/api/v1/stocks/2330/profile\" -Method GET | ConvertTo-Json -Depth 5)",
-      "Bash(Get-ChildItem -Recurse \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\" -Include \"*.ts\",\"*.tsx\")"
+      "Bash(Get-ChildItem -Recurse \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\" -Include \"*.ts\",\"*.tsx\")",
+      "Bash(.venv\\\\Scripts\\\\python.exe -m pytest tests/ -v)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(.venv/Scripts/pytest.exe tests/test_quote_service.py -v --tb=short)",
+      "Bash(.venv/Scripts/pytest.exe tests/ --tb=short -q)"
     ]
   }
 }

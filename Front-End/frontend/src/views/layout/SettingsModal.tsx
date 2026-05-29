@@ -51,11 +51,15 @@ function StockListSection() {
             : '立即更新'}
         </button>
       </div>
-      <div className="settings-kv">
-        <span className="settings-kv__key">上次更新</span>
-        <span className="settings-kv__val">{loading ? '載入中…' : formatDateTime(updatedAt)}</span>
-        <span className="settings-kv__key">總筆數</span>
-        <span className="settings-kv__val">{loading ? '—' : `${count.toLocaleString()} 筆`}</span>
+      <div className="settings-kv-row">
+        <div className="settings-kv-pair">
+          <span className="settings-kv__key">總筆數</span>
+          <span className="settings-kv__val">{loading ? '—' : `${count.toLocaleString()} 筆`}</span>
+        </div>
+        <div className="settings-kv-pair">
+          <span className="settings-kv__key">上次更新</span>
+          <span className="settings-kv__val">{loading ? '載入中…' : formatDateTime(updatedAt)}</span>
+        </div>
       </div>
     </div>
   );
@@ -114,11 +118,13 @@ function SnapshotSection() {
             : '記錄快照'}
         </button>
       </div>
-      <div className="settings-kv">
-        <span className="settings-kv__key">今日狀態</span>
-        <span className="settings-kv__val">
-          {loading ? '載入中…' : (recordedAt ? formatDateTime(recordedAt) : '尚未記錄')}
-        </span>
+      <div className="settings-kv-row">
+        <div className="settings-kv-pair">
+          <span className="settings-kv__key">今日狀態</span>
+          <span className="settings-kv__val">
+            {loading ? '載入中…' : (recordedAt ? formatDateTime(recordedAt) : '尚未記錄')}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -271,16 +277,20 @@ function ApiDiagnosticsSection() {
     `共 ${d.count} 筆  加權 ${d.hasTwii ? '✓' : '✗'}  期貨 ${d.hasFutures ? '✓' : '✗'}`;
 
   return (
-    <div className="settings-section">
-      <div className="settings-section__label">API 診斷</div>
-
-      {/* 系統狀態 */}
-      {diag.statusResult?.data && (
-        <SystemStatusDisplay data={diag.statusResult.data} />
-      )}
-      {diag.statusResult && !diag.statusResult.ok && (
-        <p className="diag-error">無法取得系統狀態：{diag.statusResult.error}</p>
-      )}
+    <div className="settings-card">
+      <div className="settings-card__header">
+        <span className="settings-card__title">後端診斷</span>
+        <button
+          className="btn-ghost"
+          onClick={diag.loadStatus}
+          disabled={diag.anyTesting}
+          aria-label={diag.loadingStatus ? '載入中' : undefined}
+        >
+          {diag.loadingStatus
+            ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
+            : '重讀狀態'}
+        </button>
+      </div>
 
       {/* 操作 */}
       <div className="diag-controls">
@@ -298,16 +308,6 @@ function ApiDiagnosticsSection() {
               aria-label="單股代號"
             />
           </label>
-          <button
-            className="btn-ghost"
-            onClick={diag.loadStatus}
-            disabled={diag.anyTesting}
-            aria-label={diag.loadingStatus ? '載入中' : undefined}
-          >
-            {diag.loadingStatus
-              ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
-              : '重新讀取狀態'}
-          </button>
         </div>
         <div className="diag-controls__row">
           <button
@@ -353,6 +353,14 @@ function ApiDiagnosticsSection() {
         </div>
       </div>
 
+      {/* 系統狀態 */}
+      {diag.statusResult?.data && (
+        <SystemStatusDisplay data={diag.statusResult.data} />
+      )}
+      {diag.statusResult && !diag.statusResult.ok && (
+        <p className="diag-error">無法取得系統狀態：{diag.statusResult.error}</p>
+      )}
+
       {/* 測試結果 */}
       {(hasAnyResult || diag.testingStock || diag.testingHoldings || diag.testingMarket) && (
         <div className="diag-results">
@@ -392,11 +400,11 @@ interface SettingsModalProps {
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   return (
     <Modal open={open} onClose={onClose} title="設定" size="md" className="settings-modal">
-      <div className="settings-cards">
+      <div className="settings-stack">
         <StockListSection />
         <SnapshotSection />
+        <ApiDiagnosticsSection />
       </div>
-      <ApiDiagnosticsSection />
     </Modal>
   );
 }
