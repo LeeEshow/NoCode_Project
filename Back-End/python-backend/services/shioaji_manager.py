@@ -169,7 +169,11 @@ class ShioajiManager:
                 logger.warning("get_taiex_snapshot error: %s", e)
                 return None
 
-        result = await asyncio.to_thread(_snap)
+        try:
+            result = await asyncio.wait_for(asyncio.to_thread(_snap), timeout=5)
+        except asyncio.TimeoutError:
+            logger.warning("get_taiex_snapshot timeout after 5s, fallback to Yahoo")
+            return None
         if result is not None:
             self._taiex_snap_data = result
             self._taiex_snap_ts = time.time()
@@ -251,7 +255,11 @@ class ShioajiManager:
             return self._snap_to_dict(snap)
 
         async with self._snap_single_sem:
-            return await asyncio.to_thread(_snap)
+            try:
+                return await asyncio.wait_for(asyncio.to_thread(_snap), timeout=5)
+            except asyncio.TimeoutError:
+                logger.warning("get_stock_snapshot timeout after 5s: %s, fallback to Yahoo", stock_id)
+                return None
 
     async def get_stock_snapshots(self, stock_ids: list[str]) -> dict[str, Optional[dict]]:
         """
@@ -294,7 +302,11 @@ class ShioajiManager:
             return results
 
         async with self._snap_batch_sem:
-            return await asyncio.to_thread(_snap)
+            try:
+                return await asyncio.wait_for(asyncio.to_thread(_snap), timeout=8)
+            except asyncio.TimeoutError:
+                logger.warning("get_stock_snapshots timeout after 8s (%d stocks), fallback to Yahoo", len(stock_ids))
+                return {sid: None for sid in stock_ids}
 
     def get_status(self) -> dict:
         return {
