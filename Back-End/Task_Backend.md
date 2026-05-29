@@ -24,7 +24,7 @@
 
 ---
 
-## 現況（2026-05-27）
+## 現況（2026-05-29）
 
 - **M1–M8 全部完成**：Python FastAPI 後端穩定運作於 Azure App Service
 - **MCP 全部完成**：18 個 Tool + SSE/Streamable HTTP 雙傳輸層
@@ -32,6 +32,8 @@
 - **FinMind 同步完成**：三大法人 + 基本面資料；`yfinance` 已移除
 - **舊服務清理完成**（2026-05-25）：`Back-End/backend/`（Node.js）、`Back-End/Shioaji_API/` 已移除
 - **報價架構改回 WebSocket Tick**（2026-05-29）：`api.snapshots()` HTTP REST 在 Azure 上因 NAT 殭屍連線導致 thread pool 耗盡；改回 WebSocket tick push + memory cache 方案。個股報價完全不走 HTTP。啟動時批次訂閱持股 + 關注清單 tick，並一次性 `api.snapshots()` 暖身填充 cache（解決 9:20 開盤延遲）。TAIEX 改由 Yahoo Finance `^TWII` 提供（Index 不支援 Tick）。Circuit Breaker 保留但不再介入報價熱路徑。
+- **後端阻塞修復（2026-05-29）**：① `asyncio.create_task()` 從 Shioaji 執行緒呼叫（event loop corruption root cause）改為 `run_coroutine_threadsafe`；② quote_service subscribe 改為背景 `ensure_future`，熱路徑不阻塞；③ asyncio default executor 統一換為 `_io_executor`（Azure B1 預設只有 5 workers）；④ `asyncio.get_event_loop()` 全面改為 `get_running_loop()`
+- **Shioaji 前端重新初始化（2026-05-29）**：新增 `POST /api/v1/system/shioaji/reinitialize`（202 立即返回 + 非同步 cleanup→init→warmup）；`get_status()` 新增 `reinitializing` 欄位；前端輪詢 `GET /system/status` → `data.apiSwitch.providers.shioaji.initialized`
 
 ### 報價 Provider 順位
 
@@ -90,7 +92,7 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 
 ---
 
-### [待討論] Shioaji 前端觸發重新初始化
+### [完成] Shioaji 前端觸發重新初始化
 
 **背景**：診斷畫面出現 `connected: true` 但 `initialized: false` 時（通常因 TXF 合約訂閱失敗），目前只能重啟整個後端進程。前端希望能在 SettingsModal 診斷區直接觸發重新初始化，免 SSH。
 
@@ -122,3 +124,23 @@ POST /system/shioaji/reinitialize → 202
 - 成功後 `/system/status` 回傳 `initialized=true`、`subscribedStocks > 0`
 - 失敗後 `/system/status` 回傳 `initialized=false`，不影響其他功能
 
+
+
+---
+
+### [完成] BUG — 重新初始化後 `subscribedStocks` 回傳 0
+
+**現象**：前端輪詢到 `initialized=true` 停止時，`subscribedStocks` 顯示 0。
+
+**根本原因**：`shioaji_manager.py` 的 `initialize()` 在第 59 行（`self._initialized = True`）設定完成旗標，但個股訂閱（`subscribe_stocks`）在之後的 `warmup_stocks()` 才執行。`_bg_reinitialize()` 的呼叫順序為：
+
+```
+initialize()          ← _initialized = True  ← 前端偵測到停止輪詢
+warmup_stocks()       ← 個股訂閱在這才做
+```
+
+前端停止輪詢時 warmup 尚未完成，故 `subscribedStocks = 0`。
+
+**修法建議**：在 `_bg_reinitialize()` 中，`initialize()` 呼叫完後先把 `_initialized` 暫時設回 `False`，等 `warmup_stocks()` 成功完成才重新設為 `True`；或者在 reinit flow 中改用 `_initialized = True` 最後才執行（只影響 reinit path，不動 `initialize()` 本身）。
+
+**驗收條件**：前端輪詢到 `initialized=true` 時，`subscribedStocks` 應 > 0（等於持股＋關注清單總數）。

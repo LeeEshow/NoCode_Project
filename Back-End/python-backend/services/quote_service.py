@@ -123,7 +123,7 @@ async def get_quote(stock_id: str) -> dict:
     未訂閱則即時訂閱 WebSocket（快速），但首次訂閱後 tick 尚未到達時直接 fallback Yahoo。
     永遠回傳 dict，不拋例外。
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # ── 1. Shioaji tick cache（記憶體讀取，無 HTTP）────────────────────────────
     if shioaji_enabled():
@@ -135,7 +135,11 @@ async def get_quote(stock_id: str) -> dict:
 
             # 尚未訂閱 → 背景訂閱 WebSocket tick，本次請求直接 fallback（不阻塞熱路徑）
             if not shioaji_manager.is_subscribed(stock_id):
-                asyncio.ensure_future(shioaji_manager.subscribe_stock(stock_id))
+                t = asyncio.ensure_future(shioaji_manager.subscribe_stock(stock_id))
+                t.add_done_callback(
+                    lambda f: logger.warning("subscribe_stock bg error: %s", f.exception())
+                    if not f.cancelled() and f.exception() else None
+                )
 
     # ── 2. TWSE（盤後 TSE only；盤中 TWSE 只有昨收，跳過）─────────────────────
     if not is_market_open() and _is_tse(stock_id):
@@ -186,7 +190,7 @@ async def get_quotes(stock_ids: list[str]) -> dict[str, dict]:
     if not stock_ids:
         return {}
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     results: dict[str, dict] = {}
     pending: list[str] = list(stock_ids)
 
@@ -197,7 +201,11 @@ async def get_quotes(stock_ids: list[str]) -> dict[str, dict]:
             # 尚未訂閱的股票 → 背景訂閱，本次請求直接 fallback（不阻塞熱路徑）
             unsubscribed = [sid for sid in pending if not shioaji_manager.is_subscribed(sid)]
             if unsubscribed:
-                asyncio.ensure_future(shioaji_manager.subscribe_stocks(unsubscribed))
+                t = asyncio.ensure_future(shioaji_manager.subscribe_stocks(unsubscribed))
+                t.add_done_callback(
+                    lambda f: logger.warning("subscribe_stocks bg error: %s", f.exception())
+                    if not f.cancelled() and f.exception() else None
+                )
 
             # 批次讀 tick cache
             cached_all = shioaji_manager.get_cached_stocks(pending)

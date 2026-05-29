@@ -19,7 +19,7 @@ def _sj_to_index_card(id_: str, name: str, data: dict) -> dict:
 
 @router.get("/indices")
 async def market_indices():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     cards = await loop.run_in_executor(None, get_indices)
 
     # 盤中且 Shioaji 已啟用時，台指期（index 1）以 WebSocket tick cache 覆蓋
@@ -36,13 +36,13 @@ async def market_indices():
 
 @router.get("/forex-rates")
 async def forex_rates():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     data = await loop.run_in_executor(None, get_forex_rates)
     return {"success": True, "data": data}
 
 
 @router.get("/export-indicator")
 async def export_indicator():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     data = await loop.run_in_executor(None, get_export_indicator)
     return {"success": True, "data": data}

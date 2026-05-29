@@ -24,6 +24,7 @@ class ShioajiManager:
         self._api = None
         self._connected = False
         self._initialized = False
+        self._reinitializing = False
         self._api_key = ""
         self._secret_key = ""
         self._loop = None  # 由 initialize() 設定，供 on_event callback 使用
@@ -331,9 +332,26 @@ class ShioajiManager:
         return {
             "connected":        self._connected,
             "initialized":      self._initialized,
+            "reinitializing":   self._reinitializing,
             "subscribedStocks": len(self._subscribed_stocks),
             "cachedStocks":     len(self._stock_cache),
         }
+
+    async def cleanup(self) -> None:
+        """Logout + 清除所有狀態，供 reinitialize 使用。logout 失敗不中斷後續清理。"""
+        self._initialized = False
+        if self._api is not None and self._connected:
+            try:
+                await asyncio.wait_for(asyncio.to_thread(self._api.logout), timeout=10)
+            except Exception as e:
+                logger.warning("cleanup logout error (ignored): %s", e)
+        self._connected = False
+        self._api = None
+        self._txf_reference = None
+        self._subscribed_stocks.clear()
+        self._stock_cache.clear()
+        self._futures_cache.clear()
+        logger.info("ShioajiManager cleanup complete")
 
     async def shutdown(self) -> None:
         if self._api and self._connected:

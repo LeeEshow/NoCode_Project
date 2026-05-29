@@ -150,6 +150,7 @@ def get_switch_status() -> dict:
         "enabled":          enabled,
         "initialized":      False,
         "connected":        False,
+        "reinitializing":   False,
         "subscribedStocks": 0,
         "cachedStocks":     0,
     }
@@ -159,6 +160,7 @@ def get_switch_status() -> dict:
         sj_status.update({
             "initialized":      sm["initialized"],
             "connected":        sm["connected"],
+            "reinitializing":   sm.get("reinitializing", False),
             "subscribedStocks": sm.get("subscribedStocks", 0),
             "cachedStocks":     sm.get("cachedStocks", 0),
         })

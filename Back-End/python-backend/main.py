@@ -31,10 +31,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     import asyncio
 
+    # ── 統一 Thread Pool：將 asyncio default executor 換成共用 _io_executor ────
+    # 預設 executor 在 Azure B1（1 vCPU）只有 5 workers；run_in_executor(None, …)
+    # 遍佈 market.py / quote_service.py，不換會有兩個互不相知的 pool。
+    from core.executors import get_executor
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(get_executor())
+
     # ── Firestore warm-up ─────────────────────────────────────────────────────
     try:
         from services.firestore import get_db
-        loop = asyncio.get_event_loop()
         await asyncio.wait_for(
             loop.run_in_executor(None, lambda: get_db().collection("holdings").limit(1).get()),
             timeout=10,
