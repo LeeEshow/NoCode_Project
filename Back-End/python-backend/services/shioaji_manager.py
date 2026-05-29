@@ -35,6 +35,7 @@ class ShioajiManager:
         # Snapshot 併發限流：防止 asyncio.wait_for timeout 後底層 thread 持續堆積
         # batch：同時只允許 1 個批次呼叫；若已在飛行中，回 all-None 直接走 fallback
         # single：最多 3 個並行單股呼叫；超出時回 None 走 fallback，不計 CB failure
+        self._taiex_snap_sem = asyncio.Semaphore(1)
         self._snap_batch_sem = asyncio.Semaphore(1)
         self._snap_single_sem = asyncio.Semaphore(3)
 
@@ -169,8 +170,17 @@ class ShioajiManager:
                 logger.warning("get_taiex_snapshot error: %s", e)
                 return None
 
+        if self._taiex_snap_sem.locked():
+            logger.debug("TAIEX snapshot semaphore locked, skip to fallback")
+            return None
+
+        async def _run_taiex() -> Optional[dict]:
+            async with self._taiex_snap_sem:
+                return await asyncio.to_thread(_snap)
+
+        task = asyncio.create_task(_run_taiex())
         try:
-            result = await asyncio.wait_for(asyncio.to_thread(_snap), timeout=5)
+            result = await asyncio.wait_for(asyncio.shield(task), timeout=5)
         except asyncio.TimeoutError:
             logger.warning("get_taiex_snapshot timeout after 5s, fallback to Yahoo")
             return None
@@ -254,12 +264,16 @@ class ShioajiManager:
                 return None
             return self._snap_to_dict(snap)
 
-        async with self._snap_single_sem:
-            try:
-                return await asyncio.wait_for(asyncio.to_thread(_snap), timeout=5)
-            except asyncio.TimeoutError:
-                logger.warning("get_stock_snapshot timeout after 5s: %s, fallback to Yahoo", stock_id)
-                return None
+        async def _run_single() -> Optional[dict]:
+            async with self._snap_single_sem:
+                return await asyncio.to_thread(_snap)
+
+        task = asyncio.create_task(_run_single())
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=5)
+        except asyncio.TimeoutError:
+            logger.warning("get_stock_snapshot timeout after 5s: %s, fallback to Yahoo", stock_id)
+            return None
 
     async def get_stock_snapshots(self, stock_ids: list[str]) -> dict[str, Optional[dict]]:
         """
@@ -301,12 +315,16 @@ class ShioajiManager:
 
             return results
 
-        async with self._snap_batch_sem:
-            try:
-                return await asyncio.wait_for(asyncio.to_thread(_snap), timeout=8)
-            except asyncio.TimeoutError:
-                logger.warning("get_stock_snapshots timeout after 8s (%d stocks), fallback to Yahoo", len(stock_ids))
-                return {sid: None for sid in stock_ids}
+        async def _run_batch() -> dict[str, Optional[dict]]:
+            async with self._snap_batch_sem:
+                return await asyncio.to_thread(_snap)
+
+        task = asyncio.create_task(_run_batch())
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=8)
+        except asyncio.TimeoutError:
+            logger.warning("get_stock_snapshots timeout after 8s (%d stocks), fallback to Yahoo", len(stock_ids))
+            return {sid: None for sid in stock_ids}
 
     def get_status(self) -> dict:
         return {
