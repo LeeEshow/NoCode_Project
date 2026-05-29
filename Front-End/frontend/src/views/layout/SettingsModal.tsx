@@ -7,6 +7,7 @@ import { fetchSnapshot, triggerSnapshotRecord } from '../../models/snapshotModel
 import { toast } from '../components/Toast';
 import type { DailySnapshotDTO } from '../../types';
 import type { DiagResult, SystemStatusDTO, QuoteDiagData, HoldingPricesDiagData, MarketIndicesDiagData } from '../../models/systemModel';
+import type { ReinitializeStatus } from '../../viewmodels/useSystemDiagnosticsViewModel';
 import './SettingsModal.css';
 
 /* ── 工具 ── */
@@ -185,7 +186,7 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
   const boolLabel = (v: boolean | undefined) =>
     v == null
       ? <span style={{ color: 'var(--dim)' }}>—</span>
-      : <span style={{ color: v ? 'var(--down)' : 'var(--up)' }}>{v ? 'true' : 'false'}</span>;
+      : <span style={{ color: v ? 'var(--down)' : 'var(--up)' }}>{v ? '是' : '否'}</span>;
 
   const sw      = data.apiSwitch;
   const circuit = sw?.circuit;
@@ -202,30 +203,38 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
     );
   }
 
+  const circuitStateLabel = (s: string | undefined) => {
+    if (!s) return '—';
+    if (s === 'OPEN')      return '跳闸';
+    if (s === 'HALF_OPEN') return '半開';
+    if (s === 'CLOSED')    return '閉合';
+    return s;
+  };
+
   return (
     <div className="diag-status-block">
       {/* API Switch */}
       <span className="diag-status-block__group">API Switch</span>
       <div className="diag-status-grid">
-        <span className="diag-status-grid__key">source</span>
+        <span className="diag-status-grid__key">報價來源</span>
         <span className="diag-status-grid__value">{sw.source ?? '—'}</span>
-        <span className="diag-status-grid__key">marketOpen</span>
+        <span className="diag-status-grid__key">盤中</span>
         <span className="diag-status-grid__value">{boolLabel(sw.marketOpen)}</span>
-        <span className="diag-status-grid__key">shioajiEnabled</span>
+        <span className="diag-status-grid__key">Shioaji 啟用</span>
         <span className="diag-status-grid__value">{boolLabel(sw.shioajiEnabled)}</span>
       </div>
 
       {/* Circuit Breaker */}
       {circuit && (
         <>
-          <span className="diag-status-block__group">Circuit Breaker</span>
+          <span className="diag-status-block__group">熔斷器</span>
           <div className="diag-status-grid">
-            <span className="diag-status-grid__key">state</span>
+            <span className="diag-status-grid__key">熔斷狀態</span>
             <span className="diag-status-grid__value"
               style={{ color: circuit.state === 'OPEN' ? 'var(--up)' : circuit.state === 'HALF_OPEN' ? 'var(--accent)' : undefined }}>
-              {circuit.state ?? '—'}
+              {circuitStateLabel(circuit.state)}
             </span>
-            <span className="diag-status-grid__key">failureCount</span>
+            <span className="diag-status-grid__key">失敗次數</span>
             <span className="diag-status-grid__value">{circuit.failureCount ?? '—'}</span>
           </div>
         </>
@@ -236,18 +245,73 @@ function SystemStatusDisplay({ data }: { data: SystemStatusDTO }) {
         <>
           <span className="diag-status-block__group">Shioaji Manager</span>
           <div className="diag-status-grid">
-            <span className="diag-status-grid__key">connected</span>
+            <span className="diag-status-grid__key">已連線</span>
             <span className="diag-status-grid__value">{boolLabel(shioaji.connected)}</span>
-            <span className="diag-status-grid__key">initialized</span>
+            <span className="diag-status-grid__key">已初始化</span>
             <span className="diag-status-grid__value">{boolLabel(shioaji.initialized)}</span>
-            <span className="diag-status-grid__key">subscribedStocks</span>
+            {shioaji.reinitializing && !shioaji.initialized && (
+              <>
+                <span className="diag-status-grid__key">重新初始化中</span>
+                <span className="diag-status-grid__value" style={{ color: 'var(--accent)' }}>
+                  <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={13} /></span>
+                  {' '}進行中
+                </span>
+              </>
+            )}
+            <span className="diag-status-grid__key">訂閱股票數</span>
             <span className="diag-status-grid__value">{shioaji.subscribedStocks ?? '—'}</span>
-            <span className="diag-status-grid__key">cachedStocks</span>
+            <span className="diag-status-grid__key">快取股票數</span>
             <span className="diag-status-grid__value">{shioaji.cachedStocks ?? '—'}</span>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/* ── 重新初始化狀態文字 ── */
+function ReinitializeStatusChip({ status, pollCount, error }: {
+  status:    ReinitializeStatus;
+  pollCount: number;
+  error:     string | null;
+}) {
+  if (status === 'idle') return null;
+
+  let text: string;
+  let color: string;
+
+  switch (status) {
+    case 'triggering':
+      text  = '觸發中…';
+      color = 'var(--muted)';
+      break;
+    case 'polling':
+      text  = `輪詢中（第 ${pollCount} 次）`;
+      color = 'var(--accent)';
+      break;
+    case 'success':
+      text  = '已初始化';
+      color = 'var(--down)';
+      break;
+    case 'timeout':
+      text  = '逾時（20 秒未完成）';
+      color = 'var(--up)';
+      break;
+    case 'error':
+      text  = error ?? '觸發失敗';
+      color = 'var(--up)';
+      break;
+  }
+
+  return (
+    <span className="diag-reinit-status" style={{ color }}>
+      {(status === 'triggering' || status === 'polling') && (
+        <span className="icon-spin" aria-hidden="true" style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 4 }}>
+          <Icon name="progress_activity" size={13} />
+        </span>
+      )}
+      {text}
+    </span>
   );
 }
 
@@ -350,6 +414,26 @@ function ApiDiagnosticsSection() {
               ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
               : '全部測試'}
           </button>
+        </div>
+
+        {/* 重新初始化列 */}
+        <div className="diag-controls__row diag-controls__reinit">
+          <button
+            className="btn-ghost"
+            onClick={diag.triggerReinitialize}
+            disabled={diag.reinitializing}
+            aria-label={diag.reinitializing ? '初始化中' : undefined}
+          >
+            {diag.reinitializing
+              ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
+              : <Icon name="restart_alt" size={14} />}
+            重新初始化 Shioaji
+          </button>
+          <ReinitializeStatusChip
+            status={diag.reinitializeStatus}
+            pollCount={diag.reinitializePollCount}
+            error={diag.reinitializeError}
+          />
         </div>
       </div>
 

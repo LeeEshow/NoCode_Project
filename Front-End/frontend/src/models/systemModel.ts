@@ -18,6 +18,7 @@ export interface SystemStatusDTO {
         enabled:          boolean;
         initialized:      boolean;
         connected:        boolean;
+        reinitializing?:  boolean;
         subscribedStocks: number;
         cachedStocks:     number;
       };
@@ -137,6 +138,10 @@ interface RawIndexCard {
   id:    string;
   name:  string;
   price: number | null;
+}
+
+export async function triggerShioajiReinitialize(): Promise<void> {
+  await api.post('/system/shioaji/reinitialize');
 }
 
 export async function testMarketIndices(): Promise<DiagResult<MarketIndicesDiagData>> {

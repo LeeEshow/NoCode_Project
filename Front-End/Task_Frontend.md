@@ -13,85 +13,14 @@
 
 ---
 
-### STRAT-F — 個股交易策略模組 (暫不開發)
-
-> AI 透過 MCP 分析後產出結構化策略並存入 DB；前端以圖示入口 + 子視窗顯示最新一筆策略內容。
-> **依賴後端**：STRAT-B-01（REST API）、STRAT-B-02（MCP Tools）需先完成。
-
----
-
-- **STRAT-F-01** `types/index.ts`：新增 `StockStrategyDTO`
-
-```typescript
-export interface StockStrategyDTO {
-  stockId:          string;
-  date:             string;              // YYYY-MM-DD
-  entryPriceMin:    number;
-  entryPriceMax:    number;
-  stopLossPrice:    number;
-  stopLossPct:      number;              // 負值，e.g. -8.5
-  takeProfitPrice:  number;
-  takeProfitPct:    number;              // 正值，e.g. 15.0
-  holdingPeriod:    'short' | 'swing' | 'long';
-  aiComment:        string;              // max 150 字
-  createdAt:        string;
-  updatedAt:        string;
-}
-```
-
-  新增 `HoldingPeriodLabel` 對應 map（工具函式）：`{ short: '短線', swing: '波段', long: '長期' }`
-
----
-
-- **STRAT-F-02** `models/strategyModel.ts`：純 API 呼叫（無狀態）
-
-  - `fetchLatestStrategy(stockId: string): Promise<StockStrategyDTO | null>`
-    → `GET /api/v1/strategies/{stockId}`；後端 `data: null` 時回傳 `null`
-  - 回傳直接使用後端 camelCase，不做額外轉換
-
----
-
-- **STRAT-F-03** `useStrategyViewModel.ts`：管理單支股票的策略讀取狀態
-
-```typescript
-interface UseStrategyViewModelReturn {
-  strategy:  StockStrategyDTO | null;
-  loading:   boolean;
-  error:     string | null;
-  load:      (stockId: string) => Promise<void>;
-}
-```
-
-  - `load()` 呼叫 `fetchLatestStrategy`，結果存入 `strategy`
-  - 每次開啟 Modal 時呼叫一次（不常駐輪詢）
-
----
-
-- **STRAT-F-04** `StockStrategyModal`：策略詳情子視窗
-
-  **觸發方式**：持股列表與關注清單的「再平衡建議」欄位內，新增策略圖示按鈕（`Icon name="insights"`，`size={16}`）；有策略資料時圖示亮（`--accent`），無資料時淡（`--muted`）；點擊開啟 Modal，`aria-label="查看交易策略"`
-
-  **Modal 規格**：
-  - 使用現有 `Modal` 元件，`size="sm"`
-  - 標題：`{stockId} {stockName} 交易策略`，右上角顯示策略日期（`date`）
-  - **載入中**：`LoadingPanel` spinner
-  - **無資料**：「尚未產生策略，請透過 Claude chat 執行策略分析」（`--muted` 文字）
-  - **有資料**：三個區塊橫向排列（Grid 3 欄）
-
-  | 區塊 | 顯示內容 |
-  |------|---------|
-  | 進場區間 | `NT$ {entryPriceMin} ～ {entryPriceMax}` |
-  | 止損 | `NT$ {stopLossPrice}（{stopLossPct}%）`，色彩 `--up` |
-  | 止盈 | `NT$ {takeProfitPrice}（+{takeProfitPct}%）`，色彩 `--down` |
-
-  下方全寬區塊：持有建議 Badge（`holdingPeriod` → `短線/波段/長期`）+ AI 短評文字（`--muted`，`line-height: 1.6`）
-
-  - 底部 `updatedAt` 顯示「最後更新：YYYY/MM/DD HH:mm」（`--dim`，`text-sm`）
-  - CSS 定義於 `StockStrategyModal.css`，延用 `.ft-panel`、`--up`、`--down`、`--accent` token
-
----
-
 ## 已完成
+
+### OPS-F2 — 設定子視窗：Shioaji 重新初始化
+
+- **OPS-F2-01** `models/systemModel.ts`：`SystemStatusDTO.providers.shioaji` 新增 `reinitializing?: boolean`；新增 `triggerShioajiReinitialize()`（`POST /system/shioaji/reinitialize`）
+- **OPS-F2-02** `viewmodels/useSystemDiagnosticsViewModel.ts`：新增 `ReinitializeStatus` 型別（`idle | triggering | polling | success | timeout | error`）；新增 `reinitializePollCount`、`reinitializeError` 狀態；`triggerReinitialize()` 觸發後每 2 秒輪詢 `GET /system/status`，記錄輪詢次數，`initialized=true` 停止並標記成功，10 次（20 秒）後逾時；`useEffect` cleanup 確保 unmount 時清除 interval
+- **OPS-F2-03** `views/layout/SettingsModal.tsx`：`SystemStatusDisplay` 所有欄位改中文（報價來源、盤中、Shioaji 啟用、熔斷狀態、失敗次數、已連線、已初始化、訂閱股票數、快取股票數）；`shioaji.reinitializing=true` 時額外顯示動態轉圈提示；新增 `ReinitializeStatusChip` 元件顯示輪詢進度（第 N 次 / 已初始化 / 逾時 / 錯誤訊息）；診斷 controls 區底部新增「重新初始化 Shioaji」按鈕列，進行中時 disabled
+- **OPS-F2-04** `views/layout/SettingsModal.css`：`.diag-controls__reinit`（分隔線 + padding）、`.diag-reinit-status` 樣式
 
 ### QUOTE-F — Table 報價來源與異常狀態顯示
 
