@@ -76,7 +76,9 @@ function SuggestionCell({ s }: { s: RebalanceSuggestion | undefined }) {
       <span>
         {label} {fmt(s.shares)} 股
         {s.isLiquidityLimited && (
-          <Icon name="warning" size={24} title="流動性不足，已調降交易量" style={{ cursor: 'help', marginLeft: 4 }} />
+          <span title="流動性不足，已調降交易量" style={{ cursor: 'help', marginLeft: 4, display: 'inline-flex' }}>
+              <Icon name="warning" size={24} />
+            </span>
         )}
       </span>
       <span>約 ${fmt(Math.round(s.estimatedAmount))}</span>
