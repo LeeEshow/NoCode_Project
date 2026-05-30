@@ -107,8 +107,8 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
       const netKey   = `淨損益 (${seg.label})`;
       const denseNet = buildDenseByDate(seg.data, allDates, 'netReturn');
       seriesOptions.push(
-        { name: netKey, type: 'line', yAxisIndex: 0, data: denseNet, connectNulls: false, smooth: false, symbol: 'none', lineStyle: { color: netColor, width: 1.4, type: 'solid' }, z: 2 },
-        { name: `__gap_net_${i}`, type: 'line', yAxisIndex: 0, data: denseNet, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: netColor, width: 1.2, type: 'dashed', opacity: 0.4 }, z: 1 },
+        { name: netKey, type: 'line', color: netColor, yAxisIndex: 0, data: denseNet, connectNulls: false, smooth: false, symbol: 'none', lineStyle: { color: netColor, width: 1.4, type: 'solid' }, z: 2 },
+        { name: `__gap_net_${i}`, type: 'line', color: netColor, yAxisIndex: 0, data: denseNet, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: netColor, width: 1.2, type: 'dashed', opacity: 0.4 }, z: 1 },
       );
       legendData.push(netKey);
     }
@@ -116,6 +116,7 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
     seriesOptions.push({
       name: ratKey,
       type: 'line',
+      color: ratColor,
       yAxisIndex: 1,
       data: denseRate,
       connectNulls: false,
@@ -138,7 +139,7 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
         },
       } : {}),
     });
-    seriesOptions.push({ name: `__gap_rate_${i}`, type: 'line', yAxisIndex: 1, data: denseRate, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: ratColor, width: 1.4, type: 'dashed', opacity: 0.5 }, z: 2 });
+    seriesOptions.push({ name: `__gap_rate_${i}`, type: 'line', color: ratColor, yAxisIndex: 1, data: denseRate, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: ratColor, width: 1.4, type: 'dashed', opacity: 0.5 }, z: 2 });
     legendData.push(ratKey);
   });
 
@@ -150,8 +151,8 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
     const denseRate = shiftToZero(buildDenseByDate(stock.data, allDates, 'returnRate'));
 
     seriesOptions.push(
-      { name: key, type: 'line', yAxisIndex: 1, data: denseRate, connectNulls: false, smooth: false, symbol: 'none', lineStyle: { color, width: 2, type: 'solid' }, z: 4 },
-      { name: `__gap_stock_${i}`, type: 'line', yAxisIndex: 1, data: denseRate, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color, width: 1.5, type: 'dashed', opacity: 0.5 }, z: 3 },
+      { name: key, type: 'line', color, yAxisIndex: 1, data: denseRate, connectNulls: false, smooth: false, symbol: 'none', lineStyle: { color, width: 2, type: 'solid' }, z: 4 },
+      { name: `__gap_stock_${i}`, type: 'line', color, yAxisIndex: 1, data: denseRate, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color, width: 1.5, type: 'dashed', opacity: 0.5 }, z: 3 },
     );
     legendData.push(key);
   });
