@@ -247,7 +247,25 @@ export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
 | `.drag-handle` | 拖拉控點 |
 | `.ft-toggle` / `.ft-toggle__track` | CSS-only toggle switch（hidden checkbox + label trick）；`input:checked` 時 track 變 `--accent-bg`，thumb 平移 16px |
 
-Icon：`<Icon name="edit" size={18} />` 包裝 Material Symbols Rounded。
+**Icon 規則**：所有圖示一律使用 `<Icon name="..." size={N} />` 元件（`views/components/Icon.tsx`，包裝 Material Symbols Rounded）。**禁止**直接在 JSX 中使用 Unicode 符號作為圖示（如 `⚠`、`＋`、`▷`、`⟳`、`💡`、`📉`）。以下為常用圖示名稱對照：
+
+| 用途 | Material icon name |
+|------|--------------------|
+| 新增 | `add` |
+| 警告 / 偏差 | `warning` |
+| 提醒時程 | `schedule` |
+| 系統建議 | `tips_and_updates` |
+| 跌幅趨勢 | `trending_down` |
+| 執行 / 播放 | `play_arrow` |
+| 重新整理 | `sync` |
+| 展開（收折中） | `expand_more` |
+| 收折（展開中） | `expand_less` |
+| 觀察區狀態 | `adjust` |
+| 配置正常 | `check` |
+| 超出上限 | `close` |
+| 交易區（向上） | `north` |
+
+例外：`▲`/`▼` 作為**股價漲跌**的文字符號（HoldingsTable、WatchlistTable、MarketIndicesRow 等）不需替換；`✓`/`✗` 在純文字模板字串中（非 JSX）不需替換。
 
 ### Radix UI Primitives
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import LoadingPanel from '../../components/LoadingPanel';
@@ -155,10 +155,10 @@ export default function TransactionHistoryPanel({ stockCode, stockName, onAddTx,
         {onAddTx && (
           <button
             className="btn-ghost"
-            style={{ fontSize: 'var(--text-sm)', padding: '3px 10px' }}
+            style={{ fontSize: 'var(--text-sm)' }}
             onClick={() => onAddTx(stockCode, stockName)}
           >
-            ＋ 新增交易
+            <Icon name="add" size={20} /> 新增交易
           </button>
         )}
       </div>
@@ -190,7 +190,7 @@ export default function TransactionHistoryPanel({ stockCode, stockName, onAddTx,
                   <td className="center">
                     <div style={{ display: 'inline-flex', gap: 5 }}>
                       <button className="btn-icon" aria-label="編輯" onClick={() => setEditingTx(tx)}>
-                        <Icon name="edit" size={18} />
+                        <Icon name="edit" size={24} />
                       </button>
                       <button
                         className="btn-icon"
@@ -198,7 +198,7 @@ export default function TransactionHistoryPanel({ stockCode, stockName, onAddTx,
                         style={{ color: 'var(--up)' }}
                         onClick={() => setDeleteId(tx.id)}
                       >
-                        <Icon name="delete" size={18} />
+                        <Icon name="delete" size={24} />
                       </button>
                     </div>
                   </td>

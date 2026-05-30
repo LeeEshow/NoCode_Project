@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { isTradingHours } from '../../utils/tradingHours';
 import { useLatest } from '../../utils/useLatest';
@@ -16,6 +16,7 @@ import { useRiskViewModel } from '../../viewmodels/useRiskViewModel';
 import { useRebalanceViewModel, computeVolatilityFactor, computeRebalanceSuggestions } from '../../viewmodels/useRebalanceViewModel';
 import { useRebalanceRulesViewModel } from '../../viewmodels/useRebalanceRulesViewModel';
 import { useRebalanceSnapshotViewModel } from '../../viewmodels/useRebalanceSnapshotViewModel';
+import { useDownsideRiskViewModel } from '../../viewmodels/useDownsideRiskViewModel';
 import HoldingsTable        from './stock/HoldingsTable';
 import AddTransactionModal  from './stock/AddTransactionModal';
 import AddHoldingModal      from './stock/AddHoldingModal';
@@ -23,6 +24,7 @@ import WatchlistTable       from './stock/WatchlistTable';
 import WatchlistModal       from './stock/WatchlistModal';
 import RiskPanel from './stock/RiskPanel';
 import { toast } from '../components/Toast/toastStore';
+import Icon from '../components/Icon';
 import type { WatchlistItemDTO, CreateWatchlistPayload, RebalanceSuggestion, QuoteSource, QuoteStatus } from '../../types';
 
 /* ── QUOTE-F-05：報價來源摘要 ── */
@@ -130,7 +132,7 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
       background: 'var(--up-bg)', border: '1px solid var(--up-bd)',
       borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)',
     }}>
-      <span style={{ color: 'var(--up)' }}>⚠ {message}</span>
+      <span style={{ color: 'var(--up)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="warning" size={24} /> {message}</span>
       <button className="btn-ghost" style={{ padding: '2px 10px', fontSize: 'var(--text-sm)' }} onClick={onRetry}>
         重試
       </button>
@@ -154,7 +156,8 @@ export default function StockOverviewPage() {
   const watchlist  = useWatchlistViewModel();
   const tagVm      = useTagViewModel();
   const rulesVm    = useRebalanceRulesViewModel();
-  const snapshotVm = useRebalanceSnapshotViewModel();
+  const snapshotVm    = useRebalanceSnapshotViewModel();
+  const downsideRisk  = useDownsideRiskViewModel();
 
   /* 風險/再平衡純計算（CLAUDE.md 組裝順序）*/
   const volatilityFactor    = useMemo(
@@ -424,6 +427,11 @@ export default function StockOverviewPage() {
           onSelectSnapshot={snapshotVm.selectSnapshot}
           correlationLoadFailed={tagVm.correlationLoadFailed}
           onReloadCorrelationMatrix={tagVm.loadCorrelationMatrix}
+          mdd={downsideRisk.mdd}
+          varCvar={downsideRisk.varCvar}
+          downsideRiskLoading={downsideRisk.loading}
+          downsideRiskSampleDays={downsideRisk.sampleDays}
+          onDownsideRiskTabOpen={downsideRisk.fetch}
         />
 
         {/* ── 庫存持股 Panel（P2-12 ~ P2-16）── */}
@@ -439,7 +447,7 @@ export default function StockOverviewPage() {
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="btn-ghost" onClick={() => { holdings.refreshPrices(); market.silentReload(); }}>重新整理</button>
-              <button className="btn-ghost" onClick={() => setAddHoldingOpen(true)}>＋ 新增</button>
+              <button className="btn-ghost" onClick={() => setAddHoldingOpen(true)}><Icon name="add" size={20} /> 新增</button>
             </div>
           </div>
 
@@ -469,6 +477,7 @@ export default function StockOverviewPage() {
                   overlappingGroups={risk.overlappingGroups}
                   concentrationLimit={rulesVm.rules.concentrationLimit}
                   rebalanceSuggestions={rebalanceSuggestions}
+                  rebalanceTotalAsset={rebalance.totalAsset}
                 />
               </>
             )
@@ -491,7 +500,7 @@ export default function StockOverviewPage() {
                 className="btn-ghost"
                 onClick={() => { setWlEditItem(null); setWlModalOpen(true); }}
               >
-                + 新增
+                <Icon name="add" size={20} /> 新增
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import Icon from '../../components/Icon';
 import type { ForeignAssetDTO, CreateForeignAssetPayload } from '../../../types';
 
@@ -119,7 +119,7 @@ export default function ForeignAssetTable({
   if (items.length === 0) {
     return (
       <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
-        尚無外幣資產，點擊「＋ 新增」加入
+        尚無外幣資產，點擊右上方的「新增」加入
       </div>
     );
   }
@@ -212,7 +212,7 @@ export default function ForeignAssetTable({
                       disabled={saving}
                       onClick={() => onEdit(item)}
                     >
-                      <Icon name="edit" size={21} />
+                      <Icon name="edit" size={24} />
                     </button>
                     <button
                       className="btn-icon"
@@ -220,7 +220,7 @@ export default function ForeignAssetTable({
                       disabled={saving}
                       onClick={() => onDelete(item.id)}
                     >
-                      <Icon name="delete" size={21} />
+                      <Icon name="delete" size={24} />
                     </button>
                   </div>
                 </td>

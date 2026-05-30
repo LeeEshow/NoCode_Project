@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import Icon from '../../components/Icon';
 import type { PlanConfigDTO } from '../../../types';
 
@@ -136,7 +136,7 @@ export default function PlanParamRow({ config, saving: _saving, onChange, onSave
               onSave({ ...config, startYear: v });
             }}
           >
-            <Icon name="chevron_left" size={14} />
+            <Icon name="chevron_left" size={24} />
           </button>
           <span className="plan-card__value">{config.startYear}</span>
           <button
@@ -147,7 +147,7 @@ export default function PlanParamRow({ config, saving: _saving, onChange, onSave
               onSave({ ...config, startYear: v });
             }}
           >
-            <Icon name="chevron_right" size={14} />
+            <Icon name="chevron_right" size={24} />
           </button>
         </div>
       </div>

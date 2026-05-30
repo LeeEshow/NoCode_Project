@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+﻿import { useState, useMemo, useRef, useEffect } from 'react';
 import PanelHeader from '../components/PanelHeader';
 import LoadingPanel from '../components/LoadingPanel';
 import Icon from '../components/Icon';
@@ -6,6 +6,7 @@ import { useReportViewModel } from '../../viewmodels/useReportViewModel';
 import ReportChart, { type SeriesEntry } from './report/ReportChart';
 import type { DailySnapshotDTO } from '../../types';
 import { chartColors } from '../../styles';
+import { computeMaxDrawdown } from '../../utils/downsideRisk';
 import './report/report.css';
 
 const PAGE_SIZE   = 30;
@@ -214,11 +215,11 @@ function SnapshotTable({ rows, page, totalPages, onPage, onNoteChange }: {
       {totalPages > 1 && (
         <div className="report-pagination">
           <button className="btn-icon" disabled={page === 1} onClick={() => onPage(page - 1)} aria-label="上一頁">
-            <Icon name="chevron_left" size={18} />
+            <Icon name="chevron_left" size={24} />
           </button>
           <span className="report-pagination__info">{page} / {totalPages}</span>
           <button className="btn-icon" disabled={page === totalPages} onClick={() => onPage(page + 1)} aria-label="下一頁">
-            <Icon name="chevron_right" size={18} />
+            <Icon name="chevron_right" size={24} />
           </button>
         </div>
       )}
@@ -314,6 +315,14 @@ export default function ReportPage() {
     [vm.snapshots, segments],
   );
 
+  const activeSeg = segments.find(s => s.id === activeSegId);
+  const activeMdd = useMemo(() => {
+    if (!activeSeg || vm.snapshots.length < 2) return null;
+    const filtered = vm.snapshots.filter(s => s.date >= activeSeg.start && s.date <= activeSeg.end);
+    if (filtered.length < 2) return null;
+    return computeMaxDrawdown(filtered);
+  }, [vm.snapshots, activeSeg]);
+
   return (
     <div style={{ minWidth: 0 }}>
       <PanelHeader />
@@ -380,19 +389,19 @@ export default function ReportPage() {
                       className="btn-ghost btn-ghost--accent"
                       onClick={handleAdd}
                       disabled={vm.comparisonLoading || (addType === 'stock' && !stockInput.trim())}
-                      style={{ fontSize: 'var(--text-xs)', padding: '3px 10px' }}
+                      style={{ padding: '3px 10px' }}
                     >
-                      {vm.comparisonLoading ? '…' : '新增'}
+                      {vm.comparisonLoading ? '…' : <><Icon name="add" size={20} /> 新增</>}
                     </button>
 
                     <button
                       className="btn-ghost"
                       onClick={resetToDefault}
                       disabled={!isModified && vm.stockComparisons.length === 0}
-                      style={{ fontSize: 'var(--text-xs)', padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                      style={{ padding: '3px 10px' }}
                       title="還原為預設區間"
                     >
-                      <Icon name="restart_alt" size={14} />
+                      <Icon name="restart_alt" size={20} />
                       還原預設
                     </button>
                   </div>
@@ -466,6 +475,27 @@ export default function ReportPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* MDD 統計卡（選取區間）*/}
+                {activeMdd && (
+                  <div style={{
+                    display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
+                    padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                  }}>
+                    {[
+                      { label: '目前距高點', value: `${(activeMdd.currentDrawdown * 100).toFixed(1)}%`, warn: activeMdd.currentDrawdown < -0.05 },
+                      { label: '最大回撤', value: `${(activeMdd.maxDrawdown * 100).toFixed(1)}%`, warn: activeMdd.maxDrawdown < -0.10 },
+                      { label: '高點日期', value: activeMdd.peakDate || '—', warn: false },
+                      { label: '低點日期', value: activeMdd.troughDate || '—', warn: false },
+                      { label: '回復天數', value: activeMdd.isRecovered && activeMdd.recoveryDays != null ? `${activeMdd.recoveryDays} 天` : '—', warn: false },
+                    ].map(({ label, value, warn }) => (
+                      <span key={label} style={{ fontSize: 'var(--text-xs)' }}>
+                        <span style={{ color: 'var(--dim)', marginRight: 4 }}>{label}</span>
+                        <span style={{ color: warn ? 'var(--up)' : 'var(--muted)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 {segments.map((seg, i) => {
                   if (activeSegId !== seg.id) return null;

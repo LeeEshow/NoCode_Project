@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import type {
   HoldingDTO,
   TagDTO,
@@ -120,16 +120,17 @@ export default function AssetTagTab({
                 onChange={e => { handleAddTag(h.stockCode, e.target.value); (e.target as HTMLSelectElement).value = ''; }}
                 disabled={saving}
                 style={{
+                  height: 'var(--ctrl-h)', boxSizing: 'border-box',
                   background: 'var(--surface)',
                   color: 'var(--text)',
                   border: '1px solid var(--border-hi)',
                   borderRadius: 'var(--radius-sm)',
-                  padding: '3px 8px',
-                  fontSize: 'var(--text-sm)',
+                  padding: '0 8px',
+                  fontSize: 'var(--text-md)',
                   cursor: saving ? 'not-allowed' : 'pointer',
                 }}
               >
-                <option value="">＋ 加入 Tag</option>
+                <option value="">加入 Tag</option>
                 {tags.length === 0 ? (
                   <option value="" disabled>請先至「Tag 管理」建立標籤</option>
                 ) : (
@@ -193,7 +194,7 @@ export default function AssetTagTab({
                             aria-label={`移除 ${at.tagName}`}
                             onClick={() => onRemove(at.id, () => toast.success(`已移除 ${at.tagName}`))}
                           >
-                            <Icon name="close" size={16} />
+                            <Icon name="close" size={24} />
                           </button>
                         </td>
                       </tr>
@@ -209,18 +210,18 @@ export default function AssetTagTab({
                   borderTop: '1px solid var(--border)',
                 }}>
                   {total === 100 && (
-                    <span style={{ color: 'var(--down)', fontVariantNumeric: 'tabular-nums' }}>
-                      ✓ 合計 100%
+                    <span style={{ color: 'var(--down)', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <Icon name="check" size={24} /> 合計 100%
                     </span>
                   )}
                   {total < 100 && (
-                    <span style={{ color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
-                      ⚠ 合計 {total}%，尚差 {100 - total}%
+                    <span style={{ color: 'var(--accent)', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <Icon name="warning" size={24} /> 合計 {total}%，尚差 {100 - total}%
                     </span>
                   )}
                   {total > 100 && (
-                    <span style={{ color: 'var(--up)', fontVariantNumeric: 'tabular-nums' }}>
-                      ✗ 合計 {total}%，超出 {total - 100}%
+                    <span style={{ color: 'var(--up)', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <Icon name="close" size={24} /> 合計 {total}%，超出 {total - 100}%
                     </span>
                   )}
                 </div>

@@ -1,4 +1,4 @@
-import { useState, Fragment, useEffect, memo } from 'react';
+﻿import { useState, Fragment, useEffect, memo } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -85,7 +85,7 @@ const WatchlistRow = memo(function WatchlistRow({ item, sparkline, isExpanded, o
             onClick={e => e.stopPropagation()}
             className="drag-handle"
           >
-            <Icon name="drag_indicator" size={18} />
+            <Icon name="drag_indicator" size={24} />
           </span>
           <a
             href={`https://www.wantgoo.com/stock/etf/${item.stockCode}/dividend-policy/ex-dividend`}
@@ -130,10 +130,10 @@ const WatchlistRow = memo(function WatchlistRow({ item, sparkline, isExpanded, o
       <td className="center">
         <div style={{ display: 'inline-flex', gap: 5 }}>
           <button className="btn-icon" title="編輯" onClick={e => { e.stopPropagation(); onEdit(item); }}>
-            <Icon name="edit" size={21} />
+            <Icon name="edit" size={24} />
           </button>
           <button className="btn-icon" title="移除" onClick={e => { e.stopPropagation(); onConfirm(item.id); }}>
-            <Icon name="delete" size={21} />
+            <Icon name="delete" size={24} />
           </button>
         </div>
       </td>

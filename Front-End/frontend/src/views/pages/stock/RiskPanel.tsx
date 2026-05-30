@@ -1,14 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Slider from '@radix-ui/react-slider';
 import * as Select from '@radix-ui/react-select';
 import type {
   TagDTO, CreateTagPayload, TagStat, MarketState, CorrelationEntry,
-  HoldingDTO, OverlappingTagGroup,
+  HoldingDTO, OverlappingTagGroup, MddResult, VarCVarResult,
 } from '../../../types';
 import { calcTagDailyReturnsFromSparklines, buildCorrelationEntries } from '../../../utils/correlationCalc';
 import { useSnapshotStore } from '../../../stores/snapshotStore';
 import TagManagerTab from './TagManagerTab';
+import Icon from '../../components/Icon';
 import Modal from '../../components/Modal';
 import { toast } from '../../components/Toast';
 
@@ -71,6 +72,12 @@ interface Props {
   /* Phase 6 — 相關性矩陣載入失敗偵測 */
   correlationLoadFailed:     boolean;
   onReloadCorrelationMatrix: () => Promise<void>;
+  /* 下行風險（A1+A2） */
+  mdd:                   MddResult | null;
+  varCvar:               VarCVarResult | null;
+  downsideRiskLoading:   boolean;
+  downsideRiskSampleDays: number;
+  onDownsideRiskTabOpen: () => void;
 }
 
 /* ── UI-4 Tooltip Helper ── */
@@ -93,9 +100,9 @@ function SettingTooltip({ content }: { content: string }) {
         <span
           aria-label="說明"
           aria-hidden="false"
-          style={{ cursor: 'help', color: 'var(--dim)', fontSize: 'var(--text-xs)', userSelect: 'none' }}
+          style={{ cursor: 'help', color: 'var(--dim)', userSelect: 'none', lineHeight: 1 }}
         >
-          ⓘ
+          <Icon name="info" size={14} />
         </span>
       </Tooltip.Trigger>
       <Tooltip.Portal>
@@ -108,9 +115,13 @@ function SettingTooltip({ content }: { content: string }) {
   );
 }
 
-const PANEL_ID      = 'risk-rebalance-panel';
-const TAB_TAGS_ID   = 'risk-tab-tags';
-const TAB_SETTINGS_ID = 'risk-tab-settings';
+const PANEL_ID           = 'risk-rebalance-panel';
+const TAB_TAGS_ID        = 'risk-tab-tags';
+const TAB_DOWNSIDE_ID    = 'risk-tab-downside';
+const TAB_SETTINGS_ID    = 'risk-tab-settings';
+
+const MDD_WARN_THRESHOLD  = -0.05;  /* 距高點 -5% 顯示觀察圖示 */
+const MDD_ALERT_THRESHOLD = -0.10;  /* 距高點 -10% 顯示警示圖示 */
 
 const MARKET_STATE_OPTIONS: { value: MarketState; label: string }[] = [
   { value: 'neutral',       label: '中性' },
@@ -158,12 +169,14 @@ export default function RiskPanel({
   selectedSnapshotId, onSelectSnapshot,
   onRecalculateAll, recalculating,
   correlationLoadFailed, onReloadCorrelationMatrix,
+  mdd, varCvar, downsideRiskLoading, downsideRiskSampleDays, onDownsideRiskTabOpen,
 }: Props) {
   const vix             = useSnapshotStore(s => s.vix);
   const marketStateAuto = useSnapshotStore(s => s.marketStateAuto);
 
   const [expanded,  setExpanded]  = useState(false);
-  const [activeTab, setActiveTab] = useState<'tags' | 'settings'>('tags');
+  const [activeTab, setActiveTab] = useState<'tags' | 'downside' | 'settings'>('tags');
+  const [downsideTabOpened, setDownsideTabOpened] = useState(false);
   const [localRho,  setLocalRho]  = useState<Map<string, string>>(new Map());
 
   const [rhoCalc,   setRhoCalc]   = useState<RhoCalcState>({
@@ -311,6 +324,14 @@ export default function RiskPanel({
     }
   }
 
+  /* MDD 圖示狀態 */
+  const mddIcon = useMemo(() => {
+    if (!mdd || mdd.currentDrawdown === 0) return null;
+    if (mdd.currentDrawdown <= MDD_ALERT_THRESHOLD) return { color: 'var(--up)' };
+    if (mdd.currentDrawdown <= MDD_WARN_THRESHOLD)  return { color: 'var(--accent)' };
+    return null;
+  }, [mdd]);
+
   const needsMonthlyReminder = useMemo(() => {
     if (!snapshotsReady) return false;
     if (snapshots.length === 0) return true;
@@ -344,7 +365,7 @@ export default function RiskPanel({
     <div className="ft-panel" style={{ marginBottom: 16 }}>
 
       {/* ── 收折標題列 ── */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '8px 10px', gap: 8 }}>
 
         {/* 左側：可點擊展開/收折 */}
         <div
@@ -363,7 +384,7 @@ export default function RiskPanel({
         >
           {/* 標題 */}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <span style={{ color: 'var(--muted)' }}>{expanded ? '▲' : '▼'}</span>
+            <Icon name={expanded ? 'expand_less' : 'expand_more'} size={24} style={{ color: 'var(--muted)' }} />
             <span
               onClick={handleCopyClick}
               title="點擊複製配置報告"
@@ -396,7 +417,7 @@ export default function RiskPanel({
                 style={{ fontSize: 'var(--text-xs)', padding: '2px 10px', color: 'var(--up)', borderColor: 'var(--up-bd)', whiteSpace: 'nowrap' }}
                 aria-label="相關性矩陣未載入，點擊重新讀取並重算"
               >
-                ⚠ 矩陣未載入，重算
+                <Icon name="warning" size={20} /> 矩陣未載入，重算
               </button>
             ) : (
               <span
@@ -407,18 +428,36 @@ export default function RiskPanel({
               </span>
             )}
             {deviationCount > 0 && (
-              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 24 }}>
-                ⚠ {deviationCount} 標籤偏差
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 24, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="warning" size={24} /> {deviationCount} 標籤偏差
               </span>
             )}
             {!expanded && needsMonthlyReminder && (
-              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
-                ⏰ 本月尚未再平衡
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="schedule" size={24} /> 本月尚未再平衡
               </span>
             )}
+            {mddIcon && (
+              <Tooltip.Root delayDuration={300}>
+                <Tooltip.Trigger asChild>
+                  <span style={{ color: mddIcon.color, whiteSpace: 'nowrap', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                    <Icon name="trending_down" size={24} />
+                  </span>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
+                    <div>距高點 {(mdd!.currentDrawdown * 100).toFixed(1)}%</div>
+                    <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginTop: 2 }}>
+                      歷史最大回撤 {(mdd!.maxDrawdown * 100).toFixed(1)}%
+                    </div>
+                    <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            )}
             {marketStateAuto && marketStateAuto !== marketState && (
-              <span style={{ color: 'var(--accent)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 8 }}>
-                💡 系統建議：{MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}{vix != null ? `（VIX ${vix.toFixed(1)}）` : ''}
+              <span style={{ color: 'var(--accent)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="tips_and_updates" size={24} /> 系統建議：{MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}{vix != null ? `（VIX ${vix.toFixed(1)}）` : ''}
               </span>
             )}
           </span>
@@ -475,50 +514,37 @@ export default function RiskPanel({
               aria-label="風險模組"
               style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16 }}
             >
-              <button
-                role="tab"
-                id="tab-btn-tags"
-                aria-selected={activeTab === 'tags'}
-                aria-controls={TAB_TAGS_ID}
-                onClick={() => setActiveTab('tags')}
-                style={{
-                  padding: '6px 16px',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: activeTab === 'tags' ? '2px solid var(--accent)' : '2px solid transparent',
-                  marginBottom: -1,
-                  color: activeTab === 'tags' ? 'var(--accent)' : 'var(--muted)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-sm)',
-                  fontFamily: 'var(--font-sans)',
-                  fontWeight: activeTab === 'tags' ? 600 : 400,
-                  transition: 'color 0.15s, border-color 0.15s',
-                }}
-              >
-                標籤配置
-              </button>
-              <button
-                role="tab"
-                id="tab-btn-settings"
-                aria-selected={activeTab === 'settings'}
-                aria-controls={TAB_SETTINGS_ID}
-                onClick={() => setActiveTab('settings')}
-                style={{
-                  padding: '6px 16px',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: activeTab === 'settings' ? '2px solid var(--accent)' : '2px solid transparent',
-                  marginBottom: -1,
-                  color: activeTab === 'settings' ? 'var(--accent)' : 'var(--muted)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-sm)',
-                  fontFamily: 'var(--font-sans)',
-                  fontWeight: activeTab === 'settings' ? 600 : 400,
-                  transition: 'color 0.15s, border-color 0.15s',
-                }}
-              >
-                風險設定
-              </button>
+              {(['tags', 'downside', 'settings'] as const).map(tab => (
+                <button
+                  key={tab}
+                  role="tab"
+                  id={`tab-btn-${tab}`}
+                  aria-selected={activeTab === tab}
+                  aria-controls={tab === 'tags' ? TAB_TAGS_ID : tab === 'downside' ? TAB_DOWNSIDE_ID : TAB_SETTINGS_ID}
+                  onClick={() => {
+                    setActiveTab(tab);
+                    if (tab === 'downside' && !downsideTabOpened) {
+                      setDownsideTabOpened(true);
+                      onDownsideRiskTabOpen();
+                    }
+                  }}
+                  style={{
+                    padding: '6px 16px',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: activeTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
+                    marginBottom: -1,
+                    color: activeTab === tab ? 'var(--accent)' : 'var(--muted)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-sm)',
+                    fontFamily: 'var(--font-sans)',
+                    fontWeight: activeTab === tab ? 600 : 400,
+                    transition: 'color 0.15s, border-color 0.15s',
+                  }}
+                >
+                  {tab === 'tags' ? '標籤配置' : tab === 'downside' ? '下行風險' : '風險設定'}
+                </button>
+              ))}
             </div>
 
             {/* ── Tab 1：標籤配置 ── */}
@@ -545,10 +571,103 @@ export default function RiskPanel({
                 calculating={calculating}
                 correlationUpdated={correlationUpdated}
                 onAutoCalcRhoAndRebalance={handleAutoCalcRhoAndRebalance}
+                dynamicThreshold={dynamicThreshold}
               />
             </div>
 
-            {/* ── Tab 2：風險設定 ── */}
+            {/* ── Tab 2：下行風險 ── */}
+            <div
+              id={TAB_DOWNSIDE_ID}
+              role="tabpanel"
+              aria-labelledby="tab-btn-downside"
+              hidden={activeTab !== 'downside'}
+            >
+              {downsideRiskLoading ? (
+                <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
+                  <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle', marginRight: 8 }} />
+                  載入快照資料…
+                </div>
+              ) : !downsideTabOpened ? (
+                <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
+                  點擊此 Tab 後自動載入
+                </div>
+              ) : downsideRiskSampleDays < 60 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                  <p style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', marginBottom: 4 }}>快照資料不足</p>
+                  <p style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)' }}>
+                    目前 {downsideRiskSampleDays} 筆，需至少 60 筆才可顯示初版指標
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  {/* VaR / CVaR 指標卡 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                    {[
+                      { label: '單日 VaR 95%', pct: varCvar?.var95Pct, amount: varCvar?.var95Amount, tip: '在 95% 信心水準下，單日最大可能損失' },
+                      { label: 'CVaR 95%',     pct: varCvar?.cvar95Pct, amount: varCvar?.cvar95Amount, tip: '最差 5% 交易日的平均損失（比 VaR 更保守的尾部風險估計）' },
+                    ].map(({ label, pct, amount, tip }) => (
+                      <div key={label} style={{
+                        padding: '12px 16px',
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-sm)',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>{label}</span>
+                          <SettingTooltip content={tip} />
+                        </div>
+                        {pct != null ? (
+                          <>
+                            <div style={{ fontSize: 'var(--text-base)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--up)', fontWeight: 600 }}>
+                              {(pct * 100).toFixed(2)}%
+                            </div>
+                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                              ≈ ${amount != null ? amount.toLocaleString('zh-TW', { maximumFractionDigits: 0 }) : '—'}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>—</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 最大回撤摘要 */}
+                  {mdd && (
+                    <div style={{
+                      padding: '10px 14px',
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                      gap: '8px 16px',
+                      marginBottom: 12,
+                    }}>
+                      {[
+                        { label: '目前距高點', value: `${(mdd.currentDrawdown * 100).toFixed(1)}%` },
+                        { label: '歷史最大回撤', value: `${(mdd.maxDrawdown * 100).toFixed(1)}%` },
+                        { label: '高點日期', value: mdd.peakDate || '—' },
+                        { label: '低點日期', value: mdd.troughDate || '—' },
+                        { label: '恢復天數', value: mdd.isRecovered && mdd.recoveryDays != null ? `${mdd.recoveryDays} 天` : '尚未回到前高' },
+                      ].map(({ label, value }) => (
+                        <div key={label}>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginBottom: 2 }}>{label}</div>
+                          <div style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>
+                    歷史模擬法，基於過去 {downsideRiskSampleDays} 筆快照資料
+                    {downsideRiskSampleDays < 252 && '（252 筆以上可信度較高）'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Tab 3：風險設定 ── */}
             <div
               id={TAB_SETTINGS_ID}
               role="tabpanel"
@@ -686,10 +805,11 @@ export default function RiskPanel({
                     }}
                     style={{
                       width: 60, textAlign: 'center',
+                      height: 'var(--ctrl-h)', boxSizing: 'border-box',
                       background: 'var(--surface)', border: '1px solid var(--border)',
                       borderRadius: 'var(--radius-sm)', color: 'var(--text)',
-                      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)',
-                      padding: '3px 6px',
+                      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-md)',
+                      padding: '0 6px',
                     }}
                   />
                   <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>日（5 ～ 60）</span>
@@ -735,7 +855,7 @@ export default function RiskPanel({
                     >
                       {rhoCalc.calculating
                         ? <span style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle' }} />
-                        : '⟳ Tag 矩陣 ρ'}
+                        : <><Icon name="sync" size={20} /> Tag 矩陣 ρ</>}
                     </button>
                   </div>
 

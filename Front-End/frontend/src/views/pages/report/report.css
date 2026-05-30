@@ -154,13 +154,15 @@
 
 .report-stock-input {
   width: 72px;
+  height: var(--ctrl-h);
+  box-sizing: border-box;
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
-  padding: 3px 8px;
+  padding: 0 8px;
   outline: none;
   text-transform: uppercase;
   transition: border-color var(--trans-fast), box-shadow var(--trans-fast);

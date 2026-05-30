@@ -11,6 +11,8 @@ export interface RiskResult {
 
 const EMPTY: RiskResult = { riskTotal: 0, tagStats: [], overlappingGroups: [], hasWarning: false };
 
+const TRADE_BAND_MULTIPLIER = 1.5;
+
 export function useRiskViewModel(
   holdings:            HoldingDTO[],
   tags:                TagDTO[],
@@ -79,6 +81,12 @@ export function useRiskViewModel(
         dir === 'lower_only' ? delta < -thresholdPP :
         Math.abs(delta) > thresholdPP
       );
+      const tradeBandPP = thresholdPP * TRADE_BAND_MULTIPLIER;
+      const inTradeZone = tag.targetWeight != null && (
+        dir === 'upper_only' ? delta > tradeBandPP :
+        dir === 'lower_only' ? delta < -tradeBandPP :
+        Math.abs(delta) > tradeBandPP
+      );
       return {
         tagName:          tag.name,
         baseRisk:         tag.baseRisk,
@@ -87,6 +95,7 @@ export function useRiskViewModel(
         actualWeight,
         delta,
         triggered,
+        inTradeZone,
         chartColor:       chartColors[idx % chartColors.length],
       };
     });

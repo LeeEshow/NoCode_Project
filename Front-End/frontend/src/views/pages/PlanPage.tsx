@@ -1,6 +1,6 @@
+import * as Tooltip from '@radix-ui/react-tooltip';
 import PanelHeader from '../components/PanelHeader';
 import LoadingPanel from '../components/LoadingPanel';
-import Icon from '../components/Icon';
 import { usePlanViewModel } from '../../viewmodels/usePlanViewModel';
 import PlanParamRow from './plan/PlanParamRow';
 import PlanTable from './plan/PlanTable';
@@ -8,6 +8,26 @@ import './plan/plan.css';
 
 function fmt(n: number, d = 0) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+function fmtWan(n: number): string {
+  const wan = n / 10000;
+  return (wan >= 0 ? '+' : '') + wan.toFixed(1) + '萬';
+}
+
+function TooltipLine({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <span style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+      <span style={{ color: 'var(--muted)' }}>{label}</span>
+      <span style={{ fontFamily: 'var(--font-mono)', textAlign: 'right' }}>
+        {value}{sub && <span style={{ color: 'var(--dim)', marginLeft: 4 }}>{sub}</span>}
+      </span>
+    </span>
+  );
+}
+
+function TooltipDivider() {
+  return <span style={{ display: 'block', borderTop: '1px solid var(--border)', margin: '5px 0' }} />;
 }
 
 export default function PlanPage() {
@@ -28,10 +48,14 @@ export default function PlanPage() {
     ?? [...vm.rows].reverse().find(r => r.status === 'past' && r.returnValue != null);
 
   const hasReturn  = latestRow != null && latestRow.returnValue != null;
-  const isOnTarget = hasReturn && latestRow!.returnValue! >= latestRow!.expectedProfit;
   const returnColor = hasReturn
     ? (latestRow!.returnValue! >= 0 ? 'var(--up)' : 'var(--down)')
     : 'var(--dim)';
+
+  const goal = vm.goalResult;
+  const progressColor =
+    goal?.progressStatus === 'ahead'  ? 'var(--accent)' :
+    goal?.progressStatus === 'behind' ? 'var(--up)'     : 'var(--muted)';
 
   return (
     <div style={{ minWidth: 0 }}>
@@ -65,24 +89,107 @@ export default function PlanPage() {
               </div>
             </div>
 
-            {/* 達標指示 */}
-            {hasReturn && (
-              <div className="ph-stat" style={{ minWidth: 80 }}>
-                <span className="ph-stat__label">計畫達標</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Icon
-                    name={isOnTarget ? 'check_circle' : 'cancel'}
-                    size={22}
-                    style={{ color: isOnTarget ? 'var(--accent)' : 'var(--up)' }}
-                  />
-                  <span className="ph-stat__value" style={{
-                    fontSize: 'var(--text-base)',
-                    color: isOnTarget ? 'var(--accent)' : 'var(--up)',
-                  }}>
-                    {isOnTarget ? '達標' : '未達標'}
-                  </span>
-                </div>
-              </div>
+            {/* 今年進度 */}
+            {goal && (
+              <Tooltip.Provider delayDuration={300}>
+                <Tooltip.Root>
+                  <Tooltip.Trigger asChild>
+                    <div className="ph-stat" style={{ cursor: 'help' }}>
+                      <span className="ph-stat__label">今年進度</span>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <span className="ph-stat__value" style={{ color: progressColor }}>
+                          {(goal.progressRatio * 100).toFixed(1)}%
+                        </span>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 'var(--text-sm)',
+                          color: goal.gapAmount >= 0 ? 'var(--accent)' : 'var(--up)',
+                        }}>
+                          {fmtWan(goal.gapAmount)}
+                        </span>
+                      </div>
+                    </div>
+                  </Tooltip.Trigger>
+                  <Tooltip.Portal>
+                    <Tooltip.Content
+                      className="panel-header__exposure-tooltip"
+                      sideOffset={6}
+                      side="bottom"
+                      style={{ minWidth: 280 }}
+                    >
+                      <TooltipLine label="起始值" value={fmt(goal.startValue)} sub="去年實際" />
+                      <TooltipLine label="今年目標" value={fmt(goal.yearTarget)} sub="計畫年末" />
+                      <TooltipDivider />
+                      <TooltipLine label="年度進度" value={`${goal.elapsedDays} 天`} sub={`${goal.elapsedPct}% / 365`} />
+                      <TooltipLine label="今日期望" value={fmt(goal.expectedToday)} sub="線性插值" />
+                      <TooltipLine label="實際資產" value={fmt(goal.currentValue)} />
+                      <TooltipDivider />
+                      <TooltipLine
+                        label="進度比"
+                        value={`${(goal.progressRatio * 100).toFixed(1)}%`}
+                        sub={`= 實際 ÷ 今日期望`}
+                      />
+                      <TooltipLine
+                        label="差距"
+                        value={fmtWan(goal.gapAmount)}
+                        sub={`= 實際 − 今日期望`}
+                      />
+                      <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                    </Tooltip.Content>
+                  </Tooltip.Portal>
+                </Tooltip.Root>
+              </Tooltip.Provider>
+            )}
+
+            {/* 30年所需報酬 */}
+            {goal && goal.yearsRemaining > 0 && (
+              <Tooltip.Provider delayDuration={300}>
+                <Tooltip.Root>
+                  <Tooltip.Trigger asChild>
+                    <div className="ph-stat" style={{ cursor: 'help' }}>
+                      <span className="ph-stat__label">30年所需報酬</span>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <span className="ph-stat__value" style={{
+                          color: goal.isAchievable ? 'var(--accent)' : 'var(--up)',
+                        }}>
+                          {(goal.requiredReturn * 100).toFixed(1)}% / 年
+                        </span>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 'var(--text-sm)',
+                          color: 'var(--dim)',
+                        }}>
+                          剩 {goal.yearsRemaining} 年
+                        </span>
+                      </div>
+                    </div>
+                  </Tooltip.Trigger>
+                  <Tooltip.Portal>
+                    <Tooltip.Content
+                      className="panel-header__exposure-tooltip"
+                      sideOffset={6}
+                      side="bottom"
+                      style={{ minWidth: 280 }}
+                    >
+                      <TooltipLine label="第30年目標" value={fmt(goal.targetValue)} sub="計畫累積" />
+                      <TooltipLine label="目前資產" value={fmt(goal.currentValue)} />
+                      <TooltipLine label="剩餘年數" value={`${goal.yearsRemaining} 年`} />
+                      <TooltipDivider />
+                      <TooltipLine
+                        label="所需年化"
+                        value={`${(goal.requiredReturn * 100).toFixed(1)}%`}
+                        sub={`= (目標 ÷ 現值)^(1/${goal.yearsRemaining}) − 1`}
+                      />
+                      <TooltipLine
+                        label="計畫設定"
+                        value={`${(goal.rNominal * 100).toFixed(1)}%`}
+                        sub="rBase × kRisk"
+                      />
+                      <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                    </Tooltip.Content>
+                  </Tooltip.Portal>
+                </Tooltip.Root>
+              </Tooltip.Provider>
             )}
           </>
         )}

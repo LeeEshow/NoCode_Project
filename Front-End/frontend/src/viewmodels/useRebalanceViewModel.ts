@@ -8,7 +8,12 @@ export interface RebalanceResult {
   suggestions:      RebalanceSuggestion[];
   volatilityFactor: number;
   dynamicThreshold: number;
+  totalAsset:       number;
 }
+
+const FEE_RATE      = 0.001425;  /* 手續費 0.1425%，買賣雙邊 */
+const TAX_RATE      = 0.003;     /* 證交稅 0.3%，僅賣出 */
+const SLIPPAGE_RATE = 0.001;     /* 滑價估算 0.1% */
 
 /* ── 標準差（樣本）── */
 function stdDev(arr: number[]): number {
@@ -73,7 +78,7 @@ export function computeRebalanceSuggestions(
   const dynamicThreshold = rules.baseThreshold * volatilityFactor;
 
   if (totalAsset === 0 || tagStats.length === 0) {
-    return { suggestions: [], volatilityFactor, dynamicThreshold };
+    return { suggestions: [], volatilityFactor, dynamicThreshold, totalAsset };
   }
 
   const { liquidityCapRatio } = rules;
@@ -82,10 +87,10 @@ export function computeRebalanceSuggestions(
     holdings.map(h => [h.stockCode, (h.currentPrice * h.shares) / totalAsset])
   );
 
-  /* 僅納入已觸發的 Tag（triggered 已依 triggerDirection 計算，此處直接沿用）*/
+  /* 僅納入進入交易區的 Tag（inTradeZone）才產生再平衡建議 */
   const deltaMap = new Map<string, number>();
   for (const ts of tagStats) {
-    if (ts.fallbackBehavior === 'exclude' || ts.targetWeight == null || !ts.triggered) continue;
+    if (ts.fallbackBehavior === 'exclude' || ts.targetWeight == null || !ts.inTradeZone) continue;
     deltaMap.set(ts.tagName, ts.delta / 100);
   }
 
@@ -125,18 +130,31 @@ export function computeRebalanceSuggestions(
 
     const shares  = Math.floor(finalTradeAmount / h.currentPrice);
     const action: RebalanceAction = shares === 0 ? 'hold' : (score > 0 ? 'sell' : 'buy');
+    const estimatedAmount = shares * h.currentPrice;
+
+    /* 成本效益計算 */
+    let estimatedCost: number | undefined;
+    let efficiencyLabel: '建議交易' | '可觀察' | '效益不足' | undefined;
+    if (action !== 'hold' && shares > 0) {
+      const costRate   = action === 'buy' ? (FEE_RATE + SLIPPAGE_RATE) : (FEE_RATE + TAX_RATE + SLIPPAGE_RATE);
+      estimatedCost    = estimatedAmount * costRate;
+      const tradeFrac  = estimatedAmount / totalAsset;
+      efficiencyLabel  = tradeFrac > 0.01 ? '建議交易' : tradeFrac > 0.005 ? '可觀察' : '效益不足';
+    }
 
     return {
       stockCode:          h.stockCode,
       stockName:          h.stockName,
       action,
       shares,
-      estimatedAmount:    shares * h.currentPrice,
+      estimatedAmount,
       isLiquidityLimited: isLiquidityLimited && shares > 0,
+      estimatedCost,
+      efficiencyLabel,
     };
   });
 
-  return { suggestions, volatilityFactor, dynamicThreshold };
+  return { suggestions, volatilityFactor, dynamicThreshold, totalAsset };
 }
 
 export function useRebalanceViewModel(

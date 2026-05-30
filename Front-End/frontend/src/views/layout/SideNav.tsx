@@ -75,18 +75,18 @@ export default function SideNav({ expanded, onToggle, onSettingsOpen }: SideNavP
           onClick={onToggle}
           title={expanded ? '收合選單' : '展開選單'}
         >
-          {expanded ? <Icon name="chevron_left" size={20} /> : <Icon name="chevron_right" size={20} />}
+          {expanded ? <Icon name="chevron_left" size={24} /> : <Icon name="chevron_right" size={24} />}
         </button>
       </div>
 
       {/* 主要導覽 */}
       <div className="sidenav__body">
-        <NavItem to="/"       icon={<Icon name="show_chart"  size={20} />} label="台股總覽" expanded={expanded} />
-        <NavItem to="/assets" icon={<Icon name="account_balance_wallet" size={20} />} label="外幣資產" expanded={expanded} />
+        <NavItem to="/"       icon={<Icon name="show_chart"  size={24} />} label="台股總覽" expanded={expanded} />
+        <NavItem to="/assets" icon={<Icon name="account_balance_wallet" size={24} />} label="外幣資產" expanded={expanded} />
 
         <NavDivider expanded={expanded} label={expanded ? '資產規劃' : undefined} />
-        <NavItem to="/plan"   icon={<Icon name="trending_up" size={20} />} label="投報計畫" expanded={expanded} />
-        <NavItem to="/report" icon={<Icon name="analytics"   size={20} />} label="績效報告" expanded={expanded} />
+        <NavItem to="/plan"   icon={<Icon name="trending_up" size={24} />} label="投報計畫" expanded={expanded} />
+        <NavItem to="/report" icon={<Icon name="analytics"   size={24} />} label="績效報告" expanded={expanded} />
 
         <NavDivider expanded={expanded} />
       </div>
@@ -98,7 +98,7 @@ export default function SideNav({ expanded, onToggle, onSettingsOpen }: SideNavP
           onClick={onSettingsOpen}
           title={!expanded ? '設定' : undefined}
         >
-          <span className="nav-item__icon"><Icon name="settings" size={20} /></span>
+          <span className="nav-item__icon"><Icon name="settings" size={24} /></span>
           {expanded && <span className="nav-item__label">設定</span>}
         </button>
       </div>

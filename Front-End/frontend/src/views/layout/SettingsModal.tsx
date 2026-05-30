@@ -426,7 +426,7 @@ function ApiDiagnosticsSection() {
           >
             {diag.reinitializing
               ? <span className="icon-spin" aria-hidden="true"><Icon name="progress_activity" size={14} /></span>
-              : <Icon name="restart_alt" size={14} />}
+              : <Icon name="restart_alt" size={20} />}
             重新初始化 Shioaji
           </button>
           <ReinitializeStatusChip

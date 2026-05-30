@@ -106,10 +106,16 @@ body {
 
 /* ── Ghost Button ── */
 .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1;
+  height: var(--ctrl-h);
+  box-sizing: border-box;
   background: transparent;
   border: 1px solid var(--border-hi);
   color: var(--muted);
-  padding: 4px 10px;
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   font-size: var(--text-md);
   cursor: pointer;
@@ -458,13 +464,15 @@ tr:hover .drag-handle { color: var(--dim); }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--text-sm);
+  height: var(--ctrl-h);
+  box-sizing: border-box;
+  font-size: var(--text-md);
   font-family: var(--font-mono);
   background: var(--surface);
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 2px 6px;
+  padding: 0 8px;
   cursor: pointer;
   outline: none;
   transition: border-color var(--trans-fast), color var(--trans-fast), box-shadow var(--trans-fast);

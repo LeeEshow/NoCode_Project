@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+﻿import type { ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import Icon from '../Icon';
 import './Modal.css';
@@ -27,7 +27,7 @@ export default function Modal({ open, onClose, title, size = 'md', className, fo
                 <Dialog.Title className="ft-modal__title">{title}</Dialog.Title>
                 <Dialog.Close asChild>
                   <button className="ft-modal__close" aria-label="關閉">
-                    <Icon name="close" size={18} />
+                    <Icon name="close" size={24} />
                   </button>
                 </Dialog.Close>
               </div>

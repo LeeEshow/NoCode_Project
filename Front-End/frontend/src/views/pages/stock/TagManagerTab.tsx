@@ -1,4 +1,4 @@
-import { useState, useId } from 'react';
+﻿import { useState, useId } from 'react';
 import type {
   TagDTO, TagStat, CreateTagPayload, FallbackBehavior, TriggerDirection,
   HoldingDTO, OverlappingTagGroup,
@@ -51,6 +51,8 @@ interface Props {
   correlationUpdated:         boolean;
   /* 重算相關性 ρ（從風險設定移至此） */
   onAutoCalcRhoAndRebalance:  () => void;
+  /* No-Trade Band */
+  dynamicThreshold: number;
 }
 
 /* ── 常數 ── */
@@ -74,6 +76,8 @@ const TRIGGER_DIR_OPTIONS: { value: TriggerDirection; label: string; desc: strin
 
 /* ── 元件 ── */
 
+const TRADE_BAND_MULTIPLIER = 1.5;
+
 export default function TagManagerTab({
   tags, tagStats, loading, saving,
   onAdd, onUpdate, onRemove,
@@ -83,7 +87,10 @@ export default function TagManagerTab({
   onTriggerRebalance, calculating,
   correlationUpdated,
   onAutoCalcRhoAndRebalance,
+  dynamicThreshold,
 }: Props) {
+  const observeBandPP = dynamicThreshold * 100;
+  const tradeBandPP   = observeBandPP * TRADE_BAND_MULTIPLIER;
   const statMap = new Map(tagStats.map(s => [s.tagName, s]));
   const uid     = useId();
   const idBase  = `tag-form-${uid}`;
@@ -236,7 +243,7 @@ export default function TagManagerTab({
           disabled={calculating}
           style={{ minWidth: 96 }}
         >
-          {calculating ? spinner : '▷ 計算再平衡'}
+          {calculating ? spinner : <><Icon name="play_arrow" size={20} /> 計算再平衡</>}
         </button>
 
         {/* 彈性空白 */}
@@ -244,9 +251,9 @@ export default function TagManagerTab({
 
         {/* 右側 */}
         {correlationUpdated && (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--up)', whiteSpace: 'nowrap' }}
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--up)', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}
             title="相關性矩陣已更新，建議重新計算再平衡">
-            ⚠ 相關性已更新
+            <Icon name="warning" size={24} /> 相關性已更新
           </span>
         )}
         <button
@@ -257,9 +264,9 @@ export default function TagManagerTab({
           title="依近期波動率自動填入各 Tag 的市場狀態風險係數"
           style={{ fontSize: 'var(--text-sm)' }}
         >
-          {recalculating ? spinner : '⟳ 批次動態風險'}
+          {recalculating ? spinner : <><Icon name="sync" size={20} /> 批次動態風險</>}
         </button>
-        <button className="btn-ghost" onClick={openAdd}>＋ 新增</button>
+        <button className="btn-ghost" onClick={openAdd}><Icon name="add" size={20} /> 新增</button>
       </div>
 
       {/* 清單 or 空狀態 */}
@@ -268,7 +275,7 @@ export default function TagManagerTab({
           <Icon name="label" size={40} style={{ display: 'block', margin: '0 auto 12px', color: 'var(--dim)' }} />
           <p style={{ marginBottom: 4 }}>尚未建立任何 Tag</p>
           <p style={{ fontSize: 'var(--text-sm)', marginBottom: 16 }}>建立 Tag 以開始管理投組風險配置</p>
-          <button className="btn-ghost" onClick={openAdd}>＋ 建立第一個 Tag</button>
+          <button className="btn-ghost" onClick={openAdd}><Icon name="add" size={20} /> 建立第一個 Tag</button>
         </div>
       ) : (
         <div className="ft-table-scroll">
@@ -331,32 +338,49 @@ export default function TagManagerTab({
                       return <span style={{ color: 'var(--muted)' }}>{s.actualWeight.toFixed(1)}% / {s.targetWeight}%</span>;
                     })()}
                   </td>
-                  {/* 說明（4-B 加入集中度警示）*/}
+                  {/* 說明：三段式 No-Trade Band 狀態 */}
                   <td style={{ fontSize: 'var(--text-xs)' }} aria-live="polite">
                     {(() => {
-                      /* 4-B：同質集中度超標優先顯示（isConcentrationBreached 由 viewmodel 計算）*/
+                      /* 集中度超標優先顯示 */
                       const concGroups = overlappingGroups.filter(
                         g => g.tagNames.includes(tag.name) && g.isConcentrationBreached
                       );
                       if (concGroups.length > 0) {
                         const maxPct = Math.round(Math.max(...concGroups.map(g => g.combinedWeight)) * 100);
-                        return <span style={{ color: 'var(--up)' }}>⚠ 同質集中 {maxPct}%，超過上限</span>;
+                        return <span style={{ color: 'var(--up)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="warning" size={24} /> 同質集中 {maxPct}%，超過上限</span>;
                       }
 
                       const s = statMap.get(tag.name);
                       if (!s || s.targetWeight == null) return <span style={{ color: 'var(--dim)' }}>— 未設定目標</span>;
-                      if (s.triggered) return <span style={{ color: 'var(--up)' }}>⚠ 偏差 {s.delta >= 0 ? '+' : ''}{s.delta.toFixed(1)}%，建議再平衡</span>;
-                      if (Math.abs(s.delta) < 1) return <span style={{ color: 'var(--down)' }}>✓ 配置正常</span>;
-                      return <span style={{ color: 'var(--muted)' }}>偏差 {s.delta >= 0 ? '+' : ''}{s.delta.toFixed(1)}%</span>;
+
+                      const absDelta = Math.abs(s.delta);
+                      const deltaStr = `${s.delta >= 0 ? '+' : ''}${s.delta.toFixed(1)}%`;
+
+                      if (s.inTradeZone) {
+                        return (
+                          <span style={{ color: 'var(--up)', display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`交易區：偏差超過 ±${tradeBandPP.toFixed(1)}%，建議再平衡`}>
+                            <Icon name="north" size={24} /> 交易區 {deltaStr}
+                          </span>
+                        );
+                      }
+                      if (s.triggered) {
+                        return (
+                          <span style={{ color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`觀察區：偏差 ${observeBandPP.toFixed(1)}–${tradeBandPP.toFixed(1)}%，可觀察`}>
+                            <Icon name="adjust" size={24} /> 觀察 {deltaStr}
+                          </span>
+                        );
+                      }
+                      if (absDelta < 1) return <span style={{ color: 'var(--down)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={24} /> 配置正常</span>;
+                      return <span style={{ color: 'var(--muted)' }}>偏差 {deltaStr}</span>;
                     })()}
                   </td>
                   <td className="right">
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                       <button className="btn-icon accent" aria-label={`編輯 ${tag.name}`} onClick={() => openEdit(tag)}>
-                        <Icon name="edit" size={16} />
+                        <Icon name="edit" size={24} />
                       </button>
                       <button className="btn-icon" aria-label={`刪除 ${tag.name}`} onClick={() => setDeleteTarget(tag)}>
-                        <Icon name="delete" size={16} />
+                        <Icon name="delete" size={24} />
                       </button>
                     </div>
                   </td>
@@ -482,8 +506,8 @@ export default function TagManagerTab({
               </button>
             </div>
             {autoCalcPending && (
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 8 }}>
-                ⚠ 以下為建議值（橘色底），請確認後儲存
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="warning" size={24} /> 以下為建議值（橘色底），請確認後儲存
               </p>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>

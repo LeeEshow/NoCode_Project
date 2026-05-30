@@ -464,7 +464,8 @@ export interface TagStat {
   fallbackBehavior: FallbackBehavior;
   actualWeight:     number;   /* 當前配置%（0~100） */
   delta:            number;   /* 偏差 = actual - target（null target 時為 0） */
-  triggered:        boolean;  /* |delta| > baseThreshold（percentage points） */
+  triggered:        boolean;  /* |delta| > observeBand（進入觀察區） */
+  inTradeZone:      boolean;  /* |delta| > tradeBand（進入交易區，觸發再平衡）*/
   chartColor:       string;
 }
 
@@ -548,6 +549,49 @@ export interface RebalanceSuggestion {
   shares:             number;
   estimatedAmount:    number;
   isLiquidityLimited: boolean;
+  estimatedCost?:     number;  /* 估算手續費 + 證交稅（TWD）*/
+  efficiencyLabel?:   '建議交易' | '可觀察' | '效益不足';
+}
+
+/* ── 下行風險模型結果 ───────────────────────────────────────── */
+
+export interface MddResult {
+  currentDrawdown: number;       /* 目前距高點跌幅，如 -0.032 */
+  maxDrawdown:     number;       /* 歷史最大回撤（最負值），如 -0.152 */
+  peakDate:        string;       /* 歷史高點日期 */
+  troughDate:      string;       /* 最大回撤低點日期 */
+  recoveryDays:    number | null;/* 從低點回到前高所需天數，null=未回到 */
+  isRecovered:     boolean;
+}
+
+export interface VarCVarResult {
+  var95Pct:     number;  /* 95% 信心水準下的單日損失百分比（負值） */
+  var95Amount:  number;  /* 對應 TWD 金額損失 */
+  cvar95Pct:    number;  /* 最差 5% 日子的平均損失百分比（負值） */
+  cvar95Amount: number;  /* 對應 TWD 金額損失 */
+  sampleDays:   number;
+}
+
+/* ── 計畫目標追蹤（Phase B）────────────────────────────────── */
+
+export interface PlanGoalResult {
+  /* B2：今年進度 */
+  progressRatio:  number;                          /* current / expectedToday */
+  gapAmount:      number;                          /* current - expectedToday（TWD）*/
+  progressStatus: 'ahead' | 'on-track' | 'behind';
+  /* B3：30年所需報酬 */
+  requiredReturn: number;                          /* 年化報酬（decimal）*/
+  yearsRemaining: number;
+  isAchievable:   boolean;                         /* requiredReturn <= rNominal */
+  /* Tooltip 計算明細 */
+  startValue:     number;                          /* 去年 12/31 實際資產（B2 起始點）*/
+  expectedToday:  number;                          /* 今日計畫期望值（線性插值）*/
+  currentValue:   number;                          /* 今日實際資產 */
+  elapsedPct:     number;                          /* 今年已過百分比（0–100）*/
+  elapsedDays:    number;                          /* 今年已過天數 */
+  yearTarget:     number;                          /* 今年計畫年末目標 */
+  targetValue:    number;                          /* 第 30 年計畫目標 */
+  rNominal:       number;                          /* rBase × kRisk */
 }
 
 export interface RebalanceSnapshot {

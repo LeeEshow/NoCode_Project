@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+﻿import React, { useState, useMemo, useRef } from 'react';
 import Icon from '../Icon';
 import './DataTable.css';
 
@@ -57,9 +57,9 @@ function filterRows<T extends object>(data: T[], term: string, keys?: Array<keyo
 /* ── Sort Icon ───────────────────────────────────────────── */
 
 function SortIcon({ state }: { state: 'none' | 'asc' | 'desc' }) {
-  if (state === 'asc')  return <Icon name="arrow_upward"   size={16} />;
-  if (state === 'desc') return <Icon name="arrow_downward" size={16} />;
-  return <Icon name="unfold_more" size={16} />;
+  if (state === 'asc')  return <Icon name="arrow_upward"   size={24} />;
+  if (state === 'desc') return <Icon name="arrow_downward" size={24} />;
+  return <Icon name="unfold_more" size={24} />;
 }
 
 /* ── Component ───────────────────────────────────────────── */
@@ -151,8 +151,8 @@ function DataTable<T extends object>({
               title={searchOpen ? '關閉搜尋' : '搜尋'}
             >
               {searchOpen
-                ? <Icon name="close"  size={18} />
-                : <Icon name="search" size={18} />
+                ? <Icon name="close"  size={24} />
+                : <Icon name="search" size={24} />
               }
             </button>
           </div>

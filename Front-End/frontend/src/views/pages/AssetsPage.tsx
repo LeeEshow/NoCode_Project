@@ -1,5 +1,6 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import PanelHeader from '../components/PanelHeader';
+import Icon from '../components/Icon';
 import LoadingPanel from '../components/LoadingPanel';
 import { useAssetsViewModel } from '../../viewmodels/useAssetsViewModel';
 import ForeignAssetTable from './assets/ForeignAssetTable';
@@ -66,7 +67,7 @@ export default function AssetsPage() {
             <span className="ft-section-title">外幣資產</span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="btn-ghost" onClick={vm.load}>重新整理</button>
-              <button className="btn-ghost" onClick={openAdd}>＋ 新增</button>
+              <button className="btn-ghost" onClick={openAdd}><Icon name="add" size={20} /> 新增</button>
             </div>
           </div>
 

@@ -211,7 +211,7 @@ export async function fetchStockDailyHistory(stockId: string, start: string, end
     { params: { start, end } },
   );
   return res.data.data.map(p => ({
-    date:  new Date(p.timestamp * 1000).toISOString().slice(0, 10),
+    date:  new Date(p.timestamp * 1000 + 8 * 3600 * 1000).toISOString().slice(0, 10),
     close: p.close,
   }));
 }

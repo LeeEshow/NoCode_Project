@@ -1,4 +1,4 @@
-import { useEffect, useCallback, Fragment, memo } from 'react';
+﻿import { useEffect, useCallback, Fragment, memo } from 'react';
 import type { ReactNode } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
@@ -60,20 +60,43 @@ function ValTooltip({ label, value, color, children }: {
   );
 }
 
+const EFFICIENCY_COLOR: Record<string, string> = {
+  '建議交易': 'var(--down)',
+  '可觀察':   'var(--accent)',
+  '效益不足': 'var(--dim)',
+};
+
 function SuggestionCell({ s }: { s: RebalanceSuggestion | undefined }) {
   if (!s || s.action === 'hold' || s.shares === 0) {
     return <span style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)' }}>—</span>;
   }
   const label = s.action === 'sell' ? '賣' : '買';
   return (
-    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.5 }}>
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.6 }}>
       <span>
         {label} {fmt(s.shares)} 股
         {s.isLiquidityLimited && (
-          <span title="流動性不足，已調降交易量" style={{ cursor: 'help', marginLeft: 4 }}>⚠</span>
+          <Icon name="warning" size={24} title="流動性不足，已調降交易量" style={{ cursor: 'help', marginLeft: 4 }} />
         )}
       </span>
       <span>約 ${fmt(Math.round(s.estimatedAmount))}</span>
+      {s.efficiencyLabel && (
+        <span style={{
+          color: EFFICIENCY_COLOR[s.efficiencyLabel] ?? 'var(--dim)',
+          fontSize: '10px',
+          border: `1px solid ${EFFICIENCY_COLOR[s.efficiencyLabel] ?? 'var(--border)'}`,
+          borderRadius: 3,
+          padding: '0 4px',
+          marginTop: 1,
+        }}>
+          {s.efficiencyLabel}
+        </span>
+      )}
+      {s.estimatedCost != null && s.estimatedCost > 0 && (
+        <span style={{ color: 'var(--dim)', fontSize: '10px' }}>
+          成本 ${fmt(Math.round(s.estimatedCost))}
+        </span>
+      )}
     </span>
   );
 }
@@ -117,7 +140,7 @@ const HoldingRow = memo(function HoldingRow({
             onClick={e => e.stopPropagation()}
             className="drag-handle"
           >
-            <Icon name="drag_indicator" size={18} />
+            <Icon name="drag_indicator" size={24} />
           </span>
           <a
             href={`https://www.wantgoo.com/stock/etf/${h.stockCode}/dividend-policy/ex-dividend`}
@@ -210,6 +233,7 @@ export interface HoldingsTableProps {
   concentrationLimit?: number;
   /* Phase 3 */
   rebalanceSuggestions?: Record<string, RebalanceSuggestion>;
+  rebalanceTotalAsset?:  number;
 }
 
 export default function HoldingsTable({

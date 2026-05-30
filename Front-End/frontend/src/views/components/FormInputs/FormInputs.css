@@ -22,13 +22,15 @@
 
 .fi-input {
   width: 100%;
+  height: var(--ctrl-h);
+  box-sizing: border-box;
   background: var(--surface);
   border: 1px solid var(--border-hi);
   border-radius: var(--radius-sm);
   color: var(--text);
   font-size: var(--text-md);
   font-family: var(--font-sans);
-  padding: 6px 10px;
+  padding: 4px 10px;
   outline: none;
   transition: border-color var(--trans-fast);
   -webkit-appearance: none;
@@ -60,9 +62,9 @@
 }
 
 .fi-textarea {
-  resize: vertical;
+  height: auto;
   min-height: 75px;
-  height: 75px;
+  resize: vertical;
 }
 
 /* ── RadioGroup ── */

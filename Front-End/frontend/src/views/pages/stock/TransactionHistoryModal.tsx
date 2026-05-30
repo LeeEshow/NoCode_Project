@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import LoadingPanel from '../../components/LoadingPanel';
@@ -183,10 +183,10 @@ export default function TransactionHistoryModal({
                       <td className="center">
                         <div style={{ display: 'inline-flex', gap: 5 }}>
                           <button className="btn-icon" title="編輯" onClick={() => setEditingTx(tx)}>
-                            <Icon name="edit" size={21} />
+                            <Icon name="edit" size={24} />
                           </button>
                           <button className="btn-icon" title="刪除" style={{ color: 'var(--up)' }} onClick={() => setDeleteId(tx.id)}>
-                            <Icon name="delete" size={21} />
+                            <Icon name="delete" size={24} />
                           </button>
                         </div>
                       </td>

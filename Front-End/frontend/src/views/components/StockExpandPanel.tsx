@@ -1,4 +1,4 @@
-import { useState, useEffect, memo, useMemo } from 'react';
+﻿import { useState, useEffect, memo, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts/core';
 import { BarChart } from 'echarts/charts';
@@ -444,16 +444,17 @@ function StockTagSection({
       value=""
       onChange={e => { handleAddTag(e.target.value); (e.target as HTMLSelectElement).value = ''; }}
       style={{
+        height: 'var(--ctrl-h)', boxSizing: 'border-box',
         background: 'var(--surface)',
         color: 'var(--text)',
         border: '1px solid var(--border-hi)',
         borderRadius: 'var(--radius-sm)',
-        padding: '3px 8px',
-        fontSize: 'var(--text-sm)',
+        padding: '0 8px',
+        fontSize: 'var(--text-md)',
         cursor: 'pointer',
       }}
     >
-      <option value="">＋ 加入 Tag</option>
+      <option value="">加入 Tag</option>
       {allTags.length === 0 ? (
         <option value="" disabled>請先至風險再平衡模組建立標籤</option>
       ) : (
@@ -519,7 +520,7 @@ function StockTagSection({
                         () => toast.success(`已移除 ${t.tagName}`),
                       )}
                     >
-                      <Icon name="close" size={16} />
+                      <Icon name="close" size={24} />
                     </button>
                   </td>
                 </tr>
@@ -529,22 +530,21 @@ function StockTagSection({
         )}
       </div>
 
-      {/* 底部 action bar：合計 ＋ 加入Tag ＋ 儲存 */}
+      {/* 底部 action bar：合計 + 加入Tag + 儲存 */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '8px 4px 4px', borderTop: '1px solid var(--border)', flexShrink: 0, gap: 8,
       }}>
         <span aria-live="polite" style={{ fontSize: 'var(--text-sm)', fontVariantNumeric: 'tabular-nums' }}>
-          {holdingTags.length > 0 && total === 100 && <span style={{ color: 'var(--down)' }}>✓ 合計 100%</span>}
-          {holdingTags.length > 0 && total < 100  && <span style={{ color: 'var(--accent)' }}>⚠ {total}%，差 {100 - total}%</span>}
-          {holdingTags.length > 0 && total > 100  && <span style={{ color: 'var(--up)' }}>✗ {total}%，超出 {total - 100}%</span>}
+          {holdingTags.length > 0 && total === 100 && <span style={{ color: 'var(--down)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={24} /> 合計 100%</span>}
+          {holdingTags.length > 0 && total < 100  && <span style={{ color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="warning" size={24} /> {total}%，差 {100 - total}%</span>}
+          {holdingTags.length > 0 && total > 100  && <span style={{ color: 'var(--up)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="close" size={24} /> {total}%，超出 {total - 100}%</span>}
         </span>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {addSelect}
           {holdingTags.length > 0 && (
             <button
               className="btn-ghost"
-              style={{ padding: '3px 12px', fontSize: 'var(--text-sm)' }}
               onClick={handleSaveAll}
             >
               儲存配置
@@ -660,8 +660,8 @@ export default function StockExpandPanel({
                               borderRadius: 'var(--radius-sm)',
                               fontSize: 'var(--text-sm)',
                             }}>
-                              <span style={{ color: exceed ? 'var(--up)' : 'var(--accent)' }}>
-                                ⚠ 與 {others} 持有相同標籤（{g.tagNames.join('、')}）
+                              <span style={{ color: exceed ? 'var(--up)' : 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <Icon name="warning" size={24} /> 與 {others} 持有相同標籤（{g.tagNames.join('、')}）
                                 {' — '}合計佔比 {pct}%
                                 {exceed && concentrationLimit != null && (
                                   <span>，超過上限（{Math.round(concentrationLimit * 100)}%）</span>

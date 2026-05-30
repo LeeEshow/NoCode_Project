@@ -4,9 +4,10 @@ import { fetchSnapshots } from '../models/snapshotModel';
 import { fetchHoldings } from '../models/holdingModel';
 import { fetchForeignAssets } from '../models/foreignAssetModel';
 import { buildPlanRows, groupSnapshotsByYear } from '../models/planModel';
+import { computePlanGoal } from '../utils/planGoal';
 import { useSnapshotStore } from '../stores/snapshotStore';
 import { usePlanStore } from '../stores/planStore';
-import type { PlanConfigDTO, PlanRow } from '../types';
+import type { PlanConfigDTO, PlanRow, PlanGoalResult } from '../types';
 
 const PLAN_YEARS = 30;
 
@@ -142,6 +143,11 @@ export function usePlanViewModel() {
     return state.config.rBase * state.config.kRisk;
   }, [state.config]);
 
+  const goalResult = useMemo<PlanGoalResult | null>(() => {
+    if (!state.config || rows.length === 0) return null;
+    return computePlanGoal(rows, state.config);
+  }, [rows, state.config]);
+
   return {
     config:   state.config,
     loading:  state.loading,
@@ -156,5 +162,6 @@ export function usePlanViewModel() {
     setCurrentYearReinvest,
     rNominal,
     planYears: PLAN_YEARS,
+    goalResult,
   };
 }

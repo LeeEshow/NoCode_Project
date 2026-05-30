@@ -1,4 +1,4 @@
-import ReactECharts from 'echarts-for-react';
+﻿import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts/core';
 import { CandlestickChart, BarChart, LineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, DataZoomComponent, LegendComponent } from 'echarts/components';
@@ -217,7 +217,7 @@ export default function KLineChart({ data, height = 360, showVolume = true, show
             transition: 'all 0.15s',
           }}
         >
-          <Icon name={visZoomLock ? 'lock' : 'lock_open'} size={14} />
+          <Icon name={visZoomLock ? 'lock' : 'lock_open'} size={24} />
         </button>
       </div>
 
