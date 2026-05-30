@@ -9,10 +9,11 @@ import { chartColors } from '../../styles';
 import { computeMaxDrawdown } from '../../utils/downsideRisk';
 import './report/report.css';
 
-const PAGE_SIZE   = 30;
-const YEAR_START  = '2026-01-01';
-const YEAR_END    = '2026-12-31';
-const STORAGE_KEY = 'report_segments';
+const PAGE_SIZE         = 30;
+const YEAR_START        = '2026-01-01';
+const YEAR_END          = '2026-12-31';
+const STORAGE_KEY       = 'report_segments';
+const TABLE_COLLAPSED_KEY = 'report_table_collapsed';
 
 function fmt(n: number, d = 0) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -234,6 +235,18 @@ export default function ReportPage() {
   const [addType,    setAddType]    = useState<'snapshot' | 'stock'>('snapshot');
   const [addStart,   setAddStart]   = useState(vm.comparisonStart);
   const [addEnd,     setAddEnd]     = useState(vm.comparisonEnd);
+
+  const [tableCollapsed, setTableCollapsed] = useState(
+    () => localStorage.getItem(TABLE_COLLAPSED_KEY) !== 'false',
+  );
+
+  function toggleTable() {
+    setTableCollapsed(c => {
+      const next = !c;
+      localStorage.setItem(TABLE_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  }
 
   const [segments, setSegments] = useState<Segment[]>(() => {
     const stored = loadFromStorage();
@@ -463,57 +476,76 @@ export default function ReportPage() {
 
               {/* 快照明細 Tab */}
               <div className="ft-panel">
-                <div className="report-tab-bar">
-                  {segments.map((seg, i) => (
-                    <button
-                      key={seg.id}
-                      className={`report-tab${activeSegId === seg.id ? ' report-tab--active' : ''}`}
-                      onClick={() => setActiveSegId(seg.id)}
-                    >
-                      段 {i + 1}
-                      <span className="report-tab__count">{segmentRows[i]?.length ?? 0}</span>
-                    </button>
-                  ))}
+                <div
+                  className="ft-section-header"
+                  style={{ padding: '8px 16px', cursor: 'pointer', userSelect: 'none' }}
+                  onClick={toggleTable}
+                >
+                  <span className="ft-section-title">快照明細</span>
+                  <button
+                    className="btn-icon"
+                    aria-label={tableCollapsed ? '展開快照明細' : '收折快照明細'}
+                    onClick={e => { e.stopPropagation(); toggleTable(); }}
+                  >
+                    <Icon name={tableCollapsed ? 'expand_more' : 'expand_less'} size={20} />
+                  </button>
                 </div>
 
-                {/* MDD 統計卡（選取區間）*/}
-                {activeMdd && (
-                  <div style={{
-                    display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
-                    padding: '10px 16px', borderBottom: '1px solid var(--border)',
-                  }}>
-                    {[
-                      { label: '目前距高點', value: `${(activeMdd.currentDrawdown * 100).toFixed(1)}%`, warn: activeMdd.currentDrawdown < -0.05 },
-                      { label: '最大回撤', value: `${(activeMdd.maxDrawdown * 100).toFixed(1)}%`, warn: activeMdd.maxDrawdown < -0.10 },
-                      { label: '高點日期', value: activeMdd.peakDate || '—', warn: false },
-                      { label: '低點日期', value: activeMdd.troughDate || '—', warn: false },
-                      { label: '回復天數', value: activeMdd.isRecovered && activeMdd.recoveryDays != null ? `${activeMdd.recoveryDays} 天` : '—', warn: false },
-                    ].map(({ label, value, warn }) => (
-                      <span key={label} style={{ fontSize: 'var(--text-xs)' }}>
-                        <span style={{ color: 'var(--dim)', marginRight: 4 }}>{label}</span>
-                        <span style={{ color: warn ? 'var(--up)' : 'var(--muted)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {!tableCollapsed && (
+                  <>
+                    <div className="report-tab-bar">
+                      {segments.map((seg, i) => (
+                        <button
+                          key={seg.id}
+                          className={`report-tab${activeSegId === seg.id ? ' report-tab--active' : ''}`}
+                          onClick={() => setActiveSegId(seg.id)}
+                        >
+                          段 {i + 1}
+                          <span className="report-tab__count">{segmentRows[i]?.length ?? 0}</span>
+                        </button>
+                      ))}
+                    </div>
 
-                {segments.map((seg, i) => {
-                  if (activeSegId !== seg.id) return null;
-                  const rows       = segmentRows[i] ?? [];
-                  const totalPages = Math.ceil(rows.length / PAGE_SIZE);
-                  return (
-                    <SnapshotTable
-                      key={seg.id}
-                      rows={rows}
-                      page={seg.page}
-                      totalPages={totalPages}
-                      onPage={p => setSegments(prev =>
-                        prev.map(s => s.id === seg.id ? { ...s, page: p } : s),
-                      )}
-                      onNoteChange={vm.updateSnapshotNote}
-                    />
-                  );
-                })}
+                    {/* MDD 統計卡（選取區間）*/}
+                    {activeMdd && (
+                      <div style={{
+                        display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
+                        padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                      }}>
+                        {[
+                          { label: '目前距高點', value: `${(activeMdd.currentDrawdown * 100).toFixed(1)}%`, warn: activeMdd.currentDrawdown < -0.05 },
+                          { label: '最大回撤', value: `${(activeMdd.maxDrawdown * 100).toFixed(1)}%`, warn: activeMdd.maxDrawdown < -0.10 },
+                          { label: '高點日期', value: activeMdd.peakDate || '—', warn: false },
+                          { label: '低點日期', value: activeMdd.troughDate || '—', warn: false },
+                          { label: '回復天數', value: activeMdd.isRecovered && activeMdd.recoveryDays != null ? `${activeMdd.recoveryDays} 天` : '—', warn: false },
+                        ].map(({ label, value, warn }) => (
+                          <span key={label} style={{ fontSize: 'var(--text-xs)' }}>
+                            <span style={{ color: 'var(--dim)', marginRight: 4 }}>{label}</span>
+                            <span style={{ color: warn ? 'var(--up)' : 'var(--muted)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {segments.map((seg, i) => {
+                      if (activeSegId !== seg.id) return null;
+                      const rows       = segmentRows[i] ?? [];
+                      const totalPages = Math.ceil(rows.length / PAGE_SIZE);
+                      return (
+                        <SnapshotTable
+                          key={seg.id}
+                          rows={rows}
+                          page={seg.page}
+                          totalPages={totalPages}
+                          onPage={p => setSegments(prev =>
+                            prev.map(s => s.id === seg.id ? { ...s, page: p } : s),
+                          )}
+                          onNoteChange={vm.updateSnapshotNote}
+                        />
+                      );
+                    })}
+                  </>
+                )}
               </div>
             </>
           )

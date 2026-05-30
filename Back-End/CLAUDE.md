@@ -117,6 +117,40 @@ pytest tests/ -v -k "holdings"          # 關鍵字篩選測試
 | `assert_keys(obj, keys)` | 驗證 dict 包含所有必要欄位 |
 | `assert_no_snake(obj)` | 驗證 dict key 無底線（確保 camelCase） |
 
+#### quote_service 測試注意事項
+
+**`is_market_open` patch 必須打在 quote_service 的 local reference：**
+
+```python
+import services.quote_service as qs
+
+# ✅ 正確
+monkeypatch.setattr(qs, "is_market_open", lambda: True)
+
+# ❌ 無效（quote_service 已 import 成 local reference，patch 來源不影響）
+monkeypatch.setattr("utils.market_hours.is_market_open", lambda: True)
+```
+
+`is_market_open=True`（盤中）時 TWSE 步驟完全跳過，不需 mock `_is_tse` 或 TWSE。
+
+**Circuit Breaker 重置**（`test_m4_market.py` 等測試 market/indices 端點時需要）：
+
+```python
+from services.api_switch import circuit_breaker
+
+@pytest.fixture(autouse=True)
+def reset_cb():
+    circuit_breaker._state = "CLOSED"
+    circuit_breaker._failure_count = 0
+    circuit_breaker._opened_at = None
+    yield
+    circuit_breaker._state = "CLOSED"
+    circuit_breaker._failure_count = 0
+    circuit_breaker._opened_at = None
+```
+
+**quoteSource / quoteStatus 欄位**：整合測試（`test_m2_holdings.py` 等）只驗結構，不斷言具體數值；mock 測試（`test_quote_service.py`）才驗 source/status。
+
 ### Architecture
 
 ```
@@ -145,8 +179,11 @@ python-backend/
 │   └── mcp.py              # MCP Server（SSE + Streamable HTTP + JSON-RPC 2.0）
 ├── services/
 │   ├── firestore.py        # Firestore 單例（讀 core/settings）
+│   ├── quote_service.py    # 所有股票報價的唯一入口（Shioaji tick cache → TWSE → Yahoo）
 │   ├── yahoo_finance.py    # Yahoo v8/v10 直接 HTTP（yfinance 已移除）；使用共用 executor + semaphore + CB
-│   ├── shioaji_manager.py  # WebSocket tick 訂閱、quote cache
+│   ├── twse_finance.py     # TWSE 盤後報價（TSE only，4s timeout，有 SyncCircuitBreaker）
+│   ├── finmind.py          # FinMind API 同步（基本面 + 三大法人）；每日排程呼叫
+│   ├── shioaji_manager.py  # WebSocket tick 訂閱 + memory cache；startup warmup 批次訂閱
 │   ├── api_switch.py       # CircuitBreaker（async，Shioaji）+ SyncCircuitBreaker（sync，Yahoo/TWSE/NDC）
 │   ├── cache.py            # TTL 快取（OrderedDict LRU，maxsize=512，threading.Lock）
 │   ├── rate_helper.py      # 即時匯率 Map
@@ -183,7 +220,8 @@ python-backend/
 | `/api/v1/plan` | 計畫設定 |
 | `/api/v1/settings` | 應用設定 |
 | `/api/v1/preferences` | 使用者偏好 |
-| `/api/v1/system` | 系統狀態（apiSwitch + Shioaji） |
+| `/api/v1/system` | 系統狀態（apiSwitch + Shioaji）；`POST /shioaji/reinitialize`（202，非同步重連） |
+| `/api/v1/finmind` | FinMind 每日同步（`POST /sync`，收盤後批次寫入基本面 + 三大法人至 Firestore） |
 | `/api/v1/mcp/sse` | MCP SSE 長連線（GET，bypass EasyAuth） |
 | `/api/v1/mcp` | MCP Streamable HTTP（POST，bypass EasyAuth，MCP 2025-03-26 推薦） |
 | `/api/v1/mcp/message` | MCP JSON-RPC 2.0 via SSE（POST，bypass EasyAuth，向下相容） |
@@ -228,7 +266,29 @@ ndc_sem   = threading.Semaphore(2)   # NDC 並行限制
 
 ### Data Source Switching（Shioaji ↔ Yahoo Finance）
 
-`SJ_API_KEY` 未設定時全程使用 Yahoo Finance（Yahoo-only 模式）。有設定時：
+**個股報價**（holdings / watchlist / stocks quote）統一由 `services/quote_service.py` 處理，provider 順位：
+
+```
+盤中：Shioaji tick cache（記憶體，無 HTTP）→ Yahoo（5s）
+盤後：Shioaji tick cache（記憶體）→ TWSE（4s，TSE only）→ Yahoo（5s）
+```
+
+- `SJ_API_KEY` 未設定 → Yahoo-only 模式（TWSE → Yahoo），完全不走 Shioaji。
+- Shioaji tick cache 超過 120 秒 → `_is_fresh()` 回 False，視為過期，走 Yahoo fallback。
+- 未訂閱的股票 → 背景呼叫 `subscribe_stock()`，首次 tick 尚未到達直接 fallback（不阻塞熱路徑）。
+- 批次 fallback 並行，總 deadline `_FALLBACK_DEADLINE = 9.0s`（< 前端 15s axios timeout）。
+
+**受影響端點**（`quote_service.py` 的報價來源）：
+
+| Endpoint | 報價來源 |
+|----------|---------|
+| `GET /api/v1/stocks/{id}/quote` | `quote_service.get_quote()` |
+| `GET /api/v1/holdings` | `quote_service.get_quotes()` |
+| `GET /api/v1/holdings/prices` | `quote_service.get_quotes()` |
+| `GET /api/v1/watchlist` | `quote_service.get_quotes()` |
+| `GET /api/v1/market/indices` | `api_switch_call()` 直接（TAIEX + 台指期）|
+
+**大盤指數**（`GET /market/indices`）仍使用 `api_switch_call()`：
 
 ```
 api_switch_call(primary, fallback)
@@ -243,7 +303,21 @@ api_switch_call(primary, fallback)
 - `CircuitBreaker`（async）：給 Shioaji WebSocket（`api_switch_call` 使用）
 - `SyncCircuitBreaker`（sync）：給 Yahoo Finance、TWSE、NDC HTTP 請求，各自獨立實例 `yahoo_cb`、`twse_cb`、`ndc_cb`
 
-受 `api_switch_call` 控制的端點：`GET /market/indices`（TAIEX + 台指期 patch）、`GET /stocks/{id}/quote`、`GET /holdings`、`GET /holdings/prices`、`GET /watchlist`。
+**⚠️ `api_switch_call()` 目前只被 `routers/market.py` 使用**（TAIEX + 台指期）。持股、自選股、個股報價的 provider 切換邏輯已全部移至 `quote_service.py`。
+
+**⚠️ `CircuitOpenError` 捕捉規則**：CB OPEN 時 raise `CircuitOpenError(RuntimeError)`。`except` 時**必須用 `CircuitOpenError` 而非 `RuntimeError`** 捕捉，否則會誤判 Shioaji 自身拋出的 RuntimeError，導致本應傳播的錯誤被吞掉。
+
+### Shioaji Manager（`services/shioaji_manager.py`）
+
+使用 **WebSocket tick 訂閱 + memory cache**，平時個股報價不走 HTTP：
+
+- 啟動時批次訂閱持股 + 關注清單（`warmup_stocks()`），並呼叫一次 `api.snapshots()` 預填 cache（解決 9:20 開盤延遲問題）。
+- Tick push 到 callback → 更新 `_stock_cache`；`get_cached_stock(stock_id)` 讀取 memory cache，回傳 `dict | None`（None 代表無 cache 或已過期）。
+- `is_subscribed(stock_id)` — 是否已訂閱 WebSocket tick。
+- `subscribe_stock(stock_id)` — 即時訂閱，async，由 `quote_service` 在未命中時背景呼叫。
+- `api.snapshots()` 保留使用場景：啟動暖身（一次性）、`GET /system/shioaji-test`（診斷用）。
+- `_snap_single_sem = Semaphore(3)` 限制診斷端點的並行 snapshot 呼叫（不在報價熱路徑上）。
+- TAIEX（code="001"）和台指期（TXF）仍使用 tick 訂閱，供 `GET /market/indices` 使用。
 
 ### Snapshot Risk Recalculation（BackgroundTask）
 
