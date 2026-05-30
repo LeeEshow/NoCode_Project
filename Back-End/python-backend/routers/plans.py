@@ -48,7 +48,7 @@ def deserialize_plan_config(doc) -> dict:
 # ─── GET /plan/config ──────────────────────────────────────────────────────────
 
 @router.get("/config")
-async def get_plan_config():
+def get_plan_config():
     db = get_db()
     doc = db.collection(PLAN_CONFIG_COL).document(PLAN_CONFIG_DOC).get()
     if not doc.exists:
@@ -59,7 +59,7 @@ async def get_plan_config():
 # ─── PUT /plan/config ──────────────────────────────────────────────────────────
 
 @router.put("/config")
-async def update_plan_config(body: dict):
+def update_plan_config(body: dict):
     for field in ["annualInvest", "rBase", "kRisk", "startYear"]:
         if body.get(field) is None:
             raise HTTPException(status_code=400, detail=f"缺少必填欄位：{field}")
@@ -104,7 +104,7 @@ def deserialize_investment_plan(doc) -> dict:
 # ─── GET /plan ─────────────────────────────────────────────────────────────────
 
 @router.get("")
-async def get_plan(asset_type: str = Query(default="tw_stock", alias="asset_type")):
+def get_plan(asset_type: str = Query(default="tw_stock", alias="asset_type")):
     db = get_db()
     doc = db.collection(INVESTMENT_PLANS_COL).document(asset_type).get()
     if not doc.exists:
@@ -115,7 +115,7 @@ async def get_plan(asset_type: str = Query(default="tw_stock", alias="asset_type
 # ─── PUT /plan ─────────────────────────────────────────────────────────────────
 
 @router.put("")
-async def update_plan(body: dict):
+def update_plan(body: dict):
     required = ["annualInvest", "rBase", "piBase", "piShock",
                 "inflationScenario", "kRisk", "startYear", "planYears"]
     for f in required:
@@ -167,7 +167,7 @@ def deserialize_yearly_record(doc) -> dict:
 # ─── GET /plan/yearly-records ──────────────────────────────────────────────────
 
 @router.get("/yearly-records")
-async def get_yearly_records(asset_type: str = Query(default="tw_stock", alias="asset_type")):
+def get_yearly_records(asset_type: str = Query(default="tw_stock", alias="asset_type")):
     db = get_db()
     snap = (
         db.collection(YEARLY_RECORDS_COL)
@@ -182,7 +182,7 @@ async def get_yearly_records(asset_type: str = Query(default="tw_stock", alias="
 # ─── POST /plan/yearly-records ─────────────────────────────────────────────────
 
 @router.post("/yearly-records")
-async def create_yearly_record(body: dict):
+def create_yearly_record(body: dict):
     required = ["year", "prevYearTotal", "amountInvested", "stockValue",
                 "cashBalance", "foreignValueTwd", "returnAmount", "returnRate", "settledAt"]
     for f in required:
@@ -219,7 +219,7 @@ async def create_yearly_record(body: dict):
 # ─── PUT /plan/yearly-records/:year ───────────────────────────────────────────
 
 @router.put("/yearly-records/{year}")
-async def update_yearly_record(
+def update_yearly_record(
     year: int,
     body: dict,
     asset_type: str = Query(default="tw_stock", alias="asset_type"),

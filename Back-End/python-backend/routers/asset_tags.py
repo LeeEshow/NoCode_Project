@@ -34,7 +34,7 @@ def _deserialize(doc, name_map: dict) -> dict:
 # ─── GET /asset-tags ─────────────────────────────────────────────────────────
 
 @router.get("")
-async def get_all(stockCode: str | None = Query(default=None)):
+def get_all(stockCode: str | None = Query(default=None)):
     db = get_db()
     col = db.collection("asset_tags")
     snap = col.where(filter=FieldFilter("stock_code", "==", stockCode)).get() if stockCode else col.get()
@@ -45,7 +45,7 @@ async def get_all(stockCode: str | None = Query(default=None)):
 # ─── POST /asset-tags ────────────────────────────────────────────────────────
 
 @router.post("")
-async def create(body: dict):
+def create(body: dict):
     stock_code   = (body.get("stockCode") or "").strip()
     tag_name     = (body.get("tagName") or "").strip()
     weight_ratio = body.get("weightRatio")
@@ -74,7 +74,7 @@ async def create(body: dict):
 # ─── PUT /asset-tags/:id ─────────────────────────────────────────────────────
 
 @router.put("/{asset_tag_id}")
-async def update(asset_tag_id: str, body: dict):
+def update(asset_tag_id: str, body: dict):
     weight_ratio = body.get("weightRatio")
     if not isinstance(weight_ratio, (int, float)) or weight_ratio <= 0 or weight_ratio > 100:
         raise HTTPException(status_code=400, detail="weightRatio 必須為 0 < value ≤ 100 的數字")
@@ -91,7 +91,7 @@ async def update(asset_tag_id: str, body: dict):
 # ─── DELETE /asset-tags/:id ──────────────────────────────────────────────────
 
 @router.delete("/{asset_tag_id}")
-async def delete(asset_tag_id: str):
+def delete(asset_tag_id: str):
     db = get_db()
     ref = db.collection("asset_tags").document(asset_tag_id)
     if not ref.get().exists:

@@ -34,7 +34,7 @@ def deserialize_transaction(doc) -> dict:
 # ─── GET /transactions ─────────────────────────────────────────────────────────
 
 @router.get("")
-async def get_all(stock_id: str | None = Query(default=None, alias="stock_id")):
+def get_all(stock_id: str | None = Query(default=None, alias="stock_id")):
     db = get_db()
     col = db.collection("transactions")
     snap = col.where(filter=FieldFilter("stock_id", "==", stock_id)).get() if stock_id else col.get()
@@ -46,7 +46,7 @@ async def get_all(stock_id: str | None = Query(default=None, alias="stock_id")):
 # ─── GET /transactions/:id ─────────────────────────────────────────────────────
 
 @router.get("/{tx_id}")
-async def get_by_id(tx_id: str):
+def get_by_id(tx_id: str):
     db = get_db()
     doc = db.collection("transactions").document(tx_id).get()
     if not doc.exists:
@@ -57,7 +57,7 @@ async def get_by_id(tx_id: str):
 # ─── POST /transactions ────────────────────────────────────────────────────────
 
 @router.post("")
-async def create(body: dict):
+def create(body: dict):
     stock_id      = body.get("stockId")
     tx_type       = body.get("type")
     date          = body.get("date")
@@ -91,7 +91,7 @@ async def create(body: dict):
 # ─── PUT /transactions/:id ─────────────────────────────────────────────────────
 
 @router.put("/{tx_id}")
-async def update(tx_id: str, body: dict):
+def update(tx_id: str, body: dict):
     db = get_db()
     ref = db.collection("transactions").document(tx_id)
     if not ref.get().exists:
@@ -115,7 +115,7 @@ async def update(tx_id: str, body: dict):
 # ─── DELETE /transactions/:id ──────────────────────────────────────────────────
 
 @router.delete("/{tx_id}", status_code=204)
-async def remove(tx_id: str):
+def remove(tx_id: str):
     db = get_db()
     ref = db.collection("transactions").document(tx_id)
     if not ref.get().exists:

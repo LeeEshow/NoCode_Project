@@ -20,7 +20,7 @@ def deserialize_settings(doc) -> dict:
 # ─── GET /settings ────────────────────────────────────────────────────────────
 
 @router.get("")
-async def get_settings():
+def get_settings():
     db = get_db()
     doc = db.collection("settings").document("main").get()
     # 無資料時回傳 null（與 Node.js Settings.find() 一致）
@@ -31,7 +31,7 @@ async def get_settings():
 # ─── PUT /settings ────────────────────────────────────────────────────────────
 
 @router.put("")
-async def update_settings(body: dict):
+def update_settings(body: dict):
     cost_method = body.get("costMethod")
 
     if cost_method is not None and cost_method not in VALID_COST_METHODS:

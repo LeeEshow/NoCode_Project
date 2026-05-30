@@ -37,7 +37,7 @@ def deserialize_rule(doc) -> dict:
 # ─── GET /rebalance-rules ─────────────────────────────────────────────────────
 
 @rules_router.get("")
-async def get_rules():
+def get_rules():
     db = get_db()
     doc = db.collection(RULES_COL).document(RULES_DOC).get()
     if not doc.exists:
@@ -48,7 +48,7 @@ async def get_rules():
 # ─── PUT /rebalance-rules ─────────────────────────────────────────────────────
 
 @rules_router.put("")
-async def update_rules(body: dict):
+def update_rules(body: dict):
     base_threshold      = body.get("baseThreshold")
     volatility_factor   = body.get("volatilityFactor")
     liquidity_cap_ratio = body.get("liquidityCapRatio")
@@ -126,7 +126,7 @@ def deserialize_snapshot(doc) -> dict:
 # ─── GET /rebalance-snapshots ─────────────────────────────────────────────────
 
 @snapshots_router.get("")
-async def get_snapshots(limit: int = Query(default=10, ge=1, le=100)):
+def get_snapshots(limit: int = Query(default=10, ge=1, le=100)):
     db = get_db()
     snap = (
         db.collection(SNAPSHOTS_COL)
@@ -140,7 +140,7 @@ async def get_snapshots(limit: int = Query(default=10, ge=1, le=100)):
 # ─── POST /rebalance-snapshots ────────────────────────────────────────────────
 
 @snapshots_router.post("")
-async def create_snapshot(body: dict):
+def create_snapshot(body: dict):
     params      = body.get("params")
     suggestions = body.get("suggestions", [])
 

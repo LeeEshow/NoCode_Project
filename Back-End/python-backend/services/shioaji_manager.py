@@ -31,6 +31,7 @@ class ShioajiManager:
         self._futures_cache: dict[str, dict] = {}
         self._stock_cache: dict[str, dict] = {}
         self._subscribed_stocks: set[str] = set()
+        self._subscribing_stocks: set[str] = set()   # 訂閱進行中（防重複 ensure_future）
         self._txf_reference: Optional[float] = None
         # Snapshot API 限流（僅供啟動暖身 + /system/shioaji-test 診斷，不在報價熱路徑上）
         self._snap_single_sem = asyncio.Semaphore(3)
@@ -159,39 +160,49 @@ class ShioajiManager:
         return stock_id in self._subscribed_stocks
 
     async def subscribe_stock(self, stock_id: str) -> None:
-        """訂閱單支個股 tick（WebSocket，已訂閱則立即返回）"""
-        if stock_id in self._subscribed_stocks:
+        """訂閱單支個股 tick（WebSocket，已訂閱或訂閱進行中則立即返回）"""
+        if stock_id in self._subscribed_stocks or stock_id in self._subscribing_stocks:
             return
-        import shioaji as sj
+        self._subscribing_stocks.add(stock_id)
+        try:
+            import shioaji as sj
 
-        def _sub() -> None:
-            contract = self._api.Contracts.Stocks[stock_id]
-            self._api.quote.subscribe(contract, quote_type=sj.constant.QuoteType.Tick)
+            def _sub() -> None:
+                contract = self._api.Contracts.Stocks[stock_id]
+                self._api.quote.subscribe(contract, quote_type=sj.constant.QuoteType.Tick)
 
-        await asyncio.to_thread(_sub)
-        self._subscribed_stocks.add(stock_id)
-        logger.debug("Subscribed stock tick: %s", stock_id)
+            await asyncio.to_thread(_sub)
+            self._subscribed_stocks.add(stock_id)
+            logger.debug("Subscribed stock tick: %s", stock_id)
+        finally:
+            self._subscribing_stocks.discard(stock_id)
 
     async def subscribe_stocks(self, stock_ids: list[str]) -> None:
-        """批次訂閱個股 tick（略過已訂閱；在單一 thread 中依序執行）"""
-        to_sub = [sid for sid in stock_ids if sid not in self._subscribed_stocks]
+        """批次訂閱個股 tick（略過已訂閱或訂閱進行中；在單一 thread 中依序執行）"""
+        to_sub = [sid for sid in stock_ids
+                  if sid not in self._subscribed_stocks and sid not in self._subscribing_stocks]
         if not to_sub:
             return
+        # 先標記為訂閱中，防止 batch + single 或兩個 batch 同時重複訂閱
+        self._subscribing_stocks.update(to_sub)
         import shioaji as sj
         succeeded: list[str] = []
+        try:
+            def _sub_all() -> None:
+                for sid in to_sub:
+                    try:
+                        contract = self._api.Contracts.Stocks[sid]
+                        self._api.quote.subscribe(contract, quote_type=sj.constant.QuoteType.Tick)
+                        succeeded.append(sid)
+                    except Exception as e:
+                        logger.warning("subscribe_stock failed %s: %s", sid, e)
 
-        def _sub_all() -> None:
+            await asyncio.to_thread(_sub_all)
+            self._subscribed_stocks.update(succeeded)
+            logger.info("Subscribed %d/%d stocks", len(succeeded), len(to_sub))
+        finally:
             for sid in to_sub:
-                try:
-                    contract = self._api.Contracts.Stocks[sid]
-                    self._api.quote.subscribe(contract, quote_type=sj.constant.QuoteType.Tick)
-                    succeeded.append(sid)
-                except Exception as e:
-                    logger.warning("subscribe_stock failed %s: %s", sid, e)
-
-        await asyncio.to_thread(_sub_all)
-        self._subscribed_stocks.update(succeeded)
-        logger.info("Subscribed %d/%d stocks", len(succeeded), len(to_sub))
+                self._subscribing_stocks.discard(sid)
 
     # ─── 個股 tick cache 讀取 ──────────────────────────────────────────────────
 
@@ -349,6 +360,7 @@ class ShioajiManager:
         self._api = None
         self._txf_reference = None
         self._subscribed_stocks.clear()
+        self._subscribing_stocks.clear()
         self._stock_cache.clear()
         self._futures_cache.clear()
         logger.info("ShioajiManager cleanup complete")

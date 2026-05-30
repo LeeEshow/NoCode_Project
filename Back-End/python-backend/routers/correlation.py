@@ -37,7 +37,7 @@ def deserialize_matrix(doc) -> dict:
 # ─── GET /tag-correlation-matrix ───────────────────────────────────────────────
 
 @router.get("")
-async def get_matrix():
+def get_matrix():
     db = get_db()
     doc = db.collection(COL).document(DOC_ID).get()
     if not doc.exists:
@@ -55,7 +55,7 @@ async def get_matrix():
 # ─── PUT /tag-correlation-matrix ───────────────────────────────────────────────
 
 @router.put("")
-async def update_matrix(body: dict):
+def update_matrix(body: dict):
     entries_raw = body.get("entries", [])
     db = get_db()
     ref = db.collection(COL).document(DOC_ID)

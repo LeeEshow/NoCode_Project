@@ -3,7 +3,8 @@ import json
 from datetime import datetime, timezone
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
-from services.yahoo_finance import get_indices, get_quote, get_history_range
+from services.yahoo_finance import get_indices, get_history_range
+from services.quote_service import get_quote
 
 
 # ─── camelCase 轉換工具 ────────────────────────────────────────────────────────
@@ -225,7 +226,7 @@ async def _get_holdings() -> dict:
         if not sid:
             return None, None
         try:
-            q = await loop.run_in_executor(None, get_quote, sid)
+            q = await get_quote(sid)
             price = q.get("price")
             shares = float(h.get("sharesHeld", 0) or 0)
             value = round(shares * price, 2) if price else None
@@ -257,8 +258,7 @@ async def _get_market_indices() -> dict:
 
 
 async def _get_stock_quote(stock_id: str) -> dict:
-    loop = asyncio.get_event_loop()
-    return _text(await loop.run_in_executor(None, get_quote, stock_id))
+    return _text(await get_quote(stock_id))
 
 
 async def _get_snapshots(year: int | None, limit: int, start_date: str | None, end_date: str | None) -> dict:
@@ -461,7 +461,7 @@ async def _get_portfolio_tag_analysis() -> dict:
         if not sid:
             return sid, None
         try:
-            q = await loop.run_in_executor(None, get_quote, sid)
+            q = await get_quote(sid)
             return sid, q.get("price")
         except Exception:
             return sid, None

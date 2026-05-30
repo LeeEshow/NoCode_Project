@@ -174,6 +174,7 @@ class TestGetQuote:
             with patch("services.yahoo_finance.get_yahoo_quote", yahoo_mock):
                 result = await qs.get_quote("2330")
 
+        await asyncio.sleep(0)   # 讓 ensure_future 背景 task 完成一個 event loop 週期
         assert result["quoteSource"] == "yahoo"
         manager_mock.subscribe_stock.assert_awaited_once_with("2330")
 
