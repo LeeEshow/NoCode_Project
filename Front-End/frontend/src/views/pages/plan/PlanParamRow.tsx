@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useRef } from 'react';
 import Icon from '../../components/Icon';
 import type { PlanConfigDTO } from '../../../types';
 
@@ -26,6 +26,34 @@ const fmtNum = (n: number) => n.toLocaleString('zh-TW', { maximumFractionDigits:
 export default function PlanParamRow({ config, saving: _saving, onChange, onSave }: Props) {
   const [investDraft, setInvestDraft] = useState(fmtNum(config.annualInvest));
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ active: false, startX: 0, scrollLeft: 0 });
+
+  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const tag = (e.target as HTMLElement).tagName;
+    if (['INPUT', 'BUTTON', 'SELECT', 'TEXTAREA', 'LABEL'].includes(tag)) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    drag.current = { active: true, startX: e.pageX, scrollLeft: el.scrollLeft };
+    el.style.cursor = 'grabbing';
+    el.style.userSelect = 'none';
+  };
+
+  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!drag.current.active) return;
+    const dx = e.pageX - drag.current.startX;
+    if (scrollRef.current) scrollRef.current.scrollLeft = drag.current.scrollLeft - dx;
+  };
+
+  const stopDrag = () => {
+    if (!drag.current.active) return;
+    drag.current.active = false;
+    if (scrollRef.current) {
+      scrollRef.current.style.cursor = '';
+      scrollRef.current.style.userSelect = '';
+    }
+  };
+
   const selectedKRisk = K_RISK_OPTIONS.find(o => o.value === config.kRisk) ?? K_RISK_OPTIONS[2];
 
   const commitInvest = () => {
@@ -47,7 +75,14 @@ export default function PlanParamRow({ config, saving: _saving, onChange, onSave
   };
 
   return (
-    <div className="plan-param-row">
+    <div
+      className="plan-param-row"
+      ref={scrollRef}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={stopDrag}
+      onMouseLeave={stopDrag}
+    >
 
       {/* 每年投入 */}
       <div className="plan-card" style={{ minWidth: 150, maxWidth: 150 }}>

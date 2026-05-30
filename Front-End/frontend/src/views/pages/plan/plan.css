@@ -1,4 +1,4 @@
-/* ── 參數卡片列（同 mir-row 風格）── */
+/* ── 參數卡片列（同 mir-row 風格，支援滑鼠拖拉）── */
 .plan-param-row {
   display: flex;
   flex-wrap: nowrap;
@@ -6,11 +6,10 @@
   overflow-x: auto;
   padding-bottom: 4px;
   margin-bottom: 16px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-width: none;
+  cursor: grab;
 }
-.plan-param-row::-webkit-scrollbar { height: 3px; }
-.plan-param-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.plan-param-row::-webkit-scrollbar { display: none; }
 
 /* ── 參數卡片 ── */
 .plan-card {

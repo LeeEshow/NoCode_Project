@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { useSnapshotStore } from '../../../stores/snapshotStore';
 import { usePlanStore } from '../../../stores/planStore';
@@ -25,6 +25,32 @@ export default function PanelHeader({ children }: PanelHeaderProps) {
   const { cashBalance, loaded, load, update, vix, marketStateAuto } = useSnapshotStore();
   const liveStockValue = usePlanStore(s => s.liveStockValue);
   const [draft, setDraft] = useState('');
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ active: false, startX: 0, scrollLeft: 0 });
+
+  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    drag.current = { active: true, startX: e.pageX, scrollLeft: el.scrollLeft };
+    el.style.cursor = 'grabbing';
+    el.style.userSelect = 'none';
+  };
+
+  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!drag.current.active) return;
+    const dx = e.pageX - drag.current.startX;
+    if (scrollRef.current) scrollRef.current.scrollLeft = drag.current.scrollLeft - dx;
+  };
+
+  const stopDrag = () => {
+    if (!drag.current.active) return;
+    drag.current.active = false;
+    if (scrollRef.current) {
+      scrollRef.current.style.cursor = '';
+      scrollRef.current.style.userSelect = '';
+    }
+  };
 
   const exposureRatio = useMemo(() => {
     const total = liveStockValue + cashBalance;
@@ -67,7 +93,14 @@ export default function PanelHeader({ children }: PanelHeaderProps) {
 
   return (
     <div className="panel-header">
-      <div className="panel-header__left">{children}</div>
+      <div
+        className="panel-header__left"
+        ref={scrollRef}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={stopDrag}
+        onMouseLeave={stopDrag}
+      >{children}</div>
       <div className="panel-header__sep" />
       <div className="panel-header__right">
         <span className="panel-header__cash-label">流動資金</span>

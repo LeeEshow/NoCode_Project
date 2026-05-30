@@ -319,55 +319,93 @@ export default function StockOverviewPage() {
 
       {/* 頂部橫幅 PanelHeader */}
       <PanelHeader>
-        {/* 股票現值（sub：未實現損益） */}
-        <div className="ph-stat">
-          <span className="ph-stat__label">股票現值</span>
-          <span className="ph-stat__value" style={{
-            color: totalCurrentValue > 0 ? 'var(--up)' : totalCurrentValue < 0 ? 'var(--down)' : 'var(--text)',
-          }}>
-            {fmt(totalCurrentValue)}
-            <span className="ph-stat__sub" style={{
-              color: totalUnrealizedProfit >= 0 ? 'var(--up)' : 'var(--down)',
-            }}>
-              {totalUnrealizedProfit >= 0 ? '+' : ''}{fmt(totalUnrealizedProfit)}
-            </span>
-          </span>
-        </div>
+        {/* 股票現值（hover：未實現損益） */}
+        <Tooltip.Provider delayDuration={300}>
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <div className="ph-stat">
+                <span className="ph-stat__label">股票現值</span>
+                <span className="ph-stat__value" style={{
+                  color: totalCurrentValue > 0 ? 'var(--up)' : totalCurrentValue < 0 ? 'var(--down)' : 'var(--text)',
+                }}>
+                  {fmt(totalCurrentValue)}
+                </span>
+              </div>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                className="ph-stat__sub-tooltip"
+                style={{ color: totalUnrealizedProfit >= 0 ? 'var(--up)' : 'var(--down)' }}
+                sideOffset={6}
+                side="bottom"
+              >
+                {totalUnrealizedProfit >= 0 ? '+' : ''}{fmt(totalUnrealizedProfit)}
+                <Tooltip.Arrow style={{ fill: 'var(--border-hi)' }} />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
 
-        {/* 當天成長率（sub：金額） */}
-        <div className="ph-stat">
-          <span className="ph-stat__label">當天成長率</span>
-          <span className="ph-stat__value" style={{
-            color: totalDailyAmt > 0 ? 'var(--up)' : totalDailyAmt < 0 ? 'var(--down)' : 'var(--text)',
-          }}>
-            {totalDailyAmt > 0 ? '+' : ''}{fmt(dailyGrowthRate, 2)}%
-            <span className="ph-stat__sub">
-              {totalDailyAmt > 0 ? '+' : ''}{fmt(totalDailyAmt)}
-            </span>
-          </span>
-        </div>
+        {/* 當天成長率（hover：金額） */}
+        <Tooltip.Provider delayDuration={300}>
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <div className="ph-stat">
+                <span className="ph-stat__label">當天成長率</span>
+                <span className="ph-stat__value" style={{
+                  color: totalDailyAmt > 0 ? 'var(--up)' : totalDailyAmt < 0 ? 'var(--down)' : 'var(--text)',
+                }}>
+                  {totalDailyAmt > 0 ? '+' : ''}{fmt(dailyGrowthRate, 2)}%
+                </span>
+              </div>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                className="ph-stat__sub-tooltip"
+                style={{ color: totalDailyAmt > 0 ? 'var(--up)' : totalDailyAmt < 0 ? 'var(--down)' : 'var(--text)' }}
+                sideOffset={6}
+                side="bottom"
+              >
+                {totalDailyAmt > 0 ? '+' : ''}{fmt(totalDailyAmt)}
+                <Tooltip.Arrow style={{ fill: 'var(--border-hi)' }} />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
 
-        {/* 整年損益 — 連動投報計畫當年度 */}
-        <div className="ph-stat">
-          <span className="ph-stat__label">整年損益</span>
-          <span className="ph-stat__value" style={{
-            color: currentYearReturnPct == null ? 'var(--dim)'
-              : currentYearReturnPct >= 0 ? 'var(--up)' : 'var(--down)',
-            fontWeight: currentYearReturnPct == null ? 400 : 600,
-          }}>
-            {currentYearReturnPct == null
-              ? '—'
-              : `${currentYearReturnPct >= 0 ? '+' : ''}${(currentYearReturnPct * 100).toFixed(2)}%`
-            }
+        {/* 整年損益 — 連動投報計畫當年度（hover：金額） */}
+        <Tooltip.Provider delayDuration={300}>
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <div className="ph-stat">
+                <span className="ph-stat__label">整年損益</span>
+                <span className="ph-stat__value" style={{
+                  color: currentYearReturnPct == null ? 'var(--dim)'
+                    : currentYearReturnPct >= 0 ? 'var(--up)' : 'var(--down)',
+                  fontWeight: currentYearReturnPct == null ? 400 : 600,
+                }}>
+                  {currentYearReturnPct == null
+                    ? '—'
+                    : `${currentYearReturnPct >= 0 ? '+' : ''}${(currentYearReturnPct * 100).toFixed(2)}%`
+                  }
+                </span>
+              </div>
+            </Tooltip.Trigger>
             {currentYearReturnValue != null && (
-              <span className="ph-stat__sub" style={{
-                color: currentYearReturnValue >= 0 ? 'var(--up)' : 'var(--down)',
-              }}>
-                {currentYearReturnValue >= 0 ? '+' : ''}{fmt(currentYearReturnValue)}
-              </span>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  className="ph-stat__sub-tooltip"
+                  style={{ color: currentYearReturnValue >= 0 ? 'var(--up)' : 'var(--down)' }}
+                  sideOffset={6}
+                  side="bottom"
+                >
+                  {currentYearReturnValue >= 0 ? '+' : ''}{fmt(currentYearReturnValue)}
+                  <Tooltip.Arrow style={{ fill: 'var(--border-hi)' }} />
+                </Tooltip.Content>
+              </Tooltip.Portal>
             )}
-          </span>
-        </div>
+          </Tooltip.Root>
+        </Tooltip.Provider>
       </PanelHeader>
 
       {/* 頁面主內容 */}

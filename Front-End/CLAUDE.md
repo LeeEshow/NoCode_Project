@@ -83,6 +83,8 @@ src/
 | `useReportViewModel` | 績效快照查詢（含日期範圍、分段） |
 | `usePreferencesViewModel` | 使用者偏好雙層持久化（localStorage + 後端） |
 | `useEnsurePlanStore` | 初始化 `planStore`（每頁掛載一次） |
+| `useDownsideRiskViewModel` | 下行風險：MDD / VaR-CVaR（需手動呼叫 `.fetch()`；`StockOverviewPage` 用） |
+| `useSystemDiagnosticsViewModel` | 系統診斷：報價/持倉/指數測試、Shioaji 重新初始化輪詢（`SettingsModal` 用） |
 | `useRiskViewModel` | **純計算**：riskTotal、tagStats 偏差、重疊群組 |
 | `useRebalanceViewModel` | **純計算**：volatilityFactor、dynamicThreshold、再平衡建議 |
 
@@ -158,6 +160,8 @@ useEffect(() => {
 - **全局 Tag（TagDTO）** 由 `useTagViewModel` 管理，包含 CRUD（`/tags`）、AssetTag、MarketState 切換、相關性矩陣、`recalculateDynamicRisk`。
 - **Risk 計算**：`useRiskViewModel` 依 `correlationEntries` 建 ρ 查找表，未設定 pair 預設 ρ=1.0。`dynamicRisk` 優先，`targetWeight` 為 null 的 Tag 不計算 delta/triggered。
 - **相關性矩陣**：`utils/correlationCalc.ts` 提供 `calcTagDailyReturnsFromSparklines`（sparklines→日報酬序列）與 `buildCorrelationEntries`（計算 Pearson ρ）；`stdDev` 也從此處 export。
+- **下行風險**：`utils/downsideRisk.ts` 提供 `computeMaxDrawdown`（MDD/恢復天數）、`computeVarCVar`（95% VaR/CVaR，需至少 60 筆日快照）、`computeDrawdownSeries`（每日回撤序列，供圖表使用）。
+- **投報計畫目標**：`utils/planGoal.ts` 的 `computePlanGoal(rows, config) → PlanGoalResult` 計算 B2 當年進度（線性插值，基準為去年底實際資產）與 B3 達成第 30 年目標所需年化報酬。
 - **交易時段判斷**：`utils/tradingHours.ts` 的 `isTradingHours()` 回傳目前是否為台股盤中（週一至五 09:00–13:30 台灣時間）；報價輪詢 callback 內必須呼叫此函式，不可在外層判斷（stale closure 問題）。
 
 ### 頁面切換動畫（ECGLoader + Overlay）
@@ -276,7 +280,7 @@ export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
 | `@radix-ui/react-dialog` | `Modal.tsx` | `.ft-modal-backdrop` / `.ft-modal` / `.ft-modal--{sm,md,lg}` / `.ft-modal__header` / `.ft-modal__body` / `.ft-modal__footer`；接受可選 `className` prop 可附加自訂 class（如 `SettingsModal` 的 `settings-modal` 覆寫固定 80vw×80vh） |
 | `@radix-ui/react-slider` | `RiskPanel.tsx` | `.rd-slider` / `.rd-slider__track` / `.rd-slider__range` / `.rd-slider__thumb` |
 | `@radix-ui/react-select` | `RiskPanel.tsx` | `.rd-select-trigger` / `.rd-select-content` / `.rd-select-item` |
-| `@radix-ui/react-tooltip` | `RiskPanel.tsx`、`PanelHeader.tsx` | inline style，`appendTo: document.body` |
+| `@radix-ui/react-tooltip` | `RiskPanel.tsx`、`PanelHeader.tsx`、`StockOverviewPage.tsx`、`PlanPage.tsx` | inline style，`appendTo: document.body`；`PanelHeader.css` 的 `.ph-stat__sub-tooltip` 為 ph-stat 次要數值 tooltip 樣式（Portal 渲染，不受 overflow 裁切） |
 
 Modal 動畫：`data-state="open/closed"` 搭配 CSS `@keyframes overlay-in/out`、`modal-in/out`，定義於 `Modal.css`。
 
@@ -297,7 +301,7 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 
 | 元件 | 用途 |
 |------|------|
-| `PanelHeader` | 各頁頂部橫幅；掛載時呼叫 `snapshotStore.load()`；顯示流動資金輸入欄與曝險比徽章（`liveStockValue / (liveStockValue + cashBalance)`），顏色由 `snapshotStore.marketStateAuto` 推導的門檻判斷，VIX 資訊顯示於 Tooltip |
+| `PanelHeader` | 各頁頂部橫幅；掛載時呼叫 `snapshotStore.load()`；顯示流動資金輸入欄與曝險比徽章（`liveStockValue / (liveStockValue + cashBalance)`），顏色由 `snapshotStore.marketStateAuto` 推導的門檻判斷，VIX 資訊顯示於 Tooltip。左側 `panel-header__left` 支援**橫向捲動 + 滑鼠拖拉**（`overflow-x: auto`，scrollbar 隱藏，mousedown/mousemove 拖拉邏輯在 `PanelHeader.tsx`）；右側 `panel-header__right`（流動資金 + 曝險比）`flex-shrink: 0` 永遠可見 |
 | `ECGLoader` | 頁面切換心電圖動畫，位於 `views/components/ECGLoader/`，由 `MainLayout` 掛載 |
 | `StockExpandPanel` | 持股 / 關注清單展開列，含 K線 / 法人基本面 / 交易紀錄 / 標籤設定 四個 Tab |
 | `Modal` | Radix Dialog 封裝（sm/md/lg，ESC 關閉，backdrop blur 動畫） |
@@ -310,8 +314,23 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 | `MultiLineChart` | 多系列折線圖（ECharts），`color: chartColors` 全域調色板 |
 | `MarketIndicesRow` | 頁頂市場指數橫列 |
 | `RiskPanel` | 風險再平衡模組（可收折），使用 Radix Slider / Select，設定區採 2 欄 CSS Grid |
+| `DataTable` | 通用排序 / 搜尋表格（`views/components/DataTable/`）；props：`columns / data / rowKey / onRowClick / searchKeys / headerActions`；中文排序以 `'zh-TW'` locale |
+| `StatusBadge` | 狀態徽章；`variant: 'up' \| 'down' \| 'flat' \| 'accent' \| 'muted'`；class `ft-badge ft-badge--{variant}` |
+| `SummaryCard` | 數值卡片；props：`label / value / sub / valueClass`；class `sc-card ft-panel` |
 
-**SettingsModal 佈局**：size="md"，無 tab 結構，兩個扁平 section（股票清單 / 每日快照），內容用 `.settings-section` / `.settings-row` rows，**不使用 `.ft-panel`**。CSS 定義於 `views/layout/SettingsModal.css`。
+**ph-stat 設計規則**（PanelHeader 左側統計項目）：
+
+- 每個統計項目用 `<div className="ph-stat">` 包裝，內含 `.ph-stat__label`（標題）與 `.ph-stat__value`（主數值）
+- `.ph-stat` 已設 `flex-shrink: 0`，不會被壓縮，超出寬度由 `panel-header__left` 的 `overflow-x: auto` 負責捲動
+- 次要數值（hover 顯示）**必須用 Radix Tooltip Portal**（`.ph-stat__sub-tooltip` class），不得用 `position: absolute` 的 CSS-only 方式（會被 overflow 容器裁切）
+- `ph-stat::after` 偽元素產生右側垂直分隔線，`ph-stat:last-child::after` 自動隱藏
+
+**PlanParamRow 拖拉規則**（`views/pages/plan/PlanParamRow.tsx`）：
+
+- 設定卡片列 `.plan-param-row` 支援橫向捲動 + 滑鼠拖拉，scrollbar 隱藏
+- `onMouseDown` 先檢查 `e.target.tagName`，遇到 `INPUT`、`BUTTON`、`SELECT`、`TEXTAREA`、`LABEL` 直接 return，確保卡片內互動元素正常運作
+
+**SettingsModal 佈局**：size="md"，無 tab 結構，三個扁平 section（股票清單 / 每日快照 / 系統診斷），內容用 `.settings-section` / `.settings-row` rows，**不使用 `.ft-panel`**。系統診斷 section 包含報價/持倉/指數測試與 Shioaji 重新初始化（輪詢最多 10 次×2s）。CSS 定義於 `views/layout/SettingsModal.css`。
 
 **ReportPage 圖表**（非共用元件，位於 `pages/report/ReportChart.tsx`，已加 `React.memo`）：Bar（累計投入）+ Line（報酬率）混合 ECharts 圖，雙 Y 軸，支援雙段比較，含 markLine 目標線。
 

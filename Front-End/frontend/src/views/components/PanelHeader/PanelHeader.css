@@ -12,15 +12,19 @@
   overflow: visible;
 }
 
-/* ── 左側彈性內容區 ── */
+/* ── 左側彈性內容區（橫向可捲動＋滑鼠拖拉）── */
 .panel-header__left {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 0;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
   min-width: 0;
+  cursor: grab;
 }
+.panel-header__left::-webkit-scrollbar { display: none; }
 
 /* ── 左右分隔線 ── */
 .panel-header__sep {
@@ -97,6 +101,7 @@
   padding: 0 28px;
   height: var(--topbar-h);
   position: relative;
+  flex-shrink: 0;
 }
 .ph-stat:first-child { padding-left: 0; }
 
@@ -130,14 +135,8 @@
   white-space: nowrap;
 }
 
-/* FIX-12：百分比 tooltip，hover 主值時顯示 */
-.ph-stat__value { position: relative; }
-
-.ph-stat__sub {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+/* ── ph-stat 次要數值 Tooltip（Radix Portal，不受 overflow 裁切）── */
+.ph-stat__sub-tooltip {
   background: var(--surface);
   border: 1px solid var(--border-hi);
   border-radius: var(--radius-sm);
@@ -145,14 +144,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-xl);
   font-weight: 600;
-  color: inherit;
   white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--trans-fast);
-  z-index: 60;
-}
-
-.ph-stat__value:hover .ph-stat__sub {
-  opacity: 1;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
