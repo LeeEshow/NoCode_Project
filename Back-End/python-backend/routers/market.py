@@ -73,6 +73,15 @@ async def market_index_kbars(
     end_date   = end   or today
     start_date = start or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
 
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt   = datetime.strptime(end_date,   "%Y-%m-%d")
+    except ValueError:
+        return JSONResponse(status_code=400, content={"success": False, "error": "日期格式錯誤，請用 YYYY-MM-DD"})
+
+    if (end_dt - start_dt).days > 500:
+        return JSONResponse(status_code=400, content={"success": False, "error": "查詢區間最長 500 天"})
+
     cache_key = f"market:index-kbars:{start_date}:{end_date}"
     cached = cache_get(cache_key)
     if cached is not None:
