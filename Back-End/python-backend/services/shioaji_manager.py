@@ -365,6 +365,48 @@ class ShioajiManager:
         self._futures_cache.clear()
         logger.info("ShioajiManager cleanup complete")
 
+    # ─── 加權指數日 K ──────────────────────────────────────────────────────────────
+
+    async def get_index_kbars(self, start: str, end: str) -> list[dict]:
+        """取得加權指數（TSE001）日 K，從 Shioaji 1 分鐘 K 棒聚合而來。"""
+        def _fetch() -> list[dict]:
+            from datetime import datetime, timezone, timedelta
+            contract = self._api.Contracts.Indexs["TSE001"]
+            kbars = self._api.kbars(contract=contract, start=start, end=end)
+            if not kbars or not kbars.ts:
+                return []
+
+            tz_offset = timedelta(hours=8)
+            daily: dict[str, dict] = {}
+
+            for i, ts_raw in enumerate(kbars.ts):
+                ts_sec = self._normalize_ts(ts_raw)
+                dt_local = datetime.fromtimestamp(ts_sec, tz=timezone.utc) + tz_offset
+                date_str = dt_local.strftime("%Y-%m-%d")
+
+                o = float(kbars.Open[i])  if i < len(kbars.Open)   else 0.0
+                h = float(kbars.High[i])  if i < len(kbars.High)   else 0.0
+                l = float(kbars.Low[i])   if i < len(kbars.Low)    else 0.0
+                c = float(kbars.Close[i]) if i < len(kbars.Close)  else 0.0
+                v = int(kbars.Volume[i])  if i < len(kbars.Volume) else 0
+
+                if c <= 0:
+                    continue
+
+                if date_str not in daily:
+                    daily[date_str] = {"timestamp": ts_sec, "open": o, "high": h, "low": l, "close": c, "volume": v}
+                else:
+                    day = daily[date_str]
+                    if h > day["high"]:        day["high"] = h
+                    if 0 < l < day["low"]:     day["low"]  = l
+                    day["close"]    = c
+                    day["volume"]  += v
+                    day["timestamp"] = ts_sec
+
+            return sorted(daily.values(), key=lambda d: d["timestamp"])
+
+        return await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=30)
+
     async def shutdown(self) -> None:
         if self._api and self._connected:
             await asyncio.to_thread(self._api.logout)
