@@ -84,6 +84,7 @@ src/
 | `usePreferencesViewModel` | 使用者偏好雙層持久化（localStorage + 後端） |
 | `useEnsurePlanStore` | 初始化 `planStore`（每頁掛載一次） |
 | `useDownsideRiskViewModel` | 下行風險：MDD / VaR-CVaR（需手動呼叫 `.fetch()`；`StockOverviewPage` 用） |
+| `useScenarioViewModel` | 情境分析：投資組合 Beta / 壓力測試（需手動呼叫 `.fetch()`；`StockOverviewPage` 用） |
 | `useSystemDiagnosticsViewModel` | 系統診斷：報價/持倉/指數測試、Shioaji 重新初始化輪詢（`SettingsModal` 用） |
 | `useRiskViewModel` | **純計算**：riskTotal、tagStats 偏差、重疊群組 |
 | `useRebalanceViewModel` | **純計算**：volatilityFactor、dynamicThreshold、再平衡建議 |
@@ -106,6 +107,19 @@ src/
 ### React 單向資料流原則（A-01）
 
 **禁止儲存 Derived State**。原始資料（`stocks`、`plans`、`cash`）存入 state；可計算的值（`totalValue`、`returnRate`）一律用 `useMemo`。違反此原則會導致 UI 不同步與 race condition。
+
+**`useMemo` 使用邊界**：回傳 primitive（`string`、`number`、`boolean`）且運算式簡單（單一函式呼叫、兩個 primitive 四則運算、簡單條件）時，**不需** `useMemo`——memo 的依賴比較成本比運算本身更高。多次陣列迭代、物件建構、複雜計算才使用。
+
+**`setState` updater 不得有 side effect**：`setState(prev => { localStorage.setItem(...); return next; })` 在 React Strict Mode 下 updater 執行兩次，side effect 重複。localStorage 寫入等應在 event handler 中直接執行：
+```ts
+function toggle() {
+  const next = !current;
+  setState(next);
+  try { localStorage.setItem(KEY, String(next)); } catch {}
+}
+```
+
+**`localStorage` 存取必須 try-catch**：`getItem()` / `setItem()` 在 Safari / Firefox incognito 模式或 quota 超出時會拋錯，所有 localStorage 呼叫都需包在 `try-catch` 中。
 
 ---
 
@@ -163,6 +177,9 @@ useEffect(() => {
 - **下行風險**：`utils/downsideRisk.ts` 提供 `computeMaxDrawdown`（MDD/恢復天數）、`computeVarCVar`（95% VaR/CVaR，需至少 60 筆日快照）、`computeDrawdownSeries`（每日回撤序列，供圖表使用）。
 - **投報計畫目標**：`utils/planGoal.ts` 的 `computePlanGoal(rows, config) → PlanGoalResult` 計算 B2 當年進度（線性插值，基準為去年底實際資產）與 B3 達成第 30 年目標所需年化報酬。
 - **交易時段判斷**：`utils/tradingHours.ts` 的 `isTradingHours()` 回傳目前是否為台股盤中（週一至五 09:00–13:30 台灣時間）；報價輪詢 callback 內必須呼叫此函式，不可在外層判斷（stale closure 問題）。
+- **FX 曝險**：`utils/fxExposure.ts` 的 `computeFxExposure(items, liveStockValue, cashBalance) → FxExposureResult` 計算各幣別曝險金額、占總資產比重（%）與 ±1% 匯率衝擊（NT$）；`AssetsPage` 在 `useMemo` 內呼叫。
+- **債券存續期間**：`utils/bondDuration.ts` 的 `computeBondSensitivity(items)` 計算加權存續期間（年）與升/降息 1% 估算損益；`AssetsPage` 使用，僅含 `assetType === 'bond'` 的項目。
+- **情境分析**：`utils/portfolioBeta.ts` 的 `computePortfolioBeta(snapshots, kbars)` 計算投資組合 β（以加權指數日K為市場基準）；`utils/stressTest.ts` 的 `computeStressScenarios(tagStats, totalAssetValue)` 計算 Tag 集中度壓力情境。兩者由 `useScenarioViewModel` 封裝，`StockOverviewPage` 透過 `onScenarioTabOpen` prop 觸發 fetch。
 
 ### 頁面切換動畫（ECGLoader + Overlay）
 
@@ -271,6 +288,19 @@ export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
 
 例外：`▲`/`▼` 作為**股價漲跌**的文字符號（HoldingsTable、WatchlistTable、MarketIndicesRow 等）不需替換；`✓`/`✗` 在純文字模板字串中（非 JSX）不需替換。
 
+**`<Icon>` 元件支援 `aria-hidden` prop**（已加入型別宣告）。按鈕內有文字標籤時，圖示為裝飾性，**必須**加 `aria-hidden="true"`；純圖示按鈕（`.btn-icon`）則須在 `<button>` 上加 `aria-label`：
+```tsx
+// 有文字標籤 → icon 裝飾性
+<button className="btn-ghost" onClick={openAdd}>
+  <Icon name="add" size={20} aria-hidden="true" /> 新增
+</button>
+
+// 純圖示 → button 加 aria-label
+<button className="btn-icon" onClick={prev} aria-label="上一頁">
+  <Icon name="chevron_left" size={24} />
+</button>
+```
+
 ### Radix UI Primitives
 
 使用 headless primitives，行為 / a11y 由 Radix 提供，樣式由專屬 CSS class 控制（定義於 `global.css`）：
@@ -281,6 +311,13 @@ export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
 | `@radix-ui/react-slider` | `RiskPanel.tsx` | `.rd-slider` / `.rd-slider__track` / `.rd-slider__range` / `.rd-slider__thumb` |
 | `@radix-ui/react-select` | `RiskPanel.tsx` | `.rd-select-trigger` / `.rd-select-content` / `.rd-select-item` |
 | `@radix-ui/react-tooltip` | `RiskPanel.tsx`、`PanelHeader.tsx`、`StockOverviewPage.tsx`、`PlanPage.tsx` | inline style，`appendTo: document.body`；`PanelHeader.css` 的 `.ph-stat__sub-tooltip` 為 ph-stat 次要數值 tooltip 樣式（Portal 渲染，不受 overflow 裁切） |
+
+`Tooltip.Trigger asChild` 搭配非可聚焦元素（`<div>`、`<span>`）時，**必須**加 `tabIndex={0}`，確保鍵盤使用者能聚焦並觸發 tooltip：
+```tsx
+<Tooltip.Trigger asChild>
+  <div className="ph-stat" tabIndex={0}>…</div>
+</Tooltip.Trigger>
+```
 
 Modal 動畫：`data-state="open/closed"` 搭配 CSS `@keyframes overlay-in/out`、`modal-in/out`，定義於 `Modal.css`。
 
@@ -323,6 +360,7 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 - 每個統計項目用 `<div className="ph-stat">` 包裝，內含 `.ph-stat__label`（標題）與 `.ph-stat__value`（主數值）
 - `.ph-stat` 已設 `flex-shrink: 0`，不會被壓縮，超出寬度由 `panel-header__left` 的 `overflow-x: auto` 負責捲動
 - 次要數值（hover 顯示）**必須用 Radix Tooltip Portal**（`.ph-stat__sub-tooltip` class），不得用 `position: absolute` 的 CSS-only 方式（會被 overflow 容器裁切）
+- `ph-stat` 作為 `Tooltip.Trigger asChild` 的子元素時，需加 `tabIndex={0}`（`<div>` 原生不可聚焦，Radix 無法自動處理鍵盤觸發）
 - `ph-stat::after` 偽元素產生右側垂直分隔線，`ph-stat:last-child::after` 自動隱藏
 
 **PlanParamRow 拖拉規則**（`views/pages/plan/PlanParamRow.tsx`）：

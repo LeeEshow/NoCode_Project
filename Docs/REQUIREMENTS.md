@@ -1,6 +1,6 @@
 # 個人理財雲端系統 — 管理層規劃文件
 
-> 版本：3.1（2026-05-30）
+> 版本：3.2（2026-05-31）
 > 開發任務：Front-End\Task_Frontend.md、Back-End\Task_Backend.md
 
 ---
@@ -17,6 +17,9 @@
 | Phase 6 | 曝險/流動比模組（曝險比 Badge、VIX 自動市場狀態、RiskPanel 建議提示） |
 | Phase A | 數學模型擴充：風險品質補強（MDD、VaR/CVaR、No-Trade Band、再平衡成本效益） |
 | Phase B | 數學模型擴充：目標達成率追蹤（今年進度、30年所需報酬、PlanPage PanelHeader） |
+| Phase C | 投組風險深化：Portfolio Beta（大盤 K 線回歸）、壓力測試 UI（RiskPanel Tab 2） |
+| Phase D | 資產曝險擴充：匯率曝險（per-currency 台幣值/占比/±1% 衝擊）、債券 Duration 代理、PanelHeader exposureMode |
+| Phase E3 | 因子曝險摘要（Option A：直接使用 tagStats.actualWeight 排序橫條圖，RiskPanel Tab 1 底部） |
 | Backend 重建 | Python FastAPI 取代 Node.js Express（M1–M7 全通過，pytest 121/121） |
 | UI 升級 | Radix UI Primitives、RiskPanel Tab 重構、收折列重組、Tooltip、View Transitions |
 | 部署 | Azure Static Web Apps（前端）+ App Service B1（Python FastAPI）、Easy Auth、每日快照 CI/CD |
@@ -30,7 +33,7 @@
 ```
 ┌─────────────────── PanelHeader ───────────────────────────┐
 │  日期 / 當天成長率 / 股票現值 / 整年報酬率                   │
-│  流動現金 NT$X,XXX,XXX  |  曝 XX% ●                        │
+│  流動部位 NT$X,XXX,XXX  |  📈 72%                          │
 └───────────────────────────────────────────────────────────┘
 ┌──────────── MarketIndicesRow ─────────────────────────────┐
 │  指數小卡 ...                                               │
@@ -38,7 +41,7 @@
 ┌──────────── 風險再平衡模組（可收折）───────────────────────┐
 │ 收折：▼ Risk：1.65  [市場狀態]  ⚠ 2標籤偏差  [快照▾]       │
 │       💡 系統建議：Risk-Off（VIX 32.5）（當 auto ≠ 手動時） │
-│ 展開：Tab 1 標籤配置 / Tab 2 風險設定                       │
+│ 展開：Tab 1 標籤配置 / Tab 2 壓力測試                       │
 └───────────────────────────────────────────────────────────┘
 ┌────────────────── 庫存持股 ────────────────────────────────┐
 │  持股表格  │  再平衡建議欄                                   │
@@ -100,30 +103,39 @@
 
 在 PanelHeader 新增**曝險比 Badge**，讓使用者在任意頁面即時掌握資金配置狀態；RiskPanel 收折列顯示 VIX 自動市場狀態建議。
 
-### 核心計算（第一版）
+### 核心計算（Phase D 擴充後）
 
 ```
-曝險部位 = 台股市值（AssetsPage 外幣/債券 pending，暫不納入）
-流動部位 = 流動現金（snapshotStore.cashBalance）
-曝險比   = 台股市值 ÷（台股市值 + cashBalance）× 100%
+總資產     = 台股市值 + 外幣資產台幣值 + 流動部位（cashBalance）
+股票曝險   = 台股市值 ÷ 總資產
+外幣曝險   = 外幣資產台幣值 ÷ 總資產
+投資曝險   = （台股市值 + 外幣資產台幣值）÷ 總資產
+現金比     = 流動部位 ÷ 總資產
 ```
 
-> 待 AssetsPage 完成後，曝險部位擴充為：台股市值 + 外幣資產台幣值 + 債券台幣值
+各頁面顯示的**主指標**（徽章數值）依 `exposureMode` 決定：
+
+| 頁面 | exposureMode | 徽章主指標 |
+|------|-------------|-----------|
+| StockOverviewPage | `stock` | 股票曝險 |
+| AssetsPage | `forex` | 外幣曝險 |
+| PlanPage | `investment` | 投資曝險 |
+| ReportPage | `investment` | 投資曝險 |
 
 ### 顯示設計
 
-**PanelHeader（方案 C）：**
+**PanelHeader 右側：**
 
 ```
-流動現金  NT$X,XXX,XXX  |  曝 72% ●
-         ←  90px →
+流動部位  NT$X,XXX,XXX  |  📈 72%
 ```
 
-- 流動現金輸入框寬度縮至 90px（可容納 7 位數）
-- Badge 顏色依「曝險比是否超過動態門檻」判斷：
+- 右側固定（`flex-shrink: 0`），左側統計區可橫向捲動
+- Badge：Material Symbols `show_chart` icon + 整數百分比
+- Badge 顏色依「主指標是否超過動態門檻」判斷：
   - 未超過 → `--down`（安全）
   - 超過 → `--up`（過度曝險）
-- Hover Tooltip（Radix Tooltip）：說明計算方式與動態門檻來源
+- Hover Tooltip（Radix Tooltip）：顯示 4 項比率、總資產、動態門檻來源
 
 **動態門檻（依 `marketStateAuto`，無手動警戒線）：**
 
@@ -158,8 +170,6 @@
 ```
 
 使用者自行決定是否手動切換；切換後觸發 dynamicRisk 批次重算（現有機制不變）。
-
----
 
 ---
 
@@ -267,6 +277,111 @@ required_return = (第30年目標 / 目前資產)^(1 / 剩餘年數) - 1
 
 ---
 
+## Phase C — 投組風險深化（已完成）
+
+### C1 Portfolio Beta
+
+使用大盤歷史日K（`GET /market/index-kbars`，最多 500 天）計算投組整體 Beta。
+
+```
+beta_stock = Cov(r_stock, r_market) / Var(r_market)
+beta_portfolio = Σ (weight_i × beta_i)
+```
+
+**資料門檻**：< 60 個快照日不顯示 Beta 區塊（資料不足以計算）。
+
+**UI**：RiskPanel Tab 1 下方，顯示各 Tag 的加權 Beta 與投組整體 Beta。
+
+**後端 API**：`GET /api/v1/market/index-kbars?index=TAIEX&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
+- 日期格式驗證（非 YYYY-MM-DD 回 400）
+- 查詢區間上限 **500 天**（超過回 400）
+
+### C2 / C3 壓力測試（輕量 Shock Preset）
+
+純前端計算，不需後端支援。
+
+**情境預設（SCENARIO_DETAIL）**：
+
+| 情境 | 描述 | 代表衝擊 |
+|------|------|---------|
+| `market-crash` | 台股整體大幅下跌（黑天鵝） | 市值型 −15%、高息 −10%、科技 −20% |
+| `semi-cycle` | 半導體景氣循環下行 | 半導體 −25%、科技 −15%、市值型 −8% |
+| `liquidity-dry` | 市場流動性急劇收縮 | 全標籤 −12%、現金 +5% |
+| `twd-appreciation` | 台幣兌美元快速升值 | 出口導向 −10%、外幣資產 −8% |
+| `rate-hike` | 利率快速上升 | 債券 −15%、高息股 −8%、科技 −5% |
+
+**計算公式**：
+```
+Shock P&L = Σ (tagActualValue × shockRate)
+Shock % = Shock P&L / totalPortfolioValue
+```
+
+**UI**：RiskPanel Tab 2（壓力測試）；各情境列不撐滿寬度；Hover Tooltip 顯示說明、各 Tag 衝擊係數與公式。
+
+---
+
+## Phase D — 資產曝險擴充（已完成）
+
+### D1 匯率曝險模型
+
+計算各外幣資產的台幣值佔比與匯率衝擊。
+
+```
+currencyWeight = valueTwd / totalAssets × 100
+fxImpact1Pct   = valueTwd × 0.01
+```
+
+**過濾條件**：單幣佔比 < 0.5% 不顯示（避免雜訊）。
+
+**UI**：AssetsPage 外幣資產表格下方「匯率曝險」區塊，顯示各幣別佔比與 ±1% 衝擊金額。
+
+### D2 債券 Duration 模型（代理法）
+
+以到期年限代理 Modified Duration，估算利率敏感度。
+
+```
+duration_proxy = years_to_maturity × 0.8
+sensitivity_i  = bondValueTwd × duration_proxy × 0.01
+weightedDuration = Σ(duration_proxy_i × bondValueTwd_i) / Σ(bondValueTwd_i)
+rateUp1PctLoss   = Σ sensitivity_i  （升息損失）
+rateDown1PctGain = Σ sensitivity_i  （降息收益）
+```
+
+**UI**：AssetsPage「利率敏感度」區塊，顯示加權存續期間、升息/降息 1% 估算金額。
+
+### D3 PanelHeader exposureMode 擴充
+
+各頁面傳入 `exposureMode` prop，決定徽章主指標：
+
+| 頁面 | prop | 主指標 |
+|------|------|-------|
+| StockOverviewPage | `exposureMode="stock"` | 台股曝險 |
+| AssetsPage | `exposureMode="forex" foreignAssetTwd={vm.totalTwd}` | 外幣曝險 |
+| PlanPage | `exposureMode="investment"` | 投資曝險（股+外幣） |
+| ReportPage | `exposureMode="investment"` | 投資曝險（股+外幣） |
+
+`foreignAssetTwd` prop：AssetsPage 直接傳入即時計算值，其餘頁面 fallback 至 `planStore.forexValue`。
+
+---
+
+## Phase E3 — 因子曝險摘要（已完成）
+
+### Option A：直接使用 tagStats.actualWeight
+
+不修改後端 schema，直接取 `useRiskViewModel` 計算出的 `tagStats`，以 `actualWeight` 排序，呈現各標籤的實際資金佔比橫條圖。
+
+```
+factorExposure_tag = tagStats[tag].actualWeight   （= tag 台股市值 / 投組台股市值）
+```
+
+**排序**：依 actualWeight 降序排列。
+
+**配色**：循環使用 `chartColors`（莫蘭迪色系）。
+
+**UI**：RiskPanel Tab 1 底部，可收折的「因子曝險摘要」區塊；預設展開，狀態存於 `factorExposureOpen` state。
+
+---
+
 ## 暫不開發
 
 ### AI 每日早報
@@ -277,22 +392,3 @@ required_return = (第30年目標 / 目前資產)^(1 / 剩餘年數) - 1
 ### 個人化警戒線自動推算
 - Kelly Criterion、均值變異最佳化（MVO）
 - 需快照累積至少 252 個交易日，且預期報酬估計需穩定
-
----
-
-## 待後續討論（Phase C、D、E）
-
-規劃細節見 [`Docs/Financial Model Expansion Roadmap.md`](Financial%20Model%20Expansion%20Roadmap.md)。
-
-| Phase | 項目 | 依賴條件 |
-|-------|------|---------|
-| C1 | Portfolio Beta | 批次個股 beta API 或大盤歷史序列 API |
-| C2 | 輕量壓力測試（Tag × Shock Preset） | 純前端，可直接開發 |
-| C3 | 壓力測試 UI（RiskPanel 新 Tab） | 純前端，可直接開發 |
-| D1 | 匯率曝險模型 | 外幣資產即時台幣值（已有） |
-| D2 | 債券 Duration 模型 | 到期年限 + 利率資料（已有） |
-| E1–E3 | 資產負債表、因子曝險 | 負債資料模型（新增） |
-
-**Phase C1 後端需求**：批次取得所有持股 beta（`GET /fundamentals?codes=...`），或新增大盤歷史日收盤 API（`GET /market/history/TAIEX?days=252`）。C2/C3 純前端，不需後端支援。
-
-- Phase 6 曝險比：AssetsPage 完成後，擴充曝險部位納入外幣資產與債券台幣值
