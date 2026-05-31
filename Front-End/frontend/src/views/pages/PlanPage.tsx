@@ -59,7 +59,7 @@ export default function PlanPage() {
 
   return (
     <div style={{ minWidth: 0 }}>
-      <PanelHeader>
+      <PanelHeader exposureMode="investment">
         {latestRow && (
           <>
             {/* 年度 */}
@@ -94,7 +94,7 @@ export default function PlanPage() {
               <Tooltip.Provider delayDuration={300}>
                 <Tooltip.Root>
                   <Tooltip.Trigger asChild>
-                    <div className="ph-stat" style={{ cursor: 'help' }}>
+                    <div className="ph-stat" style={{ cursor: 'help' }} tabIndex={0}>
                       <span className="ph-stat__label">今年進度</span>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span className="ph-stat__value" style={{ color: progressColor }}>
@@ -146,7 +146,7 @@ export default function PlanPage() {
               <Tooltip.Provider delayDuration={300}>
                 <Tooltip.Root>
                   <Tooltip.Trigger asChild>
-                    <div className="ph-stat" style={{ cursor: 'help' }}>
+                    <div className="ph-stat" style={{ cursor: 'help' }} tabIndex={0}>
                       <span className="ph-stat__label">30年所需報酬</span>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span className="ph-stat__value" style={{

@@ -14,7 +14,7 @@
   outline: none;
 }
 .assets-inline-input:hover,
-.assets-inline-input:focus {
+.assets-inline-input:focus-visible {
   border-color: var(--border-hi);
 }
 .assets-inline-input:disabled {
@@ -71,7 +71,7 @@
   outline: none;
   transition: border-color var(--trans-fast);
 }
-.assets-rate-input:focus { border-color: var(--accent); }
+.assets-rate-input:focus-visible { border-color: var(--accent); }
 .assets-rate-input:disabled {
   opacity: 0.35;
   cursor: not-allowed;
@@ -141,4 +141,65 @@
   font-size: var(--text-md);
   font-weight: 600;
   color: var(--text-value);
+}
+
+/* ── 匯率曝險區塊 ── */
+.fx-exposure-block {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fx-exposure-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.fx-exposure-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+}
+
+.fx-exposure-total {
+  font-size: var(--text-sm);
+  color: var(--dim);
+}
+
+.fx-exposure-row {
+  display: grid;
+  grid-template-columns: 48px 1fr 52px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.fx-exposure-code {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.fx-exposure-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-value);
+}
+
+.fx-exposure-weight {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+}
+
+.fx-exposure-impact {
+  font-size: var(--text-xs);
+  color: var(--dim);
 }

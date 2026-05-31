@@ -91,7 +91,7 @@
   cursor: pointer;
 }
 .report-date-input:hover { border-color: var(--border-hi); }
-.report-date-input:focus {
+.report-date-input:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-bd);
 }
@@ -167,8 +167,8 @@
   text-transform: uppercase;
   transition: border-color var(--trans-fast), box-shadow var(--trans-fast);
 }
-.report-stock-input:hover  { border-color: var(--border-hi); }
-.report-stock-input:focus  { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bd); }
+.report-stock-input:hover       { border-color: var(--border-hi); }
+.report-stock-input:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bd); }
 .report-stock-input:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .report-stock-tags {
@@ -215,8 +215,14 @@
   transition: color var(--trans-fast);
   border-radius: var(--radius-sm);
   padding: 1px 4px;
+  text-align: left;
+  font-family: inherit;
+  background: none;
+  border: none;
+  width: 100%;
 }
 .report-note-cell:hover { color: var(--muted); background: rgba(255,255,255,0.03); }
+.report-note-cell:focus-visible { outline: 2px solid var(--accent-bd); outline-offset: 1px; }
 
 .report-note-cell--hint { color: transparent; }
 .report-note-cell--hint:hover { color: var(--dim); }

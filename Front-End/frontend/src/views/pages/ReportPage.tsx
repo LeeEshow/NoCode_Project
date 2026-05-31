@@ -21,7 +21,11 @@ function fmt(n: number, d = 0) {
 function fmtPct(n: number) {
   return `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)}%`;
 }
-function fmtDate(d: string) { return d.replace(/-/g, '/'); }
+function fmtDate(d: string) {
+  const [y, m, day] = d.split('-').map(Number);
+  return new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(y, m - 1, day));
+}
 
 function toPortfolioChartData(
   snapshots: DailySnapshotDTO[],
@@ -197,13 +201,14 @@ function SnapshotTable({ rows, page, totalPages, onPage, onNoteChange }: {
                         }}
                       />
                     ) : (
-                      <span
+                      <button
+                        type="button"
                         className={row.note ? 'report-note-cell' : 'report-note-cell report-note-cell--hint'}
                         onClick={() => startEdit(row.date, row.note ?? '')}
-                        title="點擊編輯備註"
+                        aria-label={row.note ? `編輯備註：${row.note}` : '新增備註'}
                       >
                         {row.note || '+'}
-                      </span>
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -241,11 +246,9 @@ export default function ReportPage() {
   );
 
   function toggleTable() {
-    setTableCollapsed(c => {
-      const next = !c;
-      localStorage.setItem(TABLE_COLLAPSED_KEY, String(next));
-      return next;
-    });
+    const next = !tableCollapsed;
+    setTableCollapsed(next);
+    try { localStorage.setItem(TABLE_COLLAPSED_KEY, String(next)); } catch {}
   }
 
   const [segments, setSegments] = useState<Segment[]>(() => {
@@ -257,10 +260,12 @@ export default function ReportPage() {
   const [activeSegId, setActiveSegId] = useState(1);
 
   useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(segments.map(s => ({ start: s.start, end: s.end }))),
-    );
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(segments.map(s => ({ start: s.start, end: s.end }))),
+      );
+    } catch {}
   }, [segments]);
 
   const isModified =
@@ -338,7 +343,7 @@ export default function ReportPage() {
 
   return (
     <div style={{ minWidth: 0 }}>
-      <PanelHeader />
+      <PanelHeader exposureMode="investment" />
 
       <div style={{ padding: '16px 28px 28px' }}>
         {vm.loading
@@ -354,6 +359,7 @@ export default function ReportPage() {
                     <input
                       type="date"
                       className="report-date-input"
+                      aria-label="起始日期"
                       value={addStart}
                       onChange={e => setAddStart(e.target.value)}
                     />
@@ -361,6 +367,7 @@ export default function ReportPage() {
                     <input
                       type="date"
                       className="report-date-input"
+                      aria-label="結束日期"
                       value={addEnd}
                       onChange={e => setAddEnd(e.target.value)}
                     />
@@ -478,8 +485,7 @@ export default function ReportPage() {
               <div className="ft-panel">
                 <div
                   className="ft-section-header"
-                  style={{ padding: '8px 16px', cursor: 'pointer', userSelect: 'none' }}
-                  onClick={toggleTable}
+                  style={{ padding: '8px 16px', userSelect: 'none' }}
                 >
                   <span className="ft-section-title">快照明細</span>
                   <button

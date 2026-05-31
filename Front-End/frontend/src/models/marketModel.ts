@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import type { ApiResponse, MarketDataDTO, MarketIndexDTO, ExportIndicatorDTO } from '../types';
+import type { ApiResponse, MarketDataDTO, MarketIndexDTO, ExportIndicatorDTO, IndexKBar } from '../types';
 
 /* 後端 IndexCard 欄位 */
 interface RawIndexCard {
@@ -39,6 +39,14 @@ function toExportIndicator(raw: RawExportIndicator): ExportIndicatorDTO {
     light: (raw.light ?? 'green') as ExportIndicatorDTO['light'],
     label: raw.lightLabel ?? '',
   };
+}
+
+export async function fetchIndexKbars(start?: string, end?: string): Promise<IndexKBar[]> {
+  const params: Record<string, string> = {};
+  if (start) params.start = start;
+  if (end)   params.end   = end;
+  const res = await api.get<ApiResponse<IndexKBar[]>>('/market/index-kbars', { params });
+  return res.data.data;
 }
 
 export async function fetchMarketData(): Promise<MarketDataDTO> {

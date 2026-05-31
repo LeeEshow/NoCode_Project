@@ -605,3 +605,31 @@ export interface RebalanceSnapshot {
   };
   suggestions: RebalanceSuggestion[];
 }
+
+/* ── 情境分析（Phase C）────────────────────────────────────── */
+
+export interface IndexKBar {
+  timestamp: number;
+  open:      number;
+  high:      number;
+  low:       number;
+  close:     number;
+  volume:    number;
+}
+
+export type BetaStatus = 'insufficient' | 'reference' | 'display' | 'reliable';
+
+export interface PortfolioBetaResult {
+  realizedBeta: number;
+  alpha:        number;   /* 年化截距（daily alpha × 252） */
+  rSquared:     number;
+  sampleDays:   number;
+  status:       BetaStatus;
+}
+
+export interface StressScenario {
+  id:                  string;
+  name:                string;
+  estimatedReturnPct:  number;   /* 負值，如 -0.083 */
+  estimatedLossAmount: number;   /* TWD 金額（正數） */
+}

@@ -17,6 +17,7 @@ import { useRebalanceViewModel, computeVolatilityFactor, computeRebalanceSuggest
 import { useRebalanceRulesViewModel } from '../../viewmodels/useRebalanceRulesViewModel';
 import { useRebalanceSnapshotViewModel } from '../../viewmodels/useRebalanceSnapshotViewModel';
 import { useDownsideRiskViewModel } from '../../viewmodels/useDownsideRiskViewModel';
+import { useScenarioViewModel }    from '../../viewmodels/useScenarioViewModel';
 import HoldingsTable        from './stock/HoldingsTable';
 import AddTransactionModal  from './stock/AddTransactionModal';
 import AddHoldingModal      from './stock/AddHoldingModal';
@@ -101,14 +102,18 @@ function QuoteSummaryBadge({ summary }: { summary: QuoteSummary }) {
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <span style={{
-          fontSize: 'var(--text-xs)',
-          color: 'var(--muted)',
-          fontFamily: 'var(--font-mono)',
-          letterSpacing: '0.03em',
-          cursor: 'default',
-          userSelect: 'none',
-        }}>
+        <span
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--muted)',
+            fontFamily: 'var(--font-mono)',
+            letterSpacing: '0.03em',
+            cursor: 'default',
+            userSelect: 'none',
+          }}
+          tabIndex={0}
+          aria-label={`報價來源摘要：SJ ${sj} TW ${tw} YF ${yf} ER ${er}`}
+        >
           {sj > 0 && <span>SJ {sj}&nbsp;&nbsp;</span>}
           {tw > 0 && <span>TW {tw}&nbsp;&nbsp;</span>}
           {yf > 0 && <span>YF {yf}&nbsp;&nbsp;</span>}
@@ -164,10 +169,7 @@ export default function StockOverviewPage() {
     () => computeVolatilityFactor(holdings.items, holdings.sparklines),
     [holdings.items, holdings.sparklines],
   );
-  const preDynamicThreshold = useMemo(
-    () => rulesVm.rules.baseThreshold * volatilityFactor,
-    [rulesVm.rules.baseThreshold, volatilityFactor],
-  );
+  const preDynamicThreshold = rulesVm.rules.baseThreshold * volatilityFactor;
 
   const risk = useRiskViewModel(
     holdings.items,
@@ -284,11 +286,17 @@ export default function StockOverviewPage() {
   const watchlistQuoteSummary = useMemo(() => computeQuoteSummary(watchlist.items), [watchlist.items]);
 
   /* PanelHeader 財務數值 */
-  const { totalCurrentValue, totalDailyAmt, totalUnrealizedProfit } = useMemo(() => ({
-    totalCurrentValue:    holdings.items.reduce((s, h) => s + h.currentPrice * h.shares * 0.997, 0),
-    totalDailyAmt:        holdings.items.reduce((s, h) => s + h.change * h.shares, 0),
-    totalUnrealizedProfit: holdings.items.reduce((s, h) => s + h.unrealizedProfit, 0),
-  }), [holdings.items]);
+  const { totalCurrentValue, totalDailyAmt, totalUnrealizedProfit } = useMemo(
+    () => holdings.items.reduce(
+      (acc, h) => ({
+        totalCurrentValue:     acc.totalCurrentValue     + h.currentPrice * h.shares * 0.997,
+        totalDailyAmt:         acc.totalDailyAmt         + h.change * h.shares,
+        totalUnrealizedProfit: acc.totalUnrealizedProfit + h.unrealizedProfit,
+      }),
+      { totalCurrentValue: 0, totalDailyAmt: 0, totalUnrealizedProfit: 0 },
+    ),
+    [holdings.items],
+  );
   const prevValue       = totalCurrentValue - totalDailyAmt;
   const dailyGrowthRate = prevValue !== 0 ? (totalDailyAmt / prevValue) * 100 : 0;
   useEnsurePlanStore();
@@ -300,6 +308,8 @@ export default function StockOverviewPage() {
   const liveStockInStore = usePlanStore(s => s.liveStockValue);
   const updateStockValue = usePlanStore(s => s.updateStockValue);
   const cashBalance      = useSnapshotStore(s => s.cashBalance);
+  const totalAssetValue  = liveStockInStore + planForexValue + cashBalance;
+  const scenario = useScenarioViewModel(risk.tagStats, totalAssetValue);
 
   const { currentYearReturnPct, currentYearReturnValue } = useMemo(() => {
     const invested   = execCapital + reinvest;
@@ -323,7 +333,7 @@ export default function StockOverviewPage() {
         <Tooltip.Provider delayDuration={300}>
           <Tooltip.Root>
             <Tooltip.Trigger asChild>
-              <div className="ph-stat">
+              <div className="ph-stat" tabIndex={0}>
                 <span className="ph-stat__label">股票現值</span>
                 <span className="ph-stat__value" style={{
                   color: totalCurrentValue > 0 ? 'var(--up)' : totalCurrentValue < 0 ? 'var(--down)' : 'var(--text)',
@@ -350,7 +360,7 @@ export default function StockOverviewPage() {
         <Tooltip.Provider delayDuration={300}>
           <Tooltip.Root>
             <Tooltip.Trigger asChild>
-              <div className="ph-stat">
+              <div className="ph-stat" tabIndex={0}>
                 <span className="ph-stat__label">當天成長率</span>
                 <span className="ph-stat__value" style={{
                   color: totalDailyAmt > 0 ? 'var(--up)' : totalDailyAmt < 0 ? 'var(--down)' : 'var(--text)',
@@ -377,7 +387,7 @@ export default function StockOverviewPage() {
         <Tooltip.Provider delayDuration={300}>
           <Tooltip.Root>
             <Tooltip.Trigger asChild>
-              <div className="ph-stat">
+              <div className="ph-stat" tabIndex={0}>
                 <span className="ph-stat__label">整年損益</span>
                 <span className="ph-stat__value" style={{
                   color: currentYearReturnPct == null ? 'var(--dim)'
@@ -470,6 +480,12 @@ export default function StockOverviewPage() {
           downsideRiskLoading={downsideRisk.loading}
           downsideRiskSampleDays={downsideRisk.sampleDays}
           onDownsideRiskTabOpen={downsideRisk.fetch}
+          scenarioBeta={scenario.beta}
+          scenarioStress={scenario.stress}
+          scenarioLoading={scenario.loading}
+          scenarioSampleDays={scenario.sampleDays}
+          scenarioKbarsAvailable={scenario.kbarsAvailable}
+          onScenarioTabOpen={scenario.fetch}
         />
 
         {/* ── 庫存持股 Panel（P2-12 ~ P2-16）── */}

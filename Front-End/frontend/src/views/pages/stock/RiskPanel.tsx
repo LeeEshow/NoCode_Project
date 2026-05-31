@@ -5,8 +5,10 @@ import * as Select from '@radix-ui/react-select';
 import type {
   TagDTO, CreateTagPayload, TagStat, MarketState, CorrelationEntry,
   HoldingDTO, OverlappingTagGroup, MddResult, VarCVarResult,
+  PortfolioBetaResult, StressScenario,
 } from '../../../types';
 import { calcTagDailyReturnsFromSparklines, buildCorrelationEntries } from '../../../utils/correlationCalc';
+import { chartColors } from '../../../styles/theme';
 import { useSnapshotStore } from '../../../stores/snapshotStore';
 import TagManagerTab from './TagManagerTab';
 import Icon from '../../components/Icon';
@@ -78,6 +80,13 @@ interface Props {
   downsideRiskLoading:   boolean;
   downsideRiskSampleDays: number;
   onDownsideRiskTabOpen: () => void;
+  /* 情境分析（Phase C） */
+  scenarioBeta:           PortfolioBetaResult | null;
+  scenarioStress:         StressScenario[];
+  scenarioLoading:        boolean;
+  scenarioSampleDays:     number;
+  scenarioKbarsAvailable: boolean;
+  onScenarioTabOpen:      () => void;
 }
 
 /* ── UI-4 Tooltip Helper ── */
@@ -115,9 +124,53 @@ function SettingTooltip({ content }: { content: string }) {
   );
 }
 
+interface ScenarioDetail {
+  desc:   string;
+  shocks: { tag: string; pct: string }[];
+}
+
+const SCENARIO_DETAIL: Record<string, ScenarioDetail> = {
+  'market-crash': {
+    desc:   '模擬台股整體大幅下跌，成長型標的跌幅最大。',
+    shocks: [
+      { tag: '市值型', pct: '-15%' }, { tag: '成長', pct: '-20%' },
+      { tag: '高股息', pct: '-10%' }, { tag: '科技', pct: '-18%' },
+      { tag: '金融',   pct: '-12%' }, { tag: '台股', pct: '-15%' },
+    ],
+  },
+  'semi-cycle': {
+    desc:   '模擬半導體景氣循環下行，科技類股受創。',
+    shocks: [
+      { tag: '半導體', pct: '-25%' }, { tag: '成長', pct: '-15%' }, { tag: '科技', pct: '-20%' },
+    ],
+  },
+  'liquidity-dry': {
+    desc:   '模擬市場流動性急劇收縮，槓桿型資產跌幅最重。',
+    shocks: [
+      { tag: '槓桿',   pct: '-30%' }, { tag: '成長',   pct: '-20%' },
+      { tag: '高股息', pct: '-15%' }, { tag: '市值型', pct: '-10%' }, { tag: '台股', pct: '-12%' },
+    ],
+  },
+  'twd-appreciation': {
+    desc:   '模擬台幣兌美元快速升值，外幣資產換算台幣後縮水。',
+    shocks: [
+      { tag: '美股', pct: '-8%' }, { tag: 'USD', pct: '-8%' },
+      { tag: '海外', pct: '-6%' }, { tag: '外幣', pct: '-7%' }, { tag: '美元', pct: '-8%' },
+    ],
+  },
+  'rate-hike': {
+    desc:   '模擬利率快速上升，長天期債券與高股息估值受壓。',
+    shocks: [
+      { tag: '長債', pct: '-15%' }, { tag: '債券', pct: '-10%' },
+      { tag: '高股息', pct: '-5%' }, { tag: '金融', pct: '-5%' },
+    ],
+  },
+};
+
 const PANEL_ID           = 'risk-rebalance-panel';
 const TAB_TAGS_ID        = 'risk-tab-tags';
 const TAB_DOWNSIDE_ID    = 'risk-tab-downside';
+const TAB_SCENARIO_ID    = 'risk-tab-scenario';
 const TAB_SETTINGS_ID    = 'risk-tab-settings';
 
 const MDD_WARN_THRESHOLD  = -0.05;  /* 距高點 -5% 顯示觀察圖示 */
@@ -170,13 +223,17 @@ export default function RiskPanel({
   onRecalculateAll, recalculating,
   correlationLoadFailed, onReloadCorrelationMatrix,
   mdd, varCvar, downsideRiskLoading, downsideRiskSampleDays, onDownsideRiskTabOpen,
+  scenarioBeta, scenarioStress, scenarioLoading, scenarioSampleDays,
+  scenarioKbarsAvailable, onScenarioTabOpen,
 }: Props) {
   const vix             = useSnapshotStore(s => s.vix);
   const marketStateAuto = useSnapshotStore(s => s.marketStateAuto);
 
-  const [expanded,  setExpanded]  = useState(false);
-  const [activeTab, setActiveTab] = useState<'tags' | 'downside' | 'settings'>('tags');
-  const [downsideTabOpened, setDownsideTabOpened] = useState(false);
+  const [expanded,            setExpanded]            = useState(false);
+  const [activeTab,           setActiveTab]           = useState<'tags' | 'downside' | 'scenario' | 'settings'>('tags');
+  const [factorExposureOpen,  setFactorExposureOpen]  = useState(false);
+  const [downsideTabOpened,  setDownsideTabOpened]  = useState(false);
+  const [scenarioTabOpened,  setScenarioTabOpened]  = useState(false);
   const [localRho,  setLocalRho]  = useState<Map<string, string>>(new Map());
 
   const [rhoCalc,   setRhoCalc]   = useState<RhoCalcState>({
@@ -514,18 +571,27 @@ export default function RiskPanel({
               aria-label="風險模組"
               style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16 }}
             >
-              {(['tags', 'downside', 'settings'] as const).map(tab => (
+              {(['tags', 'downside', 'scenario', 'settings'] as const).map(tab => (
                 <button
                   key={tab}
                   role="tab"
                   id={`tab-btn-${tab}`}
                   aria-selected={activeTab === tab}
-                  aria-controls={tab === 'tags' ? TAB_TAGS_ID : tab === 'downside' ? TAB_DOWNSIDE_ID : TAB_SETTINGS_ID}
+                  aria-controls={
+                    tab === 'tags'     ? TAB_TAGS_ID     :
+                    tab === 'downside' ? TAB_DOWNSIDE_ID :
+                    tab === 'scenario' ? TAB_SCENARIO_ID :
+                    TAB_SETTINGS_ID
+                  }
                   onClick={() => {
                     setActiveTab(tab);
                     if (tab === 'downside' && !downsideTabOpened) {
                       setDownsideTabOpened(true);
                       onDownsideRiskTabOpen();
+                    }
+                    if (tab === 'scenario' && !scenarioTabOpened) {
+                      setScenarioTabOpened(true);
+                      onScenarioTabOpen();
                     }
                   }}
                   style={{
@@ -542,7 +608,7 @@ export default function RiskPanel({
                     transition: 'color 0.15s, border-color 0.15s',
                   }}
                 >
-                  {tab === 'tags' ? '標籤配置' : tab === 'downside' ? '下行風險' : '風險設定'}
+                  {tab === 'tags' ? '標籤配置' : tab === 'downside' ? '下行風險' : tab === 'scenario' ? '情境分析' : '風險設定'}
                 </button>
               ))}
             </div>
@@ -573,6 +639,53 @@ export default function RiskPanel({
                 onAutoCalcRhoAndRebalance={handleAutoCalcRhoAndRebalance}
                 dynamicThreshold={dynamicThreshold}
               />
+
+              {/* ── 因子曝險摘要（E3） ── */}
+              {tagStats.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border)', marginTop: 8 }}>
+                  <button
+                    type="button"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      width: '100%', padding: '8px 16px',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--muted)', fontSize: 'var(--text-sm)', fontWeight: 600,
+                      textAlign: 'left',
+                    }}
+                    aria-expanded={factorExposureOpen}
+                    onClick={() => setFactorExposureOpen(v => !v)}
+                  >
+                    <Icon name={factorExposureOpen ? 'expand_less' : 'expand_more'} size={16} />
+                    因子曝險摘要
+                  </button>
+                  {factorExposureOpen && (
+                    <div style={{ padding: '4px 16px 16px' }}>
+                      {[...tagStats]
+                        .sort((a, b) => b.actualWeight - a.actualWeight)
+                        .map((stat, idx) => (
+                          <div key={stat.tagName} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                            <span style={{ width: 80, fontSize: 'var(--text-xs)', color: 'var(--muted)', flexShrink: 0, textAlign: 'right' }}>
+                              {stat.tagName}
+                            </span>
+                            <div style={{ flex: 1, height: 8, background: 'var(--surface)', borderRadius: 4, overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${Math.min(stat.actualWeight, 100)}%`,
+                                height: '100%',
+                                background: chartColors[idx % chartColors.length],
+                                borderRadius: 4,
+                                transition: 'width 0.3s',
+                              }} />
+                            </div>
+                            <span style={{ width: 44, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--text-value)', textAlign: 'right', flexShrink: 0 }}>
+                              {stat.actualWeight.toFixed(1)}%
+                            </span>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* ── Tab 2：下行風險 ── */}
@@ -667,7 +780,141 @@ export default function RiskPanel({
               )}
             </div>
 
-            {/* ── Tab 3：風險設定 ── */}
+            {/* ── Tab 3：情境分析 ── */}
+            <div
+              id={TAB_SCENARIO_ID}
+              role="tabpanel"
+              aria-labelledby="tab-btn-scenario"
+              hidden={activeTab !== 'scenario'}
+            >
+              {scenarioLoading ? (
+                <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
+                  <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', verticalAlign: 'middle', marginRight: 8 }} />
+                  載入資料…
+                </div>
+              ) : !scenarioTabOpened ? (
+                <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
+                  點擊此 Tab 後自動載入
+                </div>
+              ) : (
+                <div>
+
+                  {/* ── Portfolio Beta ── */}
+                  {scenarioKbarsAvailable && (
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
+                        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)', fontWeight: 500 }}>Portfolio Beta</span>
+                        <SettingTooltip content="投組日報酬對加權指數日報酬做 OLS 回歸所得的市場敏感係數。Beta > 1 表示比大盤波動更大，Beta < 1 表示相對防禦。" />
+                      </div>
+                      {scenarioSampleDays < 60 ? (
+                        <div style={{ padding: '16px 0', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
+                          快照資料不足（{scenarioSampleDays} 筆），需至少 60 筆才可計算
+                        </div>
+                      ) : scenarioBeta == null ? (
+                        <div style={{ padding: '16px 0', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
+                          指數資料與快照日期對齊不足，無法計算
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 8 }}>
+                          {[
+                            {
+                              label: 'Beta',
+                              value: scenarioBeta.realizedBeta.toFixed(3),
+                              sub: scenarioBeta.realizedBeta < 0.8 ? '防禦型' : scenarioBeta.realizedBeta <= 1.2 ? '接近大盤' : '積極型',
+                              subColor: scenarioBeta.realizedBeta < 0.8 ? 'var(--down)' : scenarioBeta.realizedBeta <= 1.2 ? 'var(--accent)' : 'var(--up)',
+                            },
+                            { label: '年化 Alpha', value: `${(scenarioBeta.alpha * 100).toFixed(2)}%`, sub: undefined, subColor: undefined },
+                            { label: 'R²',          value: scenarioBeta.rSquared.toFixed(3),           sub: undefined, subColor: undefined },
+                          ].map(({ label, value, sub, subColor }) => (
+                            <div key={label} style={{ padding: '10px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginBottom: 4 }}>{label}</div>
+                              <div style={{ fontSize: 'var(--text-base)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text)', fontWeight: 600 }}>{value}</div>
+                              {sub && <div style={{ fontSize: 'var(--text-xs)', color: subColor, marginTop: 2 }}>{sub}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>
+                        {scenarioBeta != null && (
+                          <>基於 {scenarioBeta.sampleDays} 筆對齊日報酬
+                          {scenarioBeta.status === 'reference' && '（資料偏少，僅供參考）'}
+                          {scenarioBeta.status === 'display'   && '（90 筆以上，可供參考）'}
+                          {scenarioBeta.status === 'reliable'  && '（252 筆以上，可信度較高）'}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ── 壓力測試 ── */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)', fontWeight: 500 }}>情境壓力測試</span>
+                      <SettingTooltip content="依各 Tag 權重與預設 Shock 估算投組在特定情境下的可能損失。若你的 Tag 名稱與情境定義不符，該情境估算為 0。" />
+                    </div>
+                    {scenarioStress.length === 0 ? (
+                      <div style={{ color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>尚無 Tag 配置，無法估算</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                        {scenarioStress.map(s => {
+                          const detail = SCENARIO_DETAIL[s.id];
+                          return (
+                            <div key={s.id} style={{ display: 'flex', alignItems: 'center', padding: '6px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', gap: 16 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{s.name}</span>
+                                {detail && (
+                                  <Tooltip.Root delayDuration={200}>
+                                    <Tooltip.Trigger asChild>
+                                      <span style={{ cursor: 'help', color: 'var(--dim)', lineHeight: 1 }}>
+                                        <Icon name="info" size={13} />
+                                      </span>
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Portal>
+                                      <Tooltip.Content
+                                        role="tooltip"
+                                        sideOffset={5}
+                                        style={{ ...TOOLTIP_STYLE, maxWidth: 260 }}
+                                      >
+                                        <span style={{ display: 'block', color: 'var(--text)', marginBottom: 6 }}>{detail.desc}</span>
+                                        <span style={{ display: 'block', color: 'var(--dim)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>預設 Shock：</span>
+                                        {detail.shocks.map(sh => (
+                                          <span key={sh.tag} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 'var(--text-xs)' }}>
+                                            <span style={{ color: 'var(--muted)' }}>{sh.tag}</span>
+                                            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--up)' }}>{sh.pct}</span>
+                                          </span>
+                                        ))}
+                                        <span style={{ display: 'block', borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 5, fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>
+                                          損失 = Σ（Tag實際權重 × Shock）× 總資產
+                                        </span>
+                                        <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                                      </Tooltip.Content>
+                                    </Tooltip.Portal>
+                                  </Tooltip.Root>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+                                <span style={{ fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: s.estimatedReturnPct < 0 ? 'var(--up)' : 'var(--dim)' }}>
+                                  {s.estimatedReturnPct < 0 ? '' : '+'}{(s.estimatedReturnPct * 100).toFixed(1)}%
+                                </span>
+                                <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--dim)' }}>
+                                  {s.estimatedLossAmount > 0 ? `≈ -$${s.estimatedLossAmount.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` : '—'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 8 }}>
+                      Tag 名稱需與預設情境一致才有估算值；匯率/利率情境需對應相關 Tag 存在。
+                    </p>
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+            {/* ── Tab 4：風險設定 ── */}
             <div
               id={TAB_SETTINGS_ID}
               role="tabpanel"
