@@ -264,6 +264,53 @@ ndc_sem   = threading.Semaphore(2)   # NDC 並行限制
 **⚠️ Executor 死鎖防範**：若外層任務已占用 executor worker，內層任務不可再 submit 到同一 executor（否則所有 16 個 worker 都在等待永遠無法被排程的內層任務）。
 現況：`get_chip()` 的外層 `executor.submit(_fetch_chip_day)` 中，`_fetch_chip_day()` 改為**循序**呼叫三個 TWSE endpoint，避免內層再次 submit。
 
+---
+
+### Event Loop 保護原則（2026-05-31 確立）
+
+#### 規則 A：`async def` vs `def` — endpoint 分類
+
+| 情況 | 寫法 | 說明 |
+|------|------|------|
+| endpoint 只做 Firestore CRUD，無 `await` 其他 async call | **`def`** | FastAPI 自動丟入 threadpool；Firestore 慢查不阻塞 event loop |
+| endpoint 需要 `await` 其他 async 函式（如 `api_switch_call`、`quote_service.get_quote`） | **`async def`** | 必須保持 async；Firestore 操作改用 `asyncio.to_thread()` 包裝 |
+
+**已確認為 `def` 的 router**：`transactions.py`、`asset_tags.py`、`correlation.py`、`settings.py`、`rebalance.py`、`plans.py`（全部 endpoint 皆為純 Firestore CRUD）
+
+**新增 endpoint 前必須先判斷分類**，不可預設用 `async def`。
+
+#### 規則 B：async 函式禁止丟進 `run_in_executor`
+
+```python
+# ❌ 錯誤：get_quote 是 async function，executor 只拿到 coroutine object
+q = await loop.run_in_executor(None, get_quote, stock_id)
+
+# ✅ 正確：直接 await
+q = await get_quote(stock_id)
+```
+
+`run_in_executor` 只能包**同步**函式（`def`）。async 函式直接 `await`；若需在 sync 環境呼叫 async 函式，用 `asyncio.run_coroutine_threadsafe()`。
+
+#### 規則 C：外部 I/O 四件套
+
+每個對外部服務（Yahoo、TWSE、NDC、FinMind）的呼叫都必須有：
+1. **timeout**：`asyncio.wait_for(..., timeout=N)`
+2. **semaphore**：`yahoo_sem / twse_sem / ndc_sem`（來自 `core/executors.py`）
+3. **circuit breaker**：`yahoo_cb / twse_cb / ndc_cb`（來自 `api_switch.py`）
+4. **fallback/placeholder**：失敗不拋錯，回傳 null 或預設值
+
+缺任何一件的 PR 應在 code review 階段擋下。
+
+#### 規則 D：不在共用 executor 內再 submit 共用 executor
+
+`get_executor()` 取得的 threadpool（max_workers=16）內的 worker 不可再 `submit` 到同一個 executor，否則會 deadlock（所有 worker 等待永遠不會被排程的內層任務）。
+
+#### 規則 E：長任務不掛在 request lifecycle
+
+FinMind sync、動態風險重算、批次暖身等任務必須走 `BackgroundTasks` 或獨立排程，不可在 HTTP request 內同步執行。request 只觸發，立即回 200。
+
+---
+
 ### Data Source Switching（Shioaji ↔ Yahoo Finance）
 
 **個股報價**（holdings / watchlist / stocks quote）統一由 `services/quote_service.py` 處理，provider 順位：
@@ -314,8 +361,19 @@ api_switch_call(primary, fallback)
 - 啟動時批次訂閱持股 + 關注清單（`warmup_stocks()`），並呼叫一次 `api.snapshots()` 預填 cache（解決 9:20 開盤延遲問題）。
 - Tick push 到 callback → 更新 `_stock_cache`；`get_cached_stock(stock_id)` 讀取 memory cache，回傳 `dict | None`（None 代表無 cache 或已過期）。
 - `is_subscribed(stock_id)` — 是否已訂閱 WebSocket tick。
-- `subscribe_stock(stock_id)` — 即時訂閱，async，由 `quote_service` 在未命中時背景呼叫。
+- `subscribe_stock(stock_id)` — 即時訂閱，async，由 `quote_service` 在未命中時以 `ensure_future` 背景呼叫（不阻塞熱路徑）。
+- `subscribe_stocks(stock_ids)` — 批次訂閱，async，啟動暖身與批次報價未命中時使用。
 - `api.snapshots()` 保留使用場景：啟動暖身（一次性）、`GET /system/shioaji-test`（診斷用）。
+
+**⚠️ 訂閱去重機制（`_subscribing_stocks`）**：
+
+`_subscribing_stocks: set[str]` 追蹤「訂閱進行中」的股票，防止並發 request 重複建立 WebSocket 訂閱：
+
+- `subscribe_stock`：進入時檢查 `_subscribing_stocks`，加入後執行訂閱，`finally` 移除（不管成敗）。
+- `subscribe_stocks`：算出 `to_sub` 後**立即** `update(_subscribing_stocks)`，再開始批次訂閱，`finally` 逐一 `discard`。
+- `cleanup`：`_subscribing_stocks.clear()`。
+
+新增訂閱邏輯時必須遵守同樣的 check-mark-finally 模式，否則 batch + single 並發時仍可能重複訂閱。
 - `_snap_single_sem = Semaphore(3)` 限制診斷端點的並行 snapshot 呼叫（不在報價熱路徑上）。
 - TAIEX（code="001"）和台指期（TXF）仍使用 tick 訂閱，供 `GET /market/indices` 使用。
 
