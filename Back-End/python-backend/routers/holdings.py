@@ -178,19 +178,27 @@ async def recalculate(body: list[dict]):
         if not stock_id:
             continue
         ref = db.collection("holdings").document(str(stock_id))
-        payload = {
-            "stock_id":        stock_id,
-            "shares_held":     h.get("sharesHeld", 0),
-            "avg_cost":        h.get("avgCost", 0),
-            "total_cost":      h.get("totalCost", 0),
-            "realized_profit": h.get("realizedProfit", 0),
-            "cost_method":     h.get("costMethod", "preserve_method"),
-            "updated_at":      fs.SERVER_TIMESTAMP,
-        }
-        stock_name = h.get("stockName")
-        if stock_name:
-            payload["stock_name"] = stock_name
-        batch.set(ref, payload, merge=True)
+        if h.get("sharesHeld", 0) == 0:
+            batch.delete(ref)
+            tags_snap = db.collection("asset_tags").where(
+                filter=FieldFilter("stock_code", "==", stock_id)
+            ).get()
+            for tag_doc in tags_snap:
+                batch.delete(db.collection("asset_tags").document(tag_doc.id))
+        else:
+            payload = {
+                "stock_id":        stock_id,
+                "shares_held":     h.get("sharesHeld", 0),
+                "avg_cost":        h.get("avgCost", 0),
+                "total_cost":      h.get("totalCost", 0),
+                "realized_profit": h.get("realizedProfit", 0),
+                "cost_method":     h.get("costMethod", "preserve_method"),
+                "updated_at":      fs.SERVER_TIMESTAMP,
+            }
+            stock_name = h.get("stockName")
+            if stock_name:
+                payload["stock_name"] = stock_name
+            batch.set(ref, payload, merge=True)
     batch.commit()
     return {"success": True, "data": {"updated": len(body)}}
 

@@ -46,7 +46,9 @@ export function useHoldingsViewModel() {
     setState(s => ({ ...s, loading: true, error: null }));
     try {
       const rawItems = await fetchHoldings();
-      const items = rawItems.map(h => ({ ...h, tags: h.tags ?? [] }));
+      const items = rawItems
+        .filter(h => h.shares > 0)
+        .map(h => ({ ...h, tags: h.tags ?? [] }));
       // 持股資料到手立即顯示，不等 sparkline
       setState(s => ({ ...s, items, loading: false }));
       // sparkline 在背景載入，完成後更新
