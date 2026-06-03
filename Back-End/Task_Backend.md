@@ -26,7 +26,7 @@
 
 ## 現況（2026-06-03）
 
-- **M1–M8 全部完成**：Python FastAPI 後端穩定運作於 Azure App Service
+- **M1–M8 全部完成**：Python FastAPI 後端穩定運作於 GCE e2-micro（asia-east1-b）
 - **MCP 全部完成**：22 個 Tool + SSE/Streamable HTTP 雙傳輸層
 - **層一、層二優化完成**：MCP fail-closed、Cache LRU、CORS env、Settings 集中、Circuit Breaker 等
 - **FinMind 同步完成**：三大法人 + 基本面資料；`yfinance` 已移除
@@ -95,7 +95,7 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 
 ---
 
-## M12 — Cloud Run HTTPS Proxy（解決公司防火牆封鎖 DuckDNS）
+## M12 ✅ — Cloud Run HTTPS Proxy（解決公司防火牆封鎖 DuckDNS）
 
 ### 背景
 
@@ -104,15 +104,17 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 
 **費用**：Cloud Run 免費額度 200 萬次請求 / 月，個人使用不超過。
 
+**實際部署 URL**：`https://fintarck-proxy-1077248196503.asia-east1.run.app`
+
 ---
 
 ### 架構
 
 ```
 公司瀏覽器
-  → https://fintarck-proxy-xxxx-de.a.run.app  （Google 官方域名，幾乎不被封鎖）
+  → https://fintarck-proxy-1077248196503.asia-east1.run.app  （Google 官方域名，幾乎不被封鎖）
   → Cloud Run Nginx Proxy
-  → http://35.201.176.69:8000（GCE 後端，走 Nginx port 80）
+  → http://35.201.176.69:8000（GCE 後端，直連 uvicorn port 8000）
 ```
 
 ---
@@ -129,7 +131,7 @@ server {
     server_name _;
 
     location / {
-        proxy_pass http://35.201.176.69;
+        proxy_pass http://35.201.176.69:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -140,7 +142,7 @@ server {
 }
 ```
 
-> `proxy_pass` 打 GCE 的 port 80（Nginx），不需額外開放防火牆規則。  
+> `proxy_pass` 打 GCE 的 port 8000（uvicorn 直連）；GCE 防火牆需開放 `allow-uvicorn-8000`（tcp:8000）。  
 > Cloud Run 固定使用 port **8080**，不可改動。
 
 **`Dockerfile`**
@@ -198,9 +200,9 @@ VITE_API_BASE_URL=https://fintarck-proxy-xxxxxxxxxx-de.a.run.app/api/v1
 ### 驗收清單
 
 ```
-[ ] Cloud Run Service 部署成功，取得 *.run.app URL
-[ ] curl health check 回傳正常
-[ ] 從公司網路瀏覽器可存取前端並正常打 API
-[ ] .env.production 更新並推送
-[ ] 前端所有頁面功能正常（公司網路內測試）
+[x] Cloud Run Service 部署成功：https://fintarck-proxy-1077248196503.asia-east1.run.app
+[x] curl health check 回傳正常（{"status":"ok"}）
+[x] 從公司網路瀏覽器可存取前端並正常打 API
+[x] .env.production 更新並推送
+[x] 前端所有頁面功能正常（公司網路內測試）
 ```

@@ -69,7 +69,7 @@ Default to surfacing uncertainty, not hiding it.
 
 ```
 Back-End/
-├── python-backend/   # 現役主後端（Python FastAPI，Azure App Service）
+├── python-backend/   # 現役主後端（Python FastAPI，GCE e2-micro asia-east1-b）
 └── Task_Backend.md   # 開發任務清單與進度（Layer 1–2 優化已完成）
 ```
 
@@ -448,7 +448,7 @@ API Key：`?key=<MCP_ACCESS_KEY>`；`MCP_ACCESS_KEY` 未設定時跳過驗證（
 # Firebase / Firestore
 FIRESTORE_PROJECT_ID=nocode-finance
 GOOGLE_APPLICATION_CREDENTIALS=./serviceAccountKey.json   # 本機開發
-GOOGLE_APPLICATION_CREDENTIALS_JSON=<base64 JSON>         # Azure 部署（二擇一）
+GOOGLE_APPLICATION_CREDENTIALS_JSON=<base64 JSON>         # GCE 部署（二擇一）
 
 # Server
 PORT=8000
