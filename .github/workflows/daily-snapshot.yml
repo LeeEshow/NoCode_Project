@@ -5,6 +5,9 @@ on:
     - cron: '0 6 * * *'     # 14:00 台灣時間（UTC+8）= 06:00 UTC，每日
   workflow_dispatch:          # 支援手動觸發（測試用）
 
+env:
+  BACKEND_URL: https://eshowfintarck.duckdns.org
+
 jobs:
   snapshot:
     runs-on: ubuntu-latest
@@ -12,7 +15,7 @@ jobs:
       - name: Trigger daily snapshot
         run: |
           curl -X POST \
-            "${{ secrets.BACKEND_URL }}/api/v1/snapshots/record" \
+            "${{ env.BACKEND_URL }}/api/v1/snapshots/record" \
             -H "Content-Type: application/json" \
             -H "X-Cron-Token: ${{ secrets.CRON_SECRET }}" \
             --fail \
@@ -23,7 +26,7 @@ jobs:
       - name: Trigger FinMind sync（基本面 + 三大法人）
         run: |
           curl -X POST \
-            "${{ secrets.BACKEND_URL }}/api/v1/finmind/sync" \
+            "${{ env.BACKEND_URL }}/api/v1/finmind/sync" \
             -H "Content-Type: application/json" \
             -H "X-Cron-Token: ${{ secrets.CRON_SECRET }}" \
             --fail \

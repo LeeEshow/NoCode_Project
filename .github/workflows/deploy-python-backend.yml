@@ -12,21 +12,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Deploy to GCE via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          python-version: '3.11'
-
-      - name: Install dependencies into .python_packages
-        run: |
-          pip install -r Back-End/python-backend/requirements.txt \
-            --target Back-End/python-backend/.python_packages/lib/site-packages
-
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: finance-backend-py
-          publish-profile: ${{ secrets.AZURE_PYTHON_BACKEND_PUBLISH_PROFILE }}
-          package: Back-End/python-backend
+          host: ${{ secrets.GCE_HOST }}
+          username: ${{ secrets.GCE_USER }}
+          key: ${{ secrets.GCE_SSH_KEY }}
+          script: |
+            cd /app/Back-End/python-backend
+            git pull origin main
+            source .venv/bin/activate
+            pip install -r requirements.txt --quiet
+            sudo systemctl restart fastapi
+            sleep 3
+            sudo systemctl is-active fastapi
