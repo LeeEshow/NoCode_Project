@@ -13,7 +13,8 @@ const PAGE_SIZE         = 30;
 const YEAR_START        = '2026-01-01';
 const YEAR_END          = '2026-12-31';
 const STORAGE_KEY       = 'report_segments';
-const TABLE_COLLAPSED_KEY = 'report_table_collapsed';
+const TABLE_COLLAPSED_KEY  = 'report_table_collapsed';
+const SNAPSHOT_PANEL_ID    = 'report-snapshot-panel';
 
 function fmt(n: number, d = 0) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -484,21 +485,25 @@ export default function ReportPage() {
               {/* 快照明細 Tab */}
               <div className="ft-panel">
                 <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={!tableCollapsed}
+                  aria-controls={SNAPSHOT_PANEL_ID}
                   className="ft-section-header"
-                  style={{ padding: '8px 16px', userSelect: 'none' }}
+                  style={{ padding: '8px 16px', userSelect: 'none', cursor: 'pointer' }}
+                  onClick={toggleTable}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTable(); } }}
                 >
                   <span className="ft-section-title">快照明細</span>
-                  <button
-                    className="btn-icon"
-                    aria-label={tableCollapsed ? '展開快照明細' : '收折快照明細'}
-                    onClick={e => { e.stopPropagation(); toggleTable(); }}
-                  >
-                    <Icon name={tableCollapsed ? 'expand_more' : 'expand_less'} size={20} />
-                  </button>
+                  <Icon name={tableCollapsed ? 'expand_more' : 'expand_less'} size={20} style={{ color: 'var(--muted)' }} />
                 </div>
 
-                {!tableCollapsed && (
-                  <>
+                <div
+                  id={SNAPSHOT_PANEL_ID}
+                  className={`report-snapshot-body${tableCollapsed ? '' : ' is-open'}`}
+                  aria-hidden={tableCollapsed}
+                >
+                <div className="report-snapshot-body__inner">
                     <div className="report-tab-bar">
                       {segments.map((seg, i) => (
                         <button
@@ -550,8 +555,8 @@ export default function ReportPage() {
                         />
                       );
                     })}
-                  </>
-                )}
+                </div>
+                </div>
               </div>
             </>
           )

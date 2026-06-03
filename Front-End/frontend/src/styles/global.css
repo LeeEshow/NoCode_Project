@@ -410,6 +410,22 @@ tr:hover .drag-handle { color: var(--dim); }
   .risk-panel-body { transition: none; }
 }
 
+/* ── ReportPage 快照明細收折/展開動畫 ── */
+.report-snapshot-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 250ms ease-out;
+}
+.report-snapshot-body.is-open {
+  grid-template-rows: 1fr;
+}
+.report-snapshot-body__inner {
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .report-snapshot-body { transition: none; }
+}
+
 /* ── TabPanel 展開背景（統一規則）── */
 /* 對應 StockExpandPanel <tr> 的 rgba(0,0,0,0.22)；凡展開式 Tab 內容區均套此 class */
 .tab-panel-body {
