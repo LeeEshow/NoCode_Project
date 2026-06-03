@@ -1,7 +1,7 @@
 import Modal from '../../components/Modal';
 import Icon from '../../components/Icon';
 import { computeStrategyStatus } from '../../../utils/tradingStrategy';
-import type { TradingStrategyDTO, StrategyStatus } from '../../../types';
+import type { TradingStrategyDTO } from '../../../types';
 import './TradingStrategyModal.css';
 
 export interface TradingStrategyModalProps {
