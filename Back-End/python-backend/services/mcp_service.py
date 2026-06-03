@@ -207,6 +207,94 @@ MCP_TOOLS = [
             "required": ["stock_id"],
         },
     },
+    # ── M9：Tag 寫入工具 ─────────────────────────────────────────────────────────
+    {
+        "name": "update_tag",
+        "description": (
+            "修改 Tag 的基礎風險係數、目標配比、偏離方向管制、同質集中度上限。"
+            "預設 dry_run=true（預覽 before/after diff，不寫入）；"
+            "確認後以 dry_run=false 實際寫入並自動重算 dynamicRisk。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tag_id":              {"type": "string",          "description": "Tag 唯一識別碼（必填）"},
+                "base_risk":           {"type": "number",          "description": "基礎風險係數 0.0–1.0（選填）"},
+                "target_weight":       {"type": ["number", "null"],"description": "目標配比 0.0–1.0，null = 不設目標（選填）"},
+                "direction":           {"type": "string",          "description": "both | upper_only | lower_only（選填）"},
+                "concentration_limit": {"type": ["number", "null"],"description": "同質 Tag 集中度上限 0.0–1.0（選填）"},
+                "dry_run":             {"type": "boolean",         "description": "預設 true（預覽模式）"},
+            },
+            "required": ["tag_id"],
+        },
+    },
+    {
+        "name": "set_asset_tags",
+        "description": (
+            "以 idempotent PUT 方式設定某支股票的完整 Tag 配置清單。"
+            "AI 一次給出所有 Tag 及其 weight_ratio（整數，總和必須 == 100）；"
+            "後端 diff 後以 Firestore batch write 原子性寫入（新增 / 更新 / 刪除）。"
+            "預設 dry_run=true（預覽）；確認後以 dry_run=false 套用。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stock_code": {"type": "string", "description": "持股代碼，例如 '2330'（必填）"},
+                "tags": {
+                    "type": "array",
+                    "description": "完整 Tag 配置清單（必填，不可為空）",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "tag_name":     {"type": "string",  "description": "Tag 名稱（必須存在於 tags collection）"},
+                            "weight_ratio": {"type": "integer", "description": "配比百分比整數 1–100"},
+                        },
+                        "required": ["tag_name", "weight_ratio"],
+                    },
+                },
+                "dry_run": {"type": "boolean", "description": "預設 true（預覽模式）"},
+            },
+            "required": ["stock_code", "tags"],
+        },
+    },
+    # ── M10：交易策略工具 ─────────────────────────────────────────────────────────
+    {
+        "name": "save_trading_strategy",
+        "description": (
+            "AI 分析後建立或覆寫指定個股的交易策略（singleton-per-stock，覆寫不堆疊）。"
+            "dismissed 強制重置為 false；created_at 由後端自動填入 UTC+8 現在時間。"
+            "summary 不可超過 100 字。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stock_code":      {"type": "string", "description": "股票代號（必填）"},
+                "stock_name":      {"type": "string", "description": "股票名稱（必填）"},
+                "trade_type":      {"type": "string", "description": "entry|add|reduce|exit|stop_loss|take_profit|watch（必填）"},
+                "trigger_price":   {"type": "number", "description": "觸發價格（必填）"},
+                "reference_price": {"type": "number", "description": "分析當下市價（必填）"},
+                "target_price":    {"type": "number", "description": "目標價（選填）"},
+                "stop_loss_price": {"type": "number", "description": "停損參考價（選填）"},
+                "confidence":      {"type": "string", "description": "high|medium|low（必填）"},
+                "timeframe":       {"type": "string", "description": "short|medium|long（必填）"},
+                "summary":         {"type": "string", "description": "AI 簡述（≤100字，必填）"},
+                "expires_at":      {"type": "string", "description": "到期日 ISO datetime（選填）"},
+            },
+            "required": ["stock_code", "stock_name", "trade_type", "trigger_price",
+                         "reference_price", "confidence", "timeframe", "summary"],
+        },
+    },
+    {
+        "name": "get_trading_strategy",
+        "description": "取得指定個股的現有交易策略。無資料時回傳 {stockCode, strategy: null}。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stock_code": {"type": "string", "description": "股票代號（必填）"},
+            },
+            "required": ["stock_code"],
+        },
+    },
 ]
 
 
@@ -530,6 +618,337 @@ async def _get_portfolio_tag_analysis() -> dict:
     return _text({"totalValue": round(total_value, 2), "tags": result_tags})
 
 
+# ─── M9 handlers ──────────────────────────────────────────────────────────────
+
+_VALID_DIRS = {"both", "upper_only", "lower_only"}
+
+
+async def _update_tag(arguments: dict) -> dict:
+    tag_id = str(arguments.get("tag_id", "")).strip()
+    if not tag_id:
+        return _text({"error": "tag_id 為必填"})
+
+    dry_run = bool(arguments.get("dry_run", True))
+
+    has_base_risk          = "base_risk"          in arguments
+    has_target_weight      = "target_weight"      in arguments
+    has_direction          = "direction"          in arguments
+    has_conc_limit         = "concentration_limit" in arguments
+
+    base_risk    = arguments.get("base_risk")
+    target_weight = arguments.get("target_weight")
+    direction    = arguments.get("direction")
+    conc_limit   = arguments.get("concentration_limit")
+
+    # Range validation
+    if has_base_risk and base_risk is not None:
+        if not isinstance(base_risk, (int, float)) or not (0.0 <= float(base_risk) <= 1.0):
+            return _text({"error": "base_risk must be between 0.0 and 1.0"})
+        base_risk = float(base_risk)
+    if has_target_weight and target_weight is not None:
+        if not isinstance(target_weight, (int, float)) or not (0.0 <= float(target_weight) <= 1.0):
+            return _text({"error": "target_weight must be between 0.0 and 1.0"})
+        target_weight = float(target_weight)
+    if has_conc_limit and conc_limit is not None:
+        if not isinstance(conc_limit, (int, float)) or not (0.0 <= float(conc_limit) <= 1.0):
+            return _text({"error": "concentration_limit must be between 0.0 and 1.0"})
+        conc_limit = float(conc_limit)
+    if has_direction and direction is not None:
+        if direction not in _VALID_DIRS:
+            return _text({"error": "direction must be one of: both, upper_only, lower_only"})
+
+    loop = asyncio.get_event_loop()
+
+    def _run():
+        db = get_db()
+        ref = db.collection("tags").document(tag_id)
+        doc = ref.get()
+        if not doc.exists:
+            return {"_not_found": True}
+
+        d = doc.to_dict()
+        tag_name = d.get("name", "")
+        changes: dict = {}
+        no_change: list = []
+        patch: dict = {}
+
+        if has_base_risk and base_risk is not None:
+            old = d.get("base_risk", 0)
+            if old != base_risk:
+                changes["baseRisk"] = {"before": old, "after": base_risk}
+                patch["base_risk"] = base_risk
+            else:
+                no_change.append("baseRisk")
+
+        if has_target_weight:
+            old = d.get("target_weight")
+            if old != target_weight:
+                changes["targetWeight"] = {"before": old, "after": target_weight}
+                patch["target_weight"] = target_weight
+            else:
+                no_change.append("targetWeight")
+
+        if has_direction and direction is not None:
+            old = d.get("trigger_direction", "both")
+            if old != direction:
+                changes["direction"] = {"before": old, "after": direction}
+                patch["trigger_direction"] = direction
+            else:
+                no_change.append("direction")
+
+        if has_conc_limit:
+            old = d.get("concentration_limit")
+            if old != conc_limit:
+                changes["concentrationLimit"] = {"before": old, "after": conc_limit}
+                patch["concentration_limit"] = conc_limit
+            else:
+                no_change.append("concentrationLimit")
+
+        if dry_run:
+            return {
+                "dryRun": True,
+                "tagId": tag_id,
+                "tagName": tag_name,
+                "changes": changes,
+                "noChange": no_change,
+                "message": "預覽模式，未寫入。確認後以 dry_run=false 重新呼叫以套用變更。",
+            }
+
+        if patch:
+            ref.update(patch)
+
+        return {
+            "dryRun": False,
+            "tagId": tag_id,
+            "tagName": tag_name,
+            "applied": {k: v["after"] for k, v in changes.items()},
+            "_do_recalc": True,
+        }
+
+    result = await loop.run_in_executor(None, _run)
+
+    if result.get("_not_found"):
+        return _text({"error": f"Tag not found: {tag_id}"})
+
+    if not dry_run and result.pop("_do_recalc", False):
+        def _recalc():
+            from services.tag_risk_service import recalculate_dynamic_risk
+            db2 = get_db()
+            ms_doc = db2.collection("market_state").document("main").get()
+            mstate = ms_doc.to_dict().get("current", "neutral") if ms_doc.exists else "neutral"
+            recalculate_dynamic_risk(mstate)
+        await loop.run_in_executor(None, _recalc)
+        result["message"] = "已更新，dynamicRisk 已重算。"
+
+    return _text(result)
+
+
+async def _set_asset_tags(arguments: dict) -> dict:
+    stock_code  = str(arguments.get("stock_code", "")).strip()
+    tags_input  = arguments.get("tags", [])
+    dry_run     = bool(arguments.get("dry_run", True))
+
+    if not stock_code:
+        return _text({"error": "stock_code 為必填"})
+    if not isinstance(tags_input, list) or len(tags_input) == 0:
+        return _text({"error": "tags 陣列不可為空"})
+
+    # Validate each item
+    for t in tags_input:
+        wr = t.get("weight_ratio")
+        if isinstance(wr, bool) or not isinstance(wr, int) or not (1 <= wr <= 100):
+            return _text({"error": "weight_ratio 必須為 1–100 的整數"})
+
+    # Check duplicate tag_names
+    tag_names = [t.get("tag_name", "") for t in tags_input]
+    if len(tag_names) != len(set(tag_names)):
+        return _text({"error": "tags 內有重複的 tag_name"})
+
+    # Validate sum
+    total_weight = sum(t.get("weight_ratio", 0) for t in tags_input)
+    if total_weight != 100:
+        return _text({
+            "error": "sum(weight_ratio) 必須等於 100",
+            "totalWeightRatio": total_weight,
+            "diff": total_weight - 100,
+        })
+
+    loop = asyncio.get_event_loop()
+
+    def _run():
+        db = get_db()
+
+        # 1. stock_code 必須存在於 holdings
+        if not db.collection("holdings").document(stock_code).get().exists:
+            return {"_not_found": True, "_msg": f"stock_code not found in holdings: {stock_code}"}
+
+        # 2. 所有 tag_name 必須存在於 tags
+        missing = []
+        for tn in tag_names:
+            snap = db.collection("tags").where(
+                filter=FieldFilter("name", "==", tn)
+            ).limit(1).get()
+            if not list(snap):
+                missing.append(tn)
+        if missing:
+            return {"_missing_tags": missing}
+
+        # 3. 取現有 asset_tags（此股票）
+        current_docs = db.collection("asset_tags").where(
+            filter=FieldFilter("stock_code", "==", stock_code)
+        ).get()
+        current_map = {
+            doc.to_dict()["tag_name"]: {
+                "doc_id": doc.id,
+                "weight_ratio": doc.to_dict()["weight_ratio"],
+            }
+            for doc in current_docs
+        }
+
+        input_map = {t["tag_name"]: t["weight_ratio"] for t in tags_input}
+
+        # 4. Diff
+        added, updated, removed, unchanged = [], [], [], []
+        for tn, wr in input_map.items():
+            if tn not in current_map:
+                added.append({"tagName": tn, "weightRatio": wr})
+            elif current_map[tn]["weight_ratio"] != wr:
+                updated.append({"tagName": tn, "before": current_map[tn]["weight_ratio"], "after": wr})
+            else:
+                unchanged.append({"tagName": tn, "weightRatio": wr})
+        for tn, info in current_map.items():
+            if tn not in input_map:
+                removed.append({"tagName": tn, "weightRatio": info["weight_ratio"]})
+
+        diff = {"added": added, "updated": updated, "removed": removed, "unchanged": unchanged}
+
+        if dry_run:
+            return {
+                "dryRun": True,
+                "stockCode": stock_code,
+                "totalWeightRatio": 100,
+                "diff": diff,
+                "message": "預覽模式，總配比 100%，可套用。",
+            }
+
+        # dry_run=false：Firestore batch write
+        batch = db.batch()
+        for item in added:
+            ref = db.collection("asset_tags").document()
+            batch.set(ref, {
+                "stock_code": stock_code,
+                "tag_name": item["tagName"],
+                "weight_ratio": item["weightRatio"],
+            })
+        for item in updated:
+            doc_id = current_map[item["tagName"]]["doc_id"]
+            batch.update(db.collection("asset_tags").document(doc_id), {"weight_ratio": item["after"]})
+        for item in removed:
+            doc_id = current_map[item["tagName"]]["doc_id"]
+            batch.delete(db.collection("asset_tags").document(doc_id))
+        batch.commit()
+
+        result_tags = [{"tagName": tn, "weightRatio": wr} for tn, wr in input_map.items()]
+        return {
+            "dryRun": False,
+            "stockCode": stock_code,
+            "totalWeightRatio": 100,
+            "diff": diff,
+            "tags": result_tags,
+            "message": "已套用，Tag 配置更新完成。",
+        }
+
+    result = await loop.run_in_executor(None, _run)
+
+    if result.get("_not_found"):
+        return _text({"error": result["_msg"]})
+    if result.get("_missing_tags"):
+        return _text({"error": f"Tag(s) not found: {', '.join(result['_missing_tags'])}"})
+
+    return _text(result)
+
+
+# ─── M10 handlers ─────────────────────────────────────────────────────────────
+
+_VALID_TRADE_TYPES = {"entry", "add", "reduce", "exit", "stop_loss", "take_profit", "watch"}
+_VALID_CONFIDENCE  = {"high", "medium", "low"}
+_VALID_TIMEFRAME   = {"short", "medium", "long"}
+
+
+async def _save_trading_strategy(arguments: dict) -> dict:
+    from datetime import datetime, timezone, timedelta
+
+    stock_code      = str(arguments.get("stock_code", "")).strip()
+    stock_name      = str(arguments.get("stock_name", "")).strip()
+    trade_type      = str(arguments.get("trade_type", "")).strip()
+    trigger_price   = arguments.get("trigger_price")
+    reference_price = arguments.get("reference_price")
+    target_price    = arguments.get("target_price")
+    stop_loss_price = arguments.get("stop_loss_price")
+    confidence      = str(arguments.get("confidence", "")).strip()
+    timeframe       = str(arguments.get("timeframe", "")).strip()
+    summary         = str(arguments.get("summary", "")).strip()
+    expires_at      = arguments.get("expires_at")
+
+    if not stock_code:
+        return _text({"error": "stock_code 為必填"})
+    if not stock_name:
+        return _text({"error": "stock_name 為必填"})
+    if trade_type not in _VALID_TRADE_TYPES:
+        return _text({"error": "trade_type 必須為 entry|add|reduce|exit|stop_loss|take_profit|watch"})
+    if trigger_price is None:
+        return _text({"error": "trigger_price 為必填"})
+    if reference_price is None:
+        return _text({"error": "reference_price 為必填"})
+    if confidence not in _VALID_CONFIDENCE:
+        return _text({"error": "confidence 必須為 high|medium|low"})
+    if timeframe not in _VALID_TIMEFRAME:
+        return _text({"error": "timeframe 必須為 short|medium|long"})
+    if not summary:
+        return _text({"error": "summary 為必填"})
+    if len(summary) > 100:
+        return _text({"error": "summary 不可超過 100 字"})
+
+    tz_taipei  = timezone(timedelta(hours=8))
+    created_at = datetime.now(tz=tz_taipei).isoformat()
+
+    doc_data = {
+        "stock_code":      stock_code,
+        "stock_name":      stock_name,
+        "trade_type":      trade_type,
+        "trigger_price":   float(trigger_price),
+        "reference_price": float(reference_price),
+        "target_price":    float(target_price)    if target_price    is not None else None,
+        "stop_loss_price": float(stop_loss_price) if stop_loss_price is not None else None,
+        "confidence":      confidence,
+        "timeframe":       timeframe,
+        "summary":         summary,
+        "dismissed":       False,
+        "created_at":      created_at,
+        "expires_at":      expires_at,
+    }
+
+    loop = asyncio.get_event_loop()
+
+    def _write():
+        get_db().collection("trading_strategies").document(stock_code).set(doc_data)
+        return _convert_keys(doc_data)
+
+    return _text(await loop.run_in_executor(None, _write))
+
+
+async def _get_trading_strategy(stock_code: str) -> dict:
+    loop = asyncio.get_event_loop()
+
+    def _read():
+        doc = get_db().collection("trading_strategies").document(stock_code).get()
+        if not doc.exists:
+            return {"stockCode": stock_code, "strategy": None}
+        return {"stockCode": stock_code, "strategy": _convert_keys(doc.to_dict())}
+
+    return _text(await loop.run_in_executor(None, _read))
+
+
 # ─── Dispatch ─────────────────────────────────────────────────────────────────
 
 async def call_tool(name: str, arguments: dict) -> dict:
@@ -601,4 +1020,17 @@ async def call_tool(name: str, arguments: dict) -> dict:
             return _text({"error": "stock_id 為必填"})
         limit = min(int(arguments.get("limit", 20)), 60)
         return await _query_stock_chip(sid, arguments.get("start_date"), limit)
+    # ── M9
+    if name == "update_tag":
+        return await _update_tag(arguments)
+    if name == "set_asset_tags":
+        return await _set_asset_tags(arguments)
+    # ── M10
+    if name == "save_trading_strategy":
+        return await _save_trading_strategy(arguments)
+    if name == "get_trading_strategy":
+        sid = str(arguments.get("stock_code", "")).strip()
+        if not sid:
+            return _text({"error": "stock_code 為必填"})
+        return await _get_trading_strategy(sid)
     return _text({"error": f"未知工具：{name}"})

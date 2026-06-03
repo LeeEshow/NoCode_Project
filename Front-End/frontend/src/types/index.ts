@@ -633,3 +633,31 @@ export interface StressScenario {
   estimatedReturnPct:  number;   /* 負值，如 -0.083 */
   estimatedLossAmount: number;   /* TWD 金額（正數） */
 }
+
+/* ── AI 交易策略（F01）───────────────────────────────────────── */
+
+export type TradeType =
+  | 'entry' | 'add' | 'reduce' | 'exit'
+  | 'stop_loss' | 'take_profit' | 'watch';
+
+export type StrategyConfidence = 'high' | 'medium' | 'low';
+export type StrategyTimeframe  = 'short' | 'medium' | 'long';
+
+/** 前端計算的顯示狀態（不存 DB） */
+export type StrategyStatus = 'active' | 'triggered' | 'expired' | 'dismissed';
+
+export interface TradingStrategyDTO {
+  stockCode:      string;
+  stockName:      string;
+  tradeType:      TradeType;
+  triggerPrice:   number;
+  referencePrice: number;
+  targetPrice?:   number;
+  stopLossPrice?: number;
+  confidence:     StrategyConfidence;
+  timeframe:      StrategyTimeframe;
+  summary:        string;
+  dismissed:      boolean;
+  createdAt:      string;   /* ISO datetime */
+  expiresAt?:     string;   /* ISO datetime */
+}

@@ -12,25 +12,11 @@ import SparkLine from '../../components/Charts/SparkLine';
 import StockExpandPanel from '../../components/StockExpandPanel';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Icon from '../../components/Icon';
-import type { WatchlistItemDTO, KLineDTO, StockProfileDTO, ChipDTO } from '../../../types';
+import { computeStrategyStatus } from '../../../utils/tradingStrategy';
+import type { WatchlistItemDTO, KLineDTO, StockProfileDTO, ChipDTO, TradingStrategyDTO } from '../../../types';
 
 function fmt(n: number, decimals = 2) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-}
-
-function SignalTag({ signal }: { signal: 'buy' | 'wait' }) {
-  const isBuy = signal === 'buy';
-  return (
-    <span style={{
-      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', padding: '2px 10px',
-      borderRadius: 'var(--radius-xs)',
-      background: isBuy ? 'var(--down-bg)' : 'var(--accent-bg)',
-      border: `1px solid ${isBuy ? 'var(--down-bd)' : 'var(--accent-bd)'}`,
-      color: isBuy ? 'var(--down)' : 'var(--accent)',
-    }}>
-      {isBuy ? '買進' : '觀望'}
-    </span>
-  );
 }
 
 export interface WatchlistTableProps {
@@ -46,18 +32,31 @@ export interface WatchlistTableProps {
   onDelete:     (id: string) => void;
   onReorder:    (newItems: WatchlistItemDTO[]) => void;
   deleting:     boolean;
+  /* F01 */
+  strategies?:     Record<string, TradingStrategyDTO>;
+  onOpenStrategy?: (stockCode: string) => void;
 }
 
-const WatchlistRow = memo(function WatchlistRow({ item, sparkline, isExpanded, onToggle, onEdit, onConfirm }: {
-  item:       WatchlistItemDTO;
-  sparkline:  number[];
-  isExpanded: boolean;
-  onToggle:   (stockCode: string) => void;
-  onEdit:     (item: WatchlistItemDTO) => void;
-  onConfirm:  (id: string) => void;
+const WatchlistRow = memo(function WatchlistRow({
+  item, sparkline, isExpanded, onToggle, onEdit, onConfirm, strategy, onOpenStrategy,
+}: {
+  item:            WatchlistItemDTO;
+  sparkline:       number[];
+  isExpanded:      boolean;
+  onToggle:        (stockCode: string) => void;
+  onEdit:          (item: WatchlistItemDTO) => void;
+  onConfirm:       (id: string) => void;
+  strategy?:       TradingStrategyDTO;
+  onOpenStrategy?: (stockCode: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
+
+  const isBuy = item.signal === 'buy';
+  const hasStrategy = strategy != null && !strategy.dismissed;
+  const isTriggered = hasStrategy && strategy
+    ? computeStrategyStatus(strategy, item.currentPrice) === 'triggered'
+    : false;
 
   const cls   = item.changePct === 0 ? 'txt-flat' : (item.isUp ? 'txt-up' : 'txt-down');
   const arrow = item.changePct === 0 ? '—' : (item.isUp ? '▲' : '▼');
@@ -125,7 +124,30 @@ const WatchlistRow = memo(function WatchlistRow({ item, sparkline, isExpanded, o
         <span className="mono" style={{ color: 'var(--muted)' }}>{fmt(item.targetPrice)}</span>
       </td>
       <td className="center">
-        <SignalTag signal={item.signal} />
+        <button
+          className="btn-ghost"
+          style={{
+            background: isBuy ? 'var(--down-bg)' : 'var(--accent-bg)',
+            border: `1px solid ${isBuy ? 'var(--down-bd)' : 'var(--accent-bd)'}`,
+            color: isBuy ? 'var(--down)' : 'var(--accent)',
+            padding: '2px 8px',
+            fontSize: 12,
+            borderRadius: 4,
+            cursor: 'pointer',
+            position: 'relative',
+          }}
+          onClick={e => { e.stopPropagation(); onOpenStrategy?.(item.stockCode); }}
+          aria-label={`查看 ${item.stockName} AI 交易策略`}
+        >
+          {isBuy ? '買進' : '觀望'}
+          {hasStrategy && (
+            <span style={{
+              position: 'absolute', top: -4, right: -4,
+              width: 6, height: 6, borderRadius: '50%',
+              background: isTriggered ? 'var(--up)' : 'var(--accent)',
+            }} />
+          )}
+        </button>
       </td>
       <td className="center">
         <div style={{ display: 'inline-flex', gap: 5 }}>
@@ -145,6 +167,7 @@ export default function WatchlistTable({
   items, sparklines, klines, profiles, chips,
   expandedCode, onToggle, onExpandLoad,
   onEdit, onDelete, onReorder, deleting: _,
+  strategies, onOpenStrategy,
 }: WatchlistTableProps) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -196,6 +219,8 @@ export default function WatchlistTable({
                         onToggle={onToggle}
                         onEdit={onEdit}
                         onConfirm={setConfirmId}
+                        strategy={strategies?.[item.stockCode]}
+                        onOpenStrategy={onOpenStrategy}
                       />
                       {isExpanded && (
                         <StockExpandPanel

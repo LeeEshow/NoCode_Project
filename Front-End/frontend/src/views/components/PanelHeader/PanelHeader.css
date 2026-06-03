@@ -83,13 +83,14 @@
 .panel-header__exposure-tooltip {
   font-size: var(--text-sm);
   max-width: 260px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: #232b36;
+  border: 1px solid var(--border-hi);
   border-radius: var(--radius-sm);
   padding: 7px 12px;
   color: var(--text);
   line-height: 1.6;
   z-index: 9999;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
 }
 
 
@@ -137,7 +138,7 @@
 
 /* ── ph-stat 次要數值 Tooltip（Radix Portal，不受 overflow 裁切）── */
 .ph-stat__sub-tooltip {
-  background: var(--surface);
+  background: #232b36;
   border: 1px solid var(--border-hi);
   border-radius: var(--radius-sm);
   padding: 3px 10px;
@@ -146,5 +147,5 @@
   font-weight: 600;
   white-space: nowrap;
   z-index: 9999;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
 }

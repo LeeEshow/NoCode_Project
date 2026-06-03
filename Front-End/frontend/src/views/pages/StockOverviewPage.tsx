@@ -18,11 +18,13 @@ import { useRebalanceRulesViewModel } from '../../viewmodels/useRebalanceRulesVi
 import { useRebalanceSnapshotViewModel } from '../../viewmodels/useRebalanceSnapshotViewModel';
 import { useDownsideRiskViewModel } from '../../viewmodels/useDownsideRiskViewModel';
 import { useScenarioViewModel }    from '../../viewmodels/useScenarioViewModel';
+import { useTradingStrategyViewModel } from '../../viewmodels/useTradingStrategyViewModel';
 import HoldingsTable        from './stock/HoldingsTable';
 import AddTransactionModal  from './stock/AddTransactionModal';
 import AddHoldingModal      from './stock/AddHoldingModal';
 import WatchlistTable       from './stock/WatchlistTable';
 import WatchlistModal       from './stock/WatchlistModal';
+import TradingStrategyModal from './stock/TradingStrategyModal';
 import RiskPanel from './stock/RiskPanel';
 import { toast } from '../components/Toast/toastStore';
 import Icon from '../components/Icon';
@@ -63,14 +65,14 @@ function computeQuoteSummary(
 }
 
 const TOOLTIP_STYLE: React.CSSProperties = {
-  background: 'var(--surface)',
+  background: '#232b36',
   border: '1px solid var(--border-hi)',
   borderRadius: 'var(--radius-sm)',
   padding: '6px 10px',
   fontSize: 'var(--text-sm)',
   color: 'var(--muted)',
   zIndex: 9999,
-  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+  boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
   lineHeight: 1.7,
   whiteSpace: 'nowrap',
 };
@@ -163,6 +165,7 @@ export default function StockOverviewPage() {
   const rulesVm    = useRebalanceRulesViewModel();
   const snapshotVm    = useRebalanceSnapshotViewModel();
   const downsideRisk  = useDownsideRiskViewModel();
+  const strategyVm    = useTradingStrategyViewModel();
 
   /* 風險/再平衡純計算（CLAUDE.md 組裝順序）*/
   const volatilityFactor    = useMemo(
@@ -202,6 +205,9 @@ export default function StockOverviewPage() {
   const [addHoldingOpen, setAddHoldingOpen] = useState(false);
   const [wlModalOpen,   setWlModalOpen]   = useState(false);
   const [wlEditItem,    setWlEditItem]    = useState<WatchlistItemDTO | null>(null);
+  const [strategyModal, setStrategyModal] = useState<{
+    open: boolean; stockCode: string; stockName: string;
+  }>({ open: false, stockCode: '', stockName: '' });
 
   /* 關注清單 CRUD */
   const handleWlSubmit = useCallback(async (payload: CreateWatchlistPayload, id?: string) => {
@@ -230,14 +236,21 @@ export default function StockOverviewPage() {
     setAddTxTarget({ code, name });
   }, []);
 
+  const handleOpenStrategy = useCallback((code: string) => {
+    const holdingName  = holdingsRef.current.items.find(h => h.stockCode === code)?.stockName ?? '';
+    const watchlistName = watchlistRef.current.items.find(i => i.stockCode === code)?.stockName ?? '';
+    setStrategyModal({ open: true, stockCode: code, stockName: holdingName || watchlistName });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleWlEdit = useCallback((item: WatchlistItemDTO) => {
     setWlEditItem(item);
     setWlModalOpen(true);
   }, []);
 
-  /* 初始載入 rules 與 correlationMatrix（自身 viewmodel 不自動載入）*/
+  /* 初始載入 rules、correlationMatrix、交易策略（自身 viewmodel 不自動載入）*/
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { rulesVm.loadRules(); tagVm.loadCorrelationMatrix(); }, []);
+  useEffect(() => { rulesVm.loadRules(); tagVm.loadCorrelationMatrix(); strategyVm.load(); }, []);
 
   /* 計算再平衡並儲存快照 */
   const handleTriggerRebalance = useCallback(async () => {
@@ -346,11 +359,11 @@ export default function StockOverviewPage() {
               <Tooltip.Content
                 className="ph-stat__sub-tooltip"
                 style={{ color: totalUnrealizedProfit >= 0 ? 'var(--up)' : 'var(--down)' }}
-                sideOffset={6}
+                sideOffset={-8}
                 side="bottom"
               >
                 {totalUnrealizedProfit >= 0 ? '+' : ''}{fmt(totalUnrealizedProfit)}
-                <Tooltip.Arrow style={{ fill: 'var(--border-hi)' }} />
+                <Tooltip.Arrow style={{ fill: '#232b36' }} />
               </Tooltip.Content>
             </Tooltip.Portal>
           </Tooltip.Root>
@@ -373,11 +386,11 @@ export default function StockOverviewPage() {
               <Tooltip.Content
                 className="ph-stat__sub-tooltip"
                 style={{ color: totalDailyAmt > 0 ? 'var(--up)' : totalDailyAmt < 0 ? 'var(--down)' : 'var(--text)' }}
-                sideOffset={6}
+                sideOffset={-8}
                 side="bottom"
               >
                 {totalDailyAmt > 0 ? '+' : ''}{fmt(totalDailyAmt)}
-                <Tooltip.Arrow style={{ fill: 'var(--border-hi)' }} />
+                <Tooltip.Arrow style={{ fill: '#232b36' }} />
               </Tooltip.Content>
             </Tooltip.Portal>
           </Tooltip.Root>
@@ -406,11 +419,11 @@ export default function StockOverviewPage() {
                 <Tooltip.Content
                   className="ph-stat__sub-tooltip"
                   style={{ color: currentYearReturnValue >= 0 ? 'var(--up)' : 'var(--down)' }}
-                  sideOffset={6}
+                  sideOffset={-8}
                   side="bottom"
                 >
                   {currentYearReturnValue >= 0 ? '+' : ''}{fmt(currentYearReturnValue)}
-                  <Tooltip.Arrow style={{ fill: 'var(--border-hi)' }} />
+                  <Tooltip.Arrow style={{ fill: '#232b36' }} />
                 </Tooltip.Content>
               </Tooltip.Portal>
             )}
@@ -532,6 +545,8 @@ export default function StockOverviewPage() {
                   concentrationLimit={rulesVm.rules.concentrationLimit}
                   rebalanceSuggestions={rebalanceSuggestions}
                   rebalanceTotalAsset={rebalance.totalAsset}
+                  strategies={strategyVm.strategies}
+                  onOpenStrategy={handleOpenStrategy}
                 />
               </>
             )
@@ -579,6 +594,8 @@ export default function StockOverviewPage() {
                   onDelete={handleWlDelete}
                   onReorder={watchlist.reorder}
                   deleting={watchlist.saving}
+                  strategies={strategyVm.strategies}
+                  onOpenStrategy={handleOpenStrategy}
                 />
               </>
             )
@@ -613,6 +630,17 @@ export default function StockOverviewPage() {
         saving={watchlist.saving}
         onClose={() => { setWlModalOpen(false); setWlEditItem(null); }}
         onSubmit={handleWlSubmit}
+      />
+
+      {/* F01：AI 交易策略 */}
+      <TradingStrategyModal
+        open={strategyModal.open}
+        stockCode={strategyModal.stockCode}
+        stockName={strategyModal.stockName}
+        strategy={strategyVm.strategies[strategyModal.stockCode] ?? null}
+        currentPrice={holdings.items.find(h => h.stockCode === strategyModal.stockCode)?.currentPrice}
+        onDismiss={() => strategyVm.dismiss(strategyModal.stockCode)}
+        onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
       />
     </div>
   );

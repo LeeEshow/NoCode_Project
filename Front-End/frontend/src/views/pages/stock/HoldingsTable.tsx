@@ -13,10 +13,11 @@ import { CSS } from '@dnd-kit/utilities';
 import SparkLine from '../../components/Charts/SparkLine';
 import StockExpandPanel from '../../components/StockExpandPanel';
 import Icon from '../../components/Icon';
+import { computeStrategyStatus } from '../../../utils/tradingStrategy';
 import type {
   HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO,
   TagDTO, AddHoldingTagPayload, UpdateHoldingTagPayload,
-  OverlappingTagGroup, RebalanceSuggestion,
+  OverlappingTagGroup, RebalanceSuggestion, TradingStrategyDTO,
 } from '../../../types';
 
 function fmt(n: number, decimals = 0) {
@@ -39,7 +40,7 @@ function ValTooltip({ label, value, color, children }: {
         <Tooltip.Content
           sideOffset={6}
           style={{
-            background: 'var(--surface)',
+            background: '#232b36',
             border: '1px solid var(--border-hi)',
             borderRadius: 'var(--radius-sm)',
             padding: '4px 10px',
@@ -47,7 +48,7 @@ function ValTooltip({ label, value, color, children }: {
             fontFamily: 'var(--font-mono)',
             color: color ?? 'var(--text-value)',
             zIndex: 9999,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
           }}
         >
           <span style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginRight: 6, fontFamily: 'var(--font-sans)' }}>
@@ -105,16 +106,23 @@ function SuggestionCell({ s }: { s: RebalanceSuggestion | undefined }) {
 
 /* ── 主列（可拖拉）── */
 const HoldingRow = memo(function HoldingRow({
-  h, sparkline, isExpanded, onToggle, suggestion,
+  h, sparkline, isExpanded, onToggle, suggestion, strategy, onOpenStrategy,
 }: {
-  h:           HoldingDTO;
-  sparkline:   number[];
-  isExpanded:  boolean;
-  onToggle:    (code: string) => void;
-  suggestion?: RebalanceSuggestion;
+  h:               HoldingDTO;
+  sparkline:       number[];
+  isExpanded:      boolean;
+  onToggle:        (code: string) => void;
+  suggestion?:     RebalanceSuggestion;
+  strategy?:       TradingStrategyDTO;
+  onOpenStrategy?: (stockCode: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: h.stockCode });
+
+  const showStrategy = strategy != null && !strategy.dismissed;
+  const strategyTriggered = showStrategy
+    ? computeStrategyStatus(strategy, h.currentPrice) === 'triggered'
+    : false;
 
   const cls   = h.changePct === 0 ? 'txt-flat' : (h.isUp ? 'txt-up' : 'txt-down');
   const arrow = h.changePct === 0 ? '—' : (h.isUp ? '▲' : '▼');
@@ -208,7 +216,20 @@ const HoldingRow = memo(function HoldingRow({
         }
       </td>
       <td className="center">
-        <SuggestionCell s={suggestion} />
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+          <SuggestionCell s={suggestion} />
+          {showStrategy && (
+            <button
+              className="btn-icon"
+              aria-label={`查看 ${h.stockName} AI 交易策略`}
+              onClick={e => { e.stopPropagation(); onOpenStrategy?.(h.stockCode); }}
+              title="AI 交易策略"
+              style={{ color: strategyTriggered ? 'var(--up)' : 'var(--accent)', flexShrink: 0 }}
+            >
+              <Icon name="tips_and_updates" size={16} />
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -236,6 +257,9 @@ export interface HoldingsTableProps {
   /* Phase 3 */
   rebalanceSuggestions?: Record<string, RebalanceSuggestion>;
   rebalanceTotalAsset?:  number;
+  /* F01 */
+  strategies?:           Record<string, TradingStrategyDTO>;
+  onOpenStrategy?:       (stockCode: string) => void;
 }
 
 export default function HoldingsTable({
@@ -243,7 +267,7 @@ export default function HoldingsTable({
   expandedCode, onToggle, onExpandLoad, onAddTx, onChanged, onReorder,
   allTags, onAddHoldingTag, onUpdateHoldingTag, onRemoveHoldingTag,
   overlappingGroups, concentrationLimit,
-  rebalanceSuggestions,
+  rebalanceSuggestions, strategies, onOpenStrategy,
 }: HoldingsTableProps) {
   useEffect(() => {
     if (expandedCode) onExpandLoad(expandedCode);
@@ -294,6 +318,8 @@ export default function HoldingsTable({
                     isExpanded={isExpanded}
                     onToggle={onToggle}
                     suggestion={rebalanceSuggestions?.[h.stockCode]}
+                    strategy={strategies?.[h.stockCode]}
+                    onOpenStrategy={onOpenStrategy}
                   />
                   {isExpanded && (
                     <StockExpandPanel

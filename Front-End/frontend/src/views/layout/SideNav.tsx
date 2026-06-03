@@ -81,11 +81,11 @@ export default function SideNav({ expanded, onToggle, onSettingsOpen }: SideNavP
 
       {/* 主要導覽 */}
       <div className="sidenav__body">
-        <NavItem to="/"       icon={<Icon name="show_chart"  size={24} />} label="台股總覽" expanded={expanded} />
+        <NavItem to="/"       icon={<Icon name="trending_up" size={24} />} label="台股總覽" expanded={expanded} />
         <NavItem to="/assets" icon={<Icon name="account_balance_wallet" size={24} />} label="外幣資產" expanded={expanded} />
 
         <NavDivider expanded={expanded} label={expanded ? '資產規劃' : undefined} />
-        <NavItem to="/plan"   icon={<Icon name="trending_up" size={24} />} label="投報計畫" expanded={expanded} />
+        <NavItem to="/plan"   icon={<Icon name="savings"     size={24} />} label="投報計畫" expanded={expanded} />
         <NavItem to="/report" icon={<Icon name="analytics"   size={24} />} label="績效報告" expanded={expanded} />
 
         <NavDivider expanded={expanded} />

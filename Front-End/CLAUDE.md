@@ -86,6 +86,7 @@ src/
 | `useDownsideRiskViewModel` | 下行風險：MDD / VaR-CVaR（需手動呼叫 `.fetch()`；`StockOverviewPage` 用） |
 | `useScenarioViewModel` | 情境分析：投資組合 Beta / 壓力測試（需手動呼叫 `.fetch()`；`StockOverviewPage` 用） |
 | `useSystemDiagnosticsViewModel` | 系統診斷：報價/持倉/指數測試、Shioaji 重新初始化輪詢（`SettingsModal` 用） |
+| `useTradingStrategyViewModel` | AI 交易策略載入 / dismiss（樂觀更新）/ remove；`strategies` 以 `Record<stockCode, DTO>` 快取，掛載時 `load()` 一次；API 失敗靜默（非核心功能） |
 | `useRiskViewModel` | **純計算**：riskTotal、tagStats 偏差、重疊群組 |
 | `useRebalanceViewModel` | **純計算**：volatilityFactor、dynamicThreshold、再平衡建議 |
 
@@ -180,6 +181,7 @@ useEffect(() => {
 - **FX 曝險**：`utils/fxExposure.ts` 的 `computeFxExposure(items, liveStockValue, cashBalance) → FxExposureResult` 計算各幣別曝險金額、占總資產比重（%）與 ±1% 匯率衝擊（NT$）；`AssetsPage` 在 `useMemo` 內呼叫。
 - **債券存續期間**：`utils/bondDuration.ts` 的 `computeBondSensitivity(items)` 計算加權存續期間（年）與升/降息 1% 估算損益；`AssetsPage` 使用，僅含 `assetType === 'bond'` 的項目。
 - **情境分析**：`utils/portfolioBeta.ts` 的 `computePortfolioBeta(snapshots, kbars)` 計算投資組合 β（以加權指數日K為市場基準）；`utils/stressTest.ts` 的 `computeStressScenarios(tagStats, totalAssetValue)` 計算 Tag 集中度壓力情境。兩者由 `useScenarioViewModel` 封裝，`StockOverviewPage` 透過 `onScenarioTabOpen` prop 觸發 fetch。
+- **AI 交易策略狀態**：`utils/tradingStrategy.ts` 的 `computeStrategyStatus(s, currentPrice) → StrategyStatus` 純函式，依 `dismissed`、`expiresAt`、`tradeType` 與現價判斷 `active / triggered / expired / dismissed`；`HoldingsTable`、`WatchlistTable`、`useTradingStrategyViewModel` 共同引用。
 
 ### 頁面切換動畫（ECGLoader + Overlay）
 
@@ -275,8 +277,9 @@ export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
 | 新增 | `add` |
 | 警告 / 偏差 | `warning` |
 | 提醒時程 | `schedule` |
-| 系統建議 | `tips_and_updates` |
+| 系統建議 / AI 策略 | `tips_and_updates` |
 | 跌幅趨勢 | `trending_down` |
+| 漲幅趨勢 / 台股總覽 SideNav | `trending_up` |
 | 執行 / 播放 | `play_arrow` |
 | 重新整理 | `sync` |
 | 展開（收折中） | `expand_more` |
@@ -285,6 +288,8 @@ export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
 | 配置正常 | `check` |
 | 超出上限 | `close` |
 | 交易區（向上） | `north` |
+| 曝險比 Badge | `speed` |
+| 投報計畫 SideNav | `savings` |
 
 例外：`▲`/`▼` 作為**股價漲跌**的文字符號（HoldingsTable、WatchlistTable、MarketIndicesRow 等）不需替換；`✓`/`✗` 在純文字模板字串中（非 JSX）不需替換。
 
@@ -338,7 +343,7 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 
 | 元件 | 用途 |
 |------|------|
-| `PanelHeader` | 各頁頂部橫幅；掛載時呼叫 `snapshotStore.load()`；顯示流動資金輸入欄與曝險比徽章（`liveStockValue / (liveStockValue + cashBalance)`），顏色由 `snapshotStore.marketStateAuto` 推導的門檻判斷，VIX 資訊顯示於 Tooltip。左側 `panel-header__left` 支援**橫向捲動 + 滑鼠拖拉**（`overflow-x: auto`，scrollbar 隱藏，mousedown/mousemove 拖拉邏輯在 `PanelHeader.tsx`）；右側 `panel-header__right`（流動資金 + 曝險比）`flex-shrink: 0` 永遠可見 |
+| `PanelHeader` | 各頁頂部橫幅；掛載時呼叫 `snapshotStore.load()`；顯示流動資金輸入欄與曝險比徽章（`liveStockValue / (liveStockValue + cashBalance)`），顏色由 `snapshotStore.marketStateAuto` 推導的門檻判斷，VIX 資訊顯示於 Tooltip。流動資金欄無文字標籤，以 `placeholder="流動部位"` + `aria-label="流動部位"` 替代。左側 `panel-header__left` 支援**橫向捲動 + 滑鼠拖拉**（`overflow-x: auto`，scrollbar 隱藏，mousedown/mousemove 拖拉邏輯在 `PanelHeader.tsx`）；右側 `panel-header__right`（流動資金 + 曝險比）`flex-shrink: 0` 永遠可見 |
 | `ECGLoader` | 頁面切換心電圖動畫，位於 `views/components/ECGLoader/`，由 `MainLayout` 掛載 |
 | `StockExpandPanel` | 持股 / 關注清單展開列，含 K線 / 法人基本面 / 交易紀錄 / 標籤設定 四個 Tab |
 | `Modal` | Radix Dialog 封裝（sm/md/lg，ESC 關閉，backdrop blur 動畫） |
@@ -353,6 +358,7 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 | `RiskPanel` | 風險再平衡模組（可收折），使用 Radix Slider / Select，設定區採 2 欄 CSS Grid |
 | `DataTable` | 通用排序 / 搜尋表格（`views/components/DataTable/`）；props：`columns / data / rowKey / onRowClick / searchKeys / headerActions`；中文排序以 `'zh-TW'` locale |
 | `StatusBadge` | 狀態徽章；`variant: 'up' \| 'down' \| 'flat' \| 'accent' \| 'muted'`；class `ft-badge ft-badge--{variant}` |
+| `TradingStrategyModal` | AI 交易策略詳情（`views/pages/stock/`）；size="sm"；`strategy=null` 時顯示空狀態；「忽略」按鈕呼叫 `onDismiss()` 後立即 `onClose()`（樂觀更新已在 ViewModel 完成） |
 | `SummaryCard` | 數值卡片；props：`label / value / sub / valueClass`；class `sc-card ft-panel` |
 
 **ph-stat 設計規則**（PanelHeader 左側統計項目）：
@@ -362,6 +368,8 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 - 次要數值（hover 顯示）**必須用 Radix Tooltip Portal**（`.ph-stat__sub-tooltip` class），不得用 `position: absolute` 的 CSS-only 方式（會被 overflow 容器裁切）
 - `ph-stat` 作為 `Tooltip.Trigger asChild` 的子元素時，需加 `tabIndex={0}`（`<div>` 原生不可聚焦，Radix 無法自動處理鍵盤觸發）
 - `ph-stat::after` 偽元素產生右側垂直分隔線，`ph-stat:last-child::after` 自動隱藏
+- **ph-stat Tooltip 定位**：`.ph-stat` 高度 52px、數值位於約第 38px，必須用 `sideOffset={-8} side="bottom"` 讓 tooltip 緊貼數值底部；若用正值 offset 會造成 tooltip 飄離 header 過遠。`Tooltip.Arrow` 填色統一為 `#232b36`（與 tooltip 背景一致）
+- **Tooltip 背景**：所有 PanelHeader 相關 tooltip（`.ph-stat__sub-tooltip`、`.panel-header__exposure-tooltip`）背景固定為 `#232b36`，禁止使用 `var(--surface)` 或 `var(--panel)`（與深色 header 對比不足）
 
 **PlanParamRow 拖拉規則**（`views/pages/plan/PlanParamRow.tsx`）：
 

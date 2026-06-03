@@ -33,6 +33,12 @@ TOOL_NAMES = {
     # M8 FinMind 直查 tool
     "query_stock_fundamental",
     "query_stock_chip",
+    # M9 Tag 寫入工具
+    "update_tag",
+    "set_asset_tags",
+    # M10 交易策略工具
+    "save_trading_strategy",
+    "get_trading_strategy",
 }
 
 
@@ -512,3 +518,112 @@ async def test_get_stock_fundamental_numeric_types(client):
 async def test_get_stock_fundamental_missing_id_returns_error(client):
     data = _parse(await _call_tool(client, "get_stock_fundamental", {}))
     assert "error" in data
+
+
+# ─── M9：update_tag ───────────────────────────────────────────────────────────
+
+async def test_update_tag_dry_run_preview(client):
+    """dry_run=true 回傳 diff 結構，不寫入 Firestore"""
+    tags = _parse(await _call_tool(client, "get_tags"))
+    if not isinstance(tags, list) or len(tags) == 0:
+        pytest.skip("Firestore 無 Tag 資料")
+
+    tag_id = tags[0].get("id")
+    result = _parse(await _call_tool(client, "update_tag", {
+        "tag_id": tag_id,
+        "base_risk": 0.5,
+        "dry_run": True,
+    }))
+
+    assert result.get("dryRun") is True
+    assert "tagId"   in result
+    assert "tagName" in result
+    assert "changes" in result
+    assert "noChange" in result
+    assert "message" in result
+
+
+async def test_update_tag_dry_run_false_apply(client):
+    """dry_run=false 寫入並重算 dynamicRisk，回傳 applied 結構"""
+    tags = _parse(await _call_tool(client, "get_tags"))
+    if not isinstance(tags, list) or len(tags) == 0:
+        pytest.skip("Firestore 無 Tag 資料")
+
+    tag_id = tags[0].get("id")
+    # concentration_limit 為新欄位，不影響既有業務邏輯
+    result = _parse(await _call_tool(client, "update_tag", {
+        "tag_id": tag_id,
+        "concentration_limit": 0.5,
+        "dry_run": False,
+    }))
+
+    assert result.get("dryRun") is False
+    assert "tagId"   in result
+    assert "tagName" in result
+    assert "applied" in result
+    assert "message" in result
+    assert "dynamicRisk" in result.get("message", "")
+
+
+# ─── M9：set_asset_tags ───────────────────────────────────────────────────────
+
+async def test_set_asset_tags_dry_run_preview(client):
+    """dry_run=true 回傳 diff（added/updated/removed/unchanged），不寫入"""
+    holdings = _parse(await _call_tool(client, "get_holdings"))
+    if not isinstance(holdings, list) or len(holdings) == 0:
+        pytest.skip("Firestore 無持股資料")
+
+    stock_code = holdings[0].get("stockId") or holdings[0].get("id")
+    all_at = _parse(await _call_tool(client, "get_asset_tags"))
+    stock_at = [at for at in all_at if at.get("stockCode") == stock_code]
+
+    if not stock_at:
+        pytest.skip(f"持股 {stock_code} 無 Tag 配置資料")
+    if sum(at.get("weightRatio", 0) for at in stock_at) != 100:
+        pytest.skip(f"持股 {stock_code} Tag 配比總和不為 100，跳過")
+
+    tags_input = [{"tag_name": at["tagName"], "weight_ratio": at["weightRatio"]} for at in stock_at]
+    result = _parse(await _call_tool(client, "set_asset_tags", {
+        "stock_code": stock_code,
+        "tags": tags_input,
+        "dry_run": True,
+    }))
+
+    assert result.get("dryRun") is True
+    assert "stockCode"       in result
+    assert "totalWeightRatio" in result
+    assert result["totalWeightRatio"] == 100
+    diff = result.get("diff", {})
+    assert "added"     in diff
+    assert "updated"   in diff
+    assert "removed"   in diff
+    assert "unchanged" in diff
+
+
+async def test_set_asset_tags_dry_run_false_apply(client):
+    """dry_run=false 以 batch write 原子性套用（idempotent：相同 tags 無副作用）"""
+    holdings = _parse(await _call_tool(client, "get_holdings"))
+    if not isinstance(holdings, list) or len(holdings) == 0:
+        pytest.skip("Firestore 無持股資料")
+
+    stock_code = holdings[0].get("stockId") or holdings[0].get("id")
+    all_at = _parse(await _call_tool(client, "get_asset_tags"))
+    stock_at = [at for at in all_at if at.get("stockCode") == stock_code]
+
+    if not stock_at:
+        pytest.skip(f"持股 {stock_code} 無 Tag 配置資料")
+    if sum(at.get("weightRatio", 0) for at in stock_at) != 100:
+        pytest.skip(f"持股 {stock_code} Tag 配比總和不為 100，跳過")
+
+    tags_input = [{"tag_name": at["tagName"], "weight_ratio": at["weightRatio"]} for at in stock_at]
+    result = _parse(await _call_tool(client, "set_asset_tags", {
+        "stock_code": stock_code,
+        "tags": tags_input,
+        "dry_run": False,
+    }))
+
+    assert result.get("dryRun") is False
+    assert "stockCode" in result
+    assert "diff"      in result
+    assert "tags"      in result
+    assert "message"   in result

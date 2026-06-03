@@ -62,7 +62,14 @@
       "Bash(.venv/Scripts/python.exe -m pytest tests/ -v --tb=short)",
       "Bash(New-Item -ItemType Directory -Force \"D:\\\\Project\\\\NoCode_Project\\\\.vscode\")",
       "Bash(Out-Null)",
-      "Bash(Write-Output \"done\")"
+      "Bash(Write-Output \"done\")",
+      "Bash(npx tsc *)",
+      "Bash(git -C \"D:\\\\Project\\\\NoCode_Project\" status)",
+      "Bash(git -C \"D:\\\\Project\\\\NoCode_Project\" diff)",
+      "Bash(git *)",
+      "Bash(python -c \"import ast, os; files=[]; [files.extend\\([os.path.join\\(r,f\\) for f in fs if f.endswith\\('.py'\\) and '.venv' not in r]\\) for r,ds,fs in os.walk\\('.'\\)]; found=[f for f in files if 'api_switch_call' in open\\(f\\).read\\(\\)]; print\\('\\\\n'.join\\(found\\) if found else 'NONE'\\)\")",
+      "Bash(python -c \"import os; files=[]; [files.extend\\([os.path.join\\(r,f\\) for f in fs if f.endswith\\('.py'\\) and '.venv' not in r]\\) for r,ds,fs in os.walk\\('.'\\)]; found=[f for f in files if 'api_switch_call' in open\\(f,encoding='utf-8'\\).read\\(\\)]; print\\('\\\\n'.join\\(found\\) if found else 'NONE'\\)\")",
+      "Bash(node -e \"const p = require\\('./node_modules/axios/package.json'\\); console.log\\(p.version\\)\")"
     ]
   }
 }

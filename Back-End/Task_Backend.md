@@ -1,6 +1,6 @@
 # 個人理財雲端系統 — 後端開發任務清單
 
-> 版本：7.0（2026-05-26）
+> 版本：8.0（2026-06-03）
 > 參考文件：Back-End\CLAUDE.md
 
 ---
@@ -24,10 +24,10 @@
 
 ---
 
-## 現況（2026-05-29）
+## 現況（2026-06-03）
 
 - **M1–M8 全部完成**：Python FastAPI 後端穩定運作於 Azure App Service
-- **MCP 全部完成**：18 個 Tool + SSE/Streamable HTTP 雙傳輸層
+- **MCP 全部完成**：22 個 Tool + SSE/Streamable HTTP 雙傳輸層
 - **層一、層二優化完成**：MCP fail-closed、Cache LRU、CORS env、Settings 集中、Circuit Breaker 等
 - **FinMind 同步完成**：三大法人 + 基本面資料；`yfinance` 已移除
 - **舊服務清理完成**（2026-05-25）：`Back-End/backend/`（Node.js）、`Back-End/Shioaji_API/` 已移除
@@ -35,6 +35,8 @@
 - **後端阻塞修復（2026-05-29）**：① `asyncio.create_task()` 從 Shioaji 執行緒呼叫（event loop corruption root cause）改為 `run_coroutine_threadsafe`；② quote_service subscribe 改為背景 `ensure_future`，熱路徑不阻塞；③ asyncio default executor 統一換為 `_io_executor`（Azure B1 預設只有 5 workers）；④ `asyncio.get_event_loop()` 全面改為 `get_running_loop()`
 - **Shioaji 前端重新初始化（2026-05-29）**：新增 `POST /api/v1/system/shioaji/reinitialize`（202 立即返回 + 非同步 cleanup→init→warmup）；`get_status()` 新增 `reinitializing` 欄位；前端輪詢 `GET /system/status` → `data.apiSwitch.providers.shioaji.initialized`
 - **清倉後持股殘留修復（2026-06-02）**：`POST /holdings/recalculate` 中，若 `sharesHeld == 0` 改為 `batch.delete(ref)` 刪除 Firestore 文件（原本只更新 `shares_held = 0` 導致殘留）；同步清除對應 `asset_tags` 文件。前端 `useHoldingsViewModel.load()` 加 `.filter(h => h.shares > 0)` 作為防禦性過濾。
+- **M9 MCP Tag 寫入工具完成（2026-06-03）**：新增 `update_tag`（dry_run 兩階段、寫後自動重算 dynamicRisk）、`set_asset_tags`（idempotent PUT、Firestore batch write 原子性）；MCP Tool 總數 18 → 20。
+- **M10 AI 個股交易策略完成（2026-06-03）**：新增 `trading_strategies` Firestore collection（singleton-per-stock）；REST 端點 GET/GET_one/PATCH(dismiss)/DELETE；MCP Tool `save_trading_strategy`（覆寫+dismissed重置）、`get_trading_strategy`；MCP Tool 總數 20 → 22；`pytest tests/` 211/211 PASSED。
 
 ### 報價 Provider 順位
 
@@ -91,4 +93,4 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 
 ## 代辦事項
 
-（目前無待辦）
+（目前無待辦事項）

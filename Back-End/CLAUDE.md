@@ -222,6 +222,7 @@ python-backend/
 | `/api/v1/preferences` | 使用者偏好 |
 | `/api/v1/system` | 系統狀態（apiSwitch + Shioaji）；`POST /shioaji/reinitialize`（202，非同步重連） |
 | `/api/v1/finmind` | FinMind 每日同步（`POST /sync`，收盤後批次寫入基本面 + 三大法人至 Firestore） |
+| `/api/v1/trading-strategies` | AI 交易策略（GET/GET_one/PATCH_dismiss/DELETE；singleton-per-stock） |
 | `/api/v1/mcp/sse` | MCP SSE 長連線（GET，bypass EasyAuth） |
 | `/api/v1/mcp` | MCP Streamable HTTP（POST，bypass EasyAuth，MCP 2025-03-26 推薦） |
 | `/api/v1/mcp/message` | MCP JSON-RPC 2.0 via SSE（POST，bypass EasyAuth，向下相容） |
@@ -275,7 +276,7 @@ ndc_sem   = threading.Semaphore(2)   # NDC 並行限制
 | endpoint 只做 Firestore CRUD，無 `await` 其他 async call | **`def`** | FastAPI 自動丟入 threadpool；Firestore 慢查不阻塞 event loop |
 | endpoint 需要 `await` 其他 async 函式（如 `api_switch_call`、`quote_service.get_quote`） | **`async def`** | 必須保持 async；Firestore 操作改用 `asyncio.to_thread()` 包裝 |
 
-**已確認為 `def` 的 router**：`transactions.py`、`asset_tags.py`、`correlation.py`、`settings.py`、`rebalance.py`、`plans.py`（全部 endpoint 皆為純 Firestore CRUD）
+**已確認為 `def` 的 router**：`transactions.py`、`asset_tags.py`、`correlation.py`、`settings.py`、`rebalance.py`、`plans.py`、`trading_strategies.py`（全部 endpoint 皆為純 Firestore CRUD）
 
 **新增 endpoint 前必須先判斷分類**，不可預設用 `async def`。
 
@@ -391,6 +392,7 @@ api_switch_call(primary, fallback)
 | 類型 | 集合 | Document ID |
 |------|------|-------------|
 | **一般集合** | holdings / transactions / watchlist / foreign_assets / daily_snapshots / tags / asset_tags / rebalance_snapshots | stockId / UUID / 日期（YYYY-MM-DD） |
+| **singleton-per-stock** | trading_strategies | stockCode（每支股票最多一筆，AI 覆寫不堆疊） |
 | **Singleton** | settings / preferences / plan_config / tag_correlation_matrix / rebalance_rules / market_state | `main` / `default` / `main` / `main` / `main` / `main` |
 | **單一 Map 文件** | stock_list | `data` |
 
@@ -409,7 +411,7 @@ API Key：`?key=<MCP_ACCESS_KEY>`；`MCP_ACCESS_KEY` 未設定時跳過驗證（
 
 支援方法：`initialize`、`tools/list`、`tools/call`、`notifications/*`（204 無回應）
 
-**18 個 Tool**（實作於 `services/mcp_service.py`）：
+**22 個 Tool**（實作於 `services/mcp_service.py`）：
 
 | Tool | params | 說明 |
 |------|--------|------|
@@ -431,6 +433,10 @@ API Key：`?key=<MCP_ACCESS_KEY>`；`MCP_ACCESS_KEY` 未設定時跳過驗證（
 | `get_stock_fundamental` | `stock_id` | 個股基本面（Firestore 快取，由 FinMind 每日同步） |
 | `query_stock_fundamental` | `stock_id` | **即時**從 FinMind API 查詢任意個股基本面（不限庫存，非快取） |
 | `query_stock_chip` | `stock_id`, `start_date?`, `limit?` | **即時**從 FinMind API 查詢任意個股三大法人（不限庫存，非快取） |
+| `update_tag` | `tag_id`, `base_risk?`, `target_weight?`, `direction?`, `concentration_limit?`, `dry_run?` | **寫入** Tag 設定（dry_run 兩階段；false 後自動重算 dynamicRisk） |
+| `set_asset_tags` | `stock_code`, `tags[]`, `dry_run?` | **寫入** 持股完整 Tag 配置（idempotent PUT，Firestore batch write 原子性） |
+| `save_trading_strategy` | `stock_code`, `stock_name`, `trade_type`, `trigger_price`, `reference_price`, `confidence`, `timeframe`, `summary`, ... | **寫入** AI 交易策略（singleton 覆寫，dismissed 重置為 false） |
+| `get_trading_strategy` | `stock_code` | 取得個股現有交易策略（無資料時回 `{strategy: null}`） |
 
 回傳格式：`{"content": [{"type": "text", "text": "<camelCase JSON string>"}]}`
 

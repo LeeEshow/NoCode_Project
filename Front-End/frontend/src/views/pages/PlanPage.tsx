@@ -113,7 +113,7 @@ export default function PlanPage() {
                   <Tooltip.Portal>
                     <Tooltip.Content
                       className="panel-header__exposure-tooltip"
-                      sideOffset={6}
+                      sideOffset={-8}
                       side="bottom"
                       style={{ minWidth: 280 }}
                     >
@@ -134,7 +134,7 @@ export default function PlanPage() {
                         value={fmtWan(goal.gapAmount)}
                         sub={`= 實際 − 今日期望`}
                       />
-                      <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                      <Tooltip.Arrow style={{ fill: '#232b36' }} />
                     </Tooltip.Content>
                   </Tooltip.Portal>
                 </Tooltip.Root>
@@ -167,7 +167,7 @@ export default function PlanPage() {
                   <Tooltip.Portal>
                     <Tooltip.Content
                       className="panel-header__exposure-tooltip"
-                      sideOffset={6}
+                      sideOffset={-8}
                       side="bottom"
                       style={{ minWidth: 280 }}
                     >
@@ -185,7 +185,7 @@ export default function PlanPage() {
                         value={`${(goal.rNominal * 100).toFixed(1)}%`}
                         sub="rBase × kRisk"
                       />
-                      <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                      <Tooltip.Arrow style={{ fill: '#232b36' }} />
                     </Tooltip.Content>
                   </Tooltip.Portal>
                 </Tooltip.Root>

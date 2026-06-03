@@ -140,7 +140,6 @@ export default function PanelHeader({
       >{children}</div>
       <div className="panel-header__sep" />
       <div className="panel-header__right">
-        <label className="panel-header__cash-label" htmlFor="panel-cash-input">流動部位</label>
         <input
           id="panel-cash-input"
           className="panel-header__cash-input"
@@ -148,11 +147,12 @@ export default function PanelHeader({
           inputMode="decimal"
           autoComplete="off"
           name="cash-balance"
+          aria-label="流動部位"
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={e => e.key === 'Enter' && commit()}
-          placeholder="0"
+          placeholder="流動部位"
         />
         {primaryRatio !== null && (
           <Tooltip.Provider delayDuration={300}>
@@ -164,20 +164,20 @@ export default function PanelHeader({
                   tabIndex={0}
                   aria-label={`曝險比 ${Math.round(primaryRatio * 100)}%`}
                 >
-                  <Icon name="show_chart" size={14} aria-hidden="true" />
+                  <Icon name="speed" size={14} aria-hidden="true" />
                   {Math.round(primaryRatio * 100)}%
                 </span>
               </Tooltip.Trigger>
               <Tooltip.Portal>
                 <Tooltip.Content
                   className="panel-header__exposure-tooltip"
-                  sideOffset={6}
+                  sideOffset={4}
                   side="bottom"
                 >
                   {exposureTooltip.map((line, i) => (
                     <span key={i} style={{ display: 'block' }}>{line}</span>
                   ))}
-                  <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                  <Tooltip.Arrow style={{ fill: '#232b36' }} />
                 </Tooltip.Content>
               </Tooltip.Portal>
             </Tooltip.Root>
