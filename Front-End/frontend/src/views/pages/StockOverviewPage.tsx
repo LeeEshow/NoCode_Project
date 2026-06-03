@@ -638,7 +638,10 @@ export default function StockOverviewPage() {
         stockCode={strategyModal.stockCode}
         stockName={strategyModal.stockName}
         strategy={strategyVm.strategies[strategyModal.stockCode] ?? null}
-        currentPrice={holdings.items.find(h => h.stockCode === strategyModal.stockCode)?.currentPrice}
+        currentPrice={
+          holdings.items.find(h => h.stockCode === strategyModal.stockCode)?.currentPrice
+          ?? watchlist.items.find(i => i.stockCode === strategyModal.stockCode)?.currentPrice
+        }
         onDismiss={() => strategyVm.dismiss(strategyModal.stockCode)}
         onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
       />
