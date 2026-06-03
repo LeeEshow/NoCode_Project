@@ -93,4 +93,114 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 
 ## 代辦事項
 
-（目前無待辦事項）
+---
+
+## M12 — Cloud Run HTTPS Proxy（解決公司防火牆封鎖 DuckDNS）
+
+### 背景
+
+公司防火牆封鎖 `eshowfintarck.duckdns.org`（DuckDNS 免費動態 DNS 被列為可疑域名）。  
+在 Cloud Run 部署一個輕量 Nginx Proxy，取得 Google 官方 `*.run.app` 子域名（HTTPS），繞過防火牆限制。
+
+**費用**：Cloud Run 免費額度 200 萬次請求 / 月，個人使用不超過。
+
+---
+
+### 架構
+
+```
+公司瀏覽器
+  → https://fintarck-proxy-xxxx-de.a.run.app  （Google 官方域名，幾乎不被封鎖）
+  → Cloud Run Nginx Proxy
+  → http://35.201.176.69:8000（GCE 後端，走 Nginx port 80）
+```
+
+---
+
+### Phase 1：建立 Proxy 檔案
+
+在本地任意目錄建立兩個檔案：
+
+**`nginx.conf`**
+
+```nginx
+server {
+    listen 8080;
+    server_name _;
+
+    location / {
+        proxy_pass http://35.201.176.69;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400;
+    }
+}
+```
+
+> `proxy_pass` 打 GCE 的 port 80（Nginx），不需額外開放防火牆規則。  
+> Cloud Run 固定使用 port **8080**，不可改動。
+
+**`Dockerfile`**
+
+```dockerfile
+FROM nginx:alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 8080
+```
+
+---
+
+### Phase 2：部署到 Cloud Run
+
+```bash
+# 登入並設定專案
+gcloud auth login
+gcloud config set project <your-gcp-project-id>
+
+# 部署（自動 build image、push、deploy）
+gcloud run deploy fintarck-proxy \
+  --source . \
+  --region asia-east1 \
+  --allow-unauthenticated \
+  --port 8080
+```
+
+部署完成後取得 Service URL，格式如：
+```
+https://fintarck-proxy-xxxxxxxxxx-de.a.run.app
+```
+
+---
+
+### Phase 3：驗證
+
+```bash
+curl https://fintarck-proxy-xxxxxxxxxx-de.a.run.app/api/v1/health
+```
+
+---
+
+### Phase 4：更新前端 API URL
+
+`Front-End/frontend/.env.production`：
+
+```env
+VITE_API_BASE_URL=https://fintarck-proxy-xxxxxxxxxx-de.a.run.app/api/v1
+```
+
+推送後 GitHub Actions 自動重新部署前端。
+
+---
+
+### 驗收清單
+
+```
+[ ] Cloud Run Service 部署成功，取得 *.run.app URL
+[ ] curl health check 回傳正常
+[ ] 從公司網路瀏覽器可存取前端並正常打 API
+[ ] .env.production 更新並推送
+[ ] 前端所有頁面功能正常（公司網路內測試）
+```
