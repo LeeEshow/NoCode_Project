@@ -108,7 +108,6 @@ class SyncCircuitBreaker:
 circuit_breaker = CircuitBreaker()   # Shioaji primary（原有）
 yahoo_cb  = SyncCircuitBreaker()     # Yahoo Finance
 twse_cb   = SyncCircuitBreaker()     # TWSE T86
-ndc_cb    = SyncCircuitBreaker()     # NDC 國發會
 
 
 # ─── api_switch_call ──────────────────────────────────────────────────────────

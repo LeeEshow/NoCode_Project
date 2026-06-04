@@ -3,8 +3,8 @@ import time
 import requests
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
-from core.executors import get_executor, yahoo_sem, ndc_sem
-from services.api_switch import yahoo_cb, ndc_cb
+from core.executors import get_executor, yahoo_sem
+from services.api_switch import yahoo_cb
 
 
 def _f(v, default=None):
@@ -374,87 +374,3 @@ def get_full_history(stock_id: str, days: int = 90) -> list[dict]:
         return result[-days:] if len(result) > days else result
     except Exception:
         return []
-
-
-# ─── 出口景氣燈號 ──────────────────────────────────────────────────────────────
-
-def get_export_indicator() -> dict:
-    """取得台灣出口景氣燈號（NDC 國發會），快取 3600s"""
-    cached = cache_get("market:export-indicator")
-    if cached is not None:
-        return cached
-
-    fallback = {"period": "-", "score": None, "light": None, "lightLabel": None}
-
-    try:
-        def _call():
-            with ndc_sem:
-                session = requests.Session()
-                page = session.get(
-                    "https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1",
-                    timeout=15,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "Accept-Language": "zh-TW,zh;q=0.9",
-                    },
-                )
-                import re
-                csrf_m = re.search(r'csrf-token"\s+content="([^"]+)"', page.text)
-                if not csrf_m:
-                    return None
-                csrf = csrf_m.group(1)
-
-                api_res = session.post(
-                    "https://index.ndc.gov.tw/n/json/data/eco/indicators",
-                    timeout=15,
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-CSRF-TOKEN": csrf,
-                        "Referer": "https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1",
-                        "Accept-Language": "zh-TW,zh;q=0.9",
-                    },
-                    json={},
-                )
-                return api_res.json()
-
-        payload = ndc_cb.call(_call)
-        if payload is None:
-            cache_set("market:export-indicator", fallback, 3600)
-            return fallback
-
-        line_obj = payload.get("line", {})
-        sr5 = next((v for v in line_obj.values() if v.get("code") == "SR0005"), None)
-        if not sr5:
-            cache_set("market:export-indicator", fallback, 3600)
-            return fallback
-
-        valid_data = [d for d in sr5.get("data", []) if d.get("y") is not None]
-        if not valid_data:
-            cache_set("market:export-indicator", fallback, 3600)
-            return fallback
-
-        latest = valid_data[-1]
-        raw_x = str(latest["x"])
-        period = f"{raw_x[:4]}-{raw_x[4:6]}" if len(raw_x) == 6 else raw_x
-        score = float(latest["y"]) if latest["y"] is not None else None
-
-        def score_to_light(s: float) -> str:
-            if s >= 38: return "red"
-            if s >= 32: return "yellow-red"
-            if s >= 23: return "green"
-            if s >= 17: return "yellow-blue"
-            return "blue"
-
-        light_label_map = {
-            "red": "紅燈", "yellow-red": "黃紅燈", "green": "綠燈",
-            "yellow-blue": "黃藍燈", "blue": "藍燈",
-        }
-        light = score_to_light(score) if score is not None else None
-        result = {"period": period, "score": score, "light": light,
-                  "lightLabel": light_label_map.get(light) if light else None}
-        cache_set("market:export-indicator", result, 3600)
-        return result
-    except Exception:
-        cache_set("market:export-indicator", fallback, 300)
-        return fallback

@@ -1,9 +1,8 @@
-"""M4-C 驗證：indices/forex-rates/export-indicator 結構"""
+"""M4-C 驗證：indices/forex-rates 結構"""
 from tests.helpers import assert_success, assert_keys, assert_no_snake
 
-INDEX_KEYS  = ["id", "name", "price", "change", "changePercent"]
-FOREX_KEYS  = ["code", "name", "rate"]
-EXPORT_KEYS = ["period", "score", "light", "lightLabel"]
+INDEX_KEYS = ["id", "name", "price", "change", "changePercent"]
+FOREX_KEYS = ["code", "name", "rate"]
 
 INDEX_IDS = {"twii", "futures", "nasdaq", "sp500", "dji", "sox"}
 
@@ -67,16 +66,3 @@ async def test_get_forex_rates_order(client):
     data = assert_success(res)
     codes = [item["code"] for item in data]
     assert codes == ["USD", "JPY", "EUR", "CNY", "HKD", "GBP", "AUD", "SGD"]
-
-
-async def test_get_export_indicator_returns_success(client):
-    res = await client.get("/api/v1/market/export-indicator")
-    data = assert_success(res)
-    assert_keys(data, EXPORT_KEYS)
-    assert_no_snake(data)
-
-
-async def test_get_export_indicator_period_is_string(client):
-    res = await client.get("/api/v1/market/export-indicator")
-    data = assert_success(res)
-    assert isinstance(data["period"], str)

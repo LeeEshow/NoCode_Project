@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from services.yahoo_finance import get_indices, get_forex_rates, get_export_indicator
+from services.yahoo_finance import get_indices, get_forex_rates
 from services.api_switch import shioaji_enabled
 from services.cache import cache_get, cache_set
 from utils.market_hours import is_market_open
@@ -46,12 +46,6 @@ async def forex_rates():
     data = await loop.run_in_executor(None, get_forex_rates)
     return {"success": True, "data": data}
 
-
-@router.get("/export-indicator")
-async def export_indicator():
-    loop = asyncio.get_running_loop()
-    data = await loop.run_in_executor(None, get_export_indicator)
-    return {"success": True, "data": data}
 
 
 # ─── GET /market/index-kbars?start=YYYY-MM-DD&end=YYYY-MM-DD ─────────────────
