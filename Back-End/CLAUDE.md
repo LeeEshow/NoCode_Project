@@ -364,7 +364,7 @@ api_switch_call(primary, fallback)
 | 項目 | 舊版（1.3.x） | 1.5.0 |
 |------|--------------|--------|
 | 個股漲跌欄位 | `tick.price_chg` | `tick.diff_price` |
-| 個股漲跌幅欄位 | `tick.pct_chg`（值已是 %，需 `/100`）| `tick.diff_rate`（同樣需 `/100`）|
+| 個股漲跌幅欄位 | `tick.pct_chg`（單位為 1/100 %，需 `/100`）| `tick.diff_rate`（直接為 %，**不需 `/100`**）|
 | 成交量欄位 | `tick.total_volume` | `tick.vol_sum` |
 | 時間戳欄位 | `tick.datetime`（`datetime` 物件） | `tick.datetime`（7 元素 tuple：`(year, month, day, hour, minute, second, microsecond)`，需用 `datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)` 解開）|
 | TXF 合約迭代 | `for c in api.Contracts.Futures.TXF` 可用 | 拋 `TypeError: argument 'code': 'int' object is not an instance of 'str'`，**禁止 iterate** |

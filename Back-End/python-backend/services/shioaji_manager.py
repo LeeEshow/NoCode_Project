@@ -78,7 +78,7 @@ class ShioajiManager:
             self._stock_cache[tick.code] = {
                 "price":         float(tick.close),
                 "change":        float(tick.diff_price),
-                "changePercent": float(tick.diff_rate) / 100,
+                "changePercent": float(tick.diff_rate),
                 "high":          float(tick.high),
                 "low":           float(tick.low),
                 "volume":        int(tick.vol_sum),
