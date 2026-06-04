@@ -59,6 +59,8 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
         const results = await searchStocks(val);
         setResult(results);
         setShowDrop(results.length > 0);
+        const exact = results.find(r => r.code.toUpperCase() === val.toUpperCase());
+        if (exact) field('stockName', exact.name);
       } catch { /* silent */ }
     }, 300);
   }
