@@ -43,12 +43,6 @@
   color: var(--muted);
 }
 
-.ts-modal__current-price {
-  font-size: var(--text-md);
-  color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
 
 /* ── 進度條容器 ──────────────────────────────────────────────────────────── */
 
@@ -63,7 +57,7 @@
   height: 4px;
   background: var(--border);
   border-radius: 2px;
-  margin: 8px 0 36px;  /* bottom: 留空給標籤 */
+  margin: 0;
 }
 
 /* 填色段（從左到現價） */
@@ -126,40 +120,68 @@
   z-index: 1;
 }
 
-/* ── 標籤列 ──────────────────────────────────────────────────────────────── */
+/* ── 標籤列（上方：止損 + 目標）────────────────────────────────────────── */
 
-.ts-modal__bar-labels {
+.ts-modal__bar-labels-top {
   position: relative;
-  height: 36px;       /* 讓絕對定位標籤有空間 */
+  min-height: 38px;
+  margin-bottom: 6px;
 }
+
+/* ── 標籤列（下方：進場價）──────────────────────────────────────────────── */
+
+.ts-modal__bar-labels-bottom {
+  position: relative;
+  min-height: 50px;
+  margin-top: 6px;
+}
+
+/* ── 共用標籤基底 ────────────────────────────────────────────────────────── */
 
 .ts-modal__label {
   position: absolute;
-  top: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
   font-size: var(--text-md);
 }
 
-/* 左對齊（止損） */
-.ts-modal__label--left {
+/* 止損：靠左底部對齊 */
+.ts-modal__label--stop-abs {
+  bottom: 0;
   left: 0;
   align-items: flex-start;
 }
 
-/* 置中（進場價，以 left% 為錨點） */
-.ts-modal__label--center {
+/* 目標：靠右底部對齊 */
+.ts-modal__label--target-abs {
+  bottom: 0;
+  right: 0;
+  align-items: flex-end;
+}
+
+/* 現價：水平置中於 dotLeft 位置，底部對齊 */
+.ts-modal__label--current-abs {
+  bottom: 0;
   transform: translateX(-50%);
   align-items: center;
   text-align: center;
 }
 
-/* 右對齊（目標） */
-.ts-modal__label--right {
-  left: 100%;
-  transform: translateX(-100%);
-  align-items: flex-end;
+.ts-modal__label--current-abs .ts-modal__label-name {
+  justify-content: center;
+}
+
+/* 進場價：水平置中於 entryPct 位置，垂直置中於底部容器 */
+.ts-modal__label--entry-abs {
+  top: 50%;
+  transform: translate(-50%, -50%);
+  align-items: center;
+  text-align: center;
+}
+
+.ts-modal__label--entry-abs .ts-modal__label-name {
+  justify-content: center;
 }
 
 .ts-modal__label-name {
@@ -174,18 +196,25 @@
   color: var(--dim);
 }
 
-/* ── 可進場 / 不建議進場（有色文字）────────────────────────────────────── */
+/* ── 進場價列（價格 + 建議同行）────────────────────────────────────────── */
 
-.ts-modal__advice--can {
-  font-size: var(--text-md);
-  color: var(--down);
+.ts-modal__entry-price-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   white-space: nowrap;
 }
 
+/* ── 可進場 / 不建議進場（有色文字）────────────────────────────────────── */
+
+.ts-modal__advice--can {
+  font-size: var(--text-sm);
+  color: var(--down);
+}
+
 .ts-modal__advice--no {
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   color: var(--up);
-  white-space: nowrap;
 }
 
 /* ── AI 建議 ─────────────────────────────────────────────────────────────── */

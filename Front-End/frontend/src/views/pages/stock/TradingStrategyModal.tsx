@@ -102,6 +102,30 @@ export default function TradingStrategyModal({
 
     barSection = (
       <div className="ts-modal__bar-wrap">
+        {/* 上方標籤：止損（左）+ 現價（動態）+ 目標（右） */}
+        <div className="ts-modal__bar-labels-top">
+          <div className="ts-modal__label ts-modal__label--stop-abs">
+            <div className="ts-modal__label-name">止損</div>
+            <div className="num-value">${fmtPrice(strategy.stopLossPrice)}</div>
+          </div>
+          {currentPrice > 0 && (
+            <div className="ts-modal__label ts-modal__label--current-abs" style={{ left: `${dotLeft}%` }}>
+              <div className="ts-modal__label-name">現價</div>
+              <div className="num-value">${fmtPrice(currentPrice)}</div>
+            </div>
+          )}
+          <div className="ts-modal__label ts-modal__label--target-abs">
+            {hasTarget ? (
+              <>
+                <div className="ts-modal__label-name">目標</div>
+                <div className="num-value">${fmtPrice(strategy.targetPrice!)}</div>
+              </>
+            ) : (
+              <div className="ts-modal__label-name ts-modal__label-name--dim">持有中 →</div>
+            )}
+          </div>
+        </div>
+
         {/* Rail */}
         <div className="ts-modal__rail">
           <div
@@ -120,37 +144,15 @@ export default function TradingStrategyModal({
           )}
         </div>
 
-        {/* 標籤列 */}
-        <div className="ts-modal__bar-labels">
-          {/* 止損 — 左對齊 */}
-          <div className="ts-modal__label ts-modal__label--left">
-            <div className="ts-modal__label-name">止損</div>
-            <div className="num-value">${fmtPrice(strategy.stopLossPrice)}</div>
-          </div>
-
-          {/* 進場價 — 以 entryPct 為中心 */}
-          <div
-            className="ts-modal__label ts-modal__label--center"
-            style={{ left: `${entryPct}%` }}
-          >
-            <div className="ts-modal__label-name">
-              進場價
+        {/* 下方標籤：進場價（依百分比動態定位） */}
+        <div className="ts-modal__bar-labels-bottom">
+          <div className="ts-modal__label ts-modal__label--entry-abs" style={{ left: `${entryPct}%` }}>
+            <div className="ts-modal__label-name">進場價</div>
+            <div className="ts-modal__entry-price-row">
+              <span className="num-value">${fmtPrice(strategy.triggerPrice)}</span>
               {advice === 'can' && <span className="ts-modal__advice--can">可進場</span>}
-              {advice === 'no'  && <span className="ts-modal__advice--no">不建議進場</span>}
+              {advice === 'no'  && <span className="ts-modal__advice--no">不建議</span>}
             </div>
-            <div className="num-value">${fmtPrice(strategy.triggerPrice)}</div>
-          </div>
-
-          {/* 目標 / 持有中 — 右對齊 */}
-          <div className="ts-modal__label ts-modal__label--right">
-            {hasTarget ? (
-              <>
-                <div className="ts-modal__label-name">目標</div>
-                <div className="num-value">${fmtPrice(strategy.targetPrice!)}</div>
-              </>
-            ) : (
-              <div className="ts-modal__label-name ts-modal__label-name--dim">持有中 →</div>
-            )}
           </div>
         </div>
       </div>
@@ -169,18 +171,13 @@ export default function TradingStrategyModal({
 
       {strategy ? (
         <>
-          {/* 上方列：操作 chip + 週期 chip + 信心 ── 現價 */}
+          {/* 上方列：操作 chip + 週期 chip + 信心 */}
           <div className="ts-modal__bar-top">
             <div className="ts-modal__chips">
               <span className="ts-modal__chip">{TRADE_TYPE_LABEL[strategy.tradeType] ?? strategy.tradeType}</span>
               <span className="ts-modal__chip">{TIMEFRAME_LABEL[strategy.timeframe] ?? strategy.timeframe}</span>
               <span className="ts-modal__meta">信心：{CONFIDENCE_LABEL[strategy.confidence] ?? strategy.confidence}</span>
             </div>
-            {currentPrice > 0 && (
-              <span className="ts-modal__current-price">
-                現價 <span className="num-value">${fmtPrice(currentPrice)}</span>
-              </span>
-            )}
           </div>
 
           {/* 進度條 */}
