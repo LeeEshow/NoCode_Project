@@ -268,7 +268,7 @@ class ShioajiManager:
                     self._stock_cache[sid] = {
                         "price":         float(snap.close),
                         "change":        float(snap.change_price),
-                        "changePercent": float(snap.change_rate) / 100,
+                        "changePercent": float(snap.change_rate),
                         "high":          float(snap.high),
                         "low":           float(snap.low),
                         "volume":        int(snap.total_volume),
