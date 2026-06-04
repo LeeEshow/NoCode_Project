@@ -357,6 +357,41 @@ api_switch_call(primary, fallback)
 
 ### Shioaji Manager（`services/shioaji_manager.py`）
 
+**⚠️ 安裝版本：shioaji 1.5.0**（`requirements.txt` 為 `shioaji>=1.2.0`，實際鎖定於 1.5.0）
+
+#### shioaji 1.5.0 破壞性變更（vs 1.3.x）
+
+| 項目 | 舊版（1.3.x） | 1.5.0 |
+|------|--------------|--------|
+| 個股漲跌欄位 | `tick.price_chg` | `tick.diff_price` |
+| 個股漲跌幅欄位 | `tick.pct_chg`（值已是 %，需 `/100`）| `tick.diff_rate`（同樣需 `/100`）|
+| 成交量欄位 | `tick.total_volume` | `tick.vol_sum` |
+| 時間戳欄位 | `tick.datetime`（`datetime` 物件） | `tick.datetime`（7 元素 tuple：`(year, month, day, hour, minute, second, microsecond)`，需用 `datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)` 解開）|
+| TXF 合約迭代 | `for c in api.Contracts.Futures.TXF` 可用 | 拋 `TypeError: argument 'code': 'int' object is not an instance of 'str'`，**禁止 iterate** |
+
+#### TXF 合約查詢規則（1.5.0）
+
+`Contracts.Futures.TXF` 的 `ContractGroup` 無法 iterate（1.5.0 bug），改用**直接代碼查詢**：
+
+```python
+# 月份代碼：A=1月, B=2月, ..., L=12月；年份取個位數
+# 當月: TXFF6（2026/06）；下月: TXFG6（2026/07）
+contract = api.Contracts.Futures["TXFF6"]
+```
+
+`_get_nearest_txf()` 使用 offset 0（當月）→ offset 1（下月）依序試，任一成功即返回。
+
+#### Tick 時間戳處理
+
+```python
+_TZ_TAIPEI = timezone(timedelta(hours=8))   # 模組級常數
+
+# callback 內
+_ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
+"updatedAt": int(_ts.timestamp())
+"timestamp": _ts.isoformat()   # → "2026-06-04T11:10:00+08:00"（有時區，_is_fresh() 比較準確）
+```
+
 使用 **WebSocket tick 訂閱 + memory cache**，平時個股報價不走 HTTP：
 
 - 啟動時批次訂閱持股 + 關注清單（`warmup_stocks()`），並呼叫一次 `api.snapshots()` 預填 cache（解決 9:20 開盤延遲問題）。

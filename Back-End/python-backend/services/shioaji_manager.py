@@ -2,11 +2,12 @@ import asyncio
 import logging
 import time
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
 _TICK_MAX_AGE_SECONDS = 120  # tick 有效期（秒）
+_TZ_TAIPEI = timezone(timedelta(hours=8))
 
 
 def _is_fresh(cached: dict) -> bool:
@@ -73,15 +74,16 @@ class ShioajiManager:
         @self._api.on_tick_stk_v1()
         def on_stk_tick(exchange: Exchange, tick: TickSTKv1) -> None:
             """個股 tick push → 寫入 memory cache（不佔 thread pool）"""
+            _ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
             self._stock_cache[tick.code] = {
                 "price":         float(tick.close),
-                "change":        float(tick.price_chg),
-                "changePercent": float(tick.pct_chg) / 100,
+                "change":        float(tick.diff_price),
+                "changePercent": float(tick.diff_rate) / 100,
                 "high":          float(tick.high),
                 "low":           float(tick.low),
-                "volume":        int(tick.total_volume),
-                "updatedAt":     int(tick.datetime.timestamp()),
-                "timestamp":     tick.datetime.isoformat(),
+                "volume":        int(tick.vol_sum),
+                "updatedAt":     int(_ts.timestamp()),
+                "timestamp":     _ts.isoformat(),
             }
 
         @self._api.on_tick_fop_v1()
@@ -91,16 +93,17 @@ class ShioajiManager:
             ref = self._txf_reference
             change = round(price - ref, 0) if ref else None
             change_pct = round((price - ref) / ref * 100, 2) if ref else None
+            _ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
             self._futures_cache[tick.code] = {
                 "code":           tick.code,
                 "price":          price,
                 "open":           float(tick.open),
                 "high":           float(tick.high),
                 "low":            float(tick.low),
-                "volume":         tick.total_volume,
+                "volume":         tick.vol_sum,
                 "change":         change,
                 "change_percent": change_pct,
-                "timestamp":      tick.datetime.isoformat(),
+                "timestamp":      _ts.isoformat(),
                 "source":         "tick",
             }
 
@@ -119,19 +122,27 @@ class ShioajiManager:
                     asyncio.run_coroutine_threadsafe(self._resubscribe_startup(), self._loop)
 
     def _get_nearest_txf(self):
-        try:
-            txf_group = self._api.Contracts.Futures.TXF
-            candidates = [
-                c for c in txf_group
-                if hasattr(c, "code") and not str(c.code).startswith("TXFR")
-            ]
-            if not candidates:
-                return None
-            candidates.sort(key=lambda c: str(getattr(c, "delivery_date", "")))
-            return candidates[0]
-        except Exception as e:
-            logger.warning(f"_get_nearest_txf error: {e}")
-            return None
+        """
+        shioaji 1.5.0 的 ContractGroup iteration 會 TypeError，
+        改用月份代碼直接查詢（TXFA6=1月、TXFB6=2月...）。
+        先試當月，換約期最後一週改試下月。
+        """
+        from datetime import date
+        _MONTH = "ABCDEFGHIJKL"
+        today = date.today()
+        for offset in (0, 1):
+            m = today.month - 1 + offset
+            y_str = str(today.year + m // 12)[-1]
+            code = f"TXF{_MONTH[m % 12]}{y_str}"
+            try:
+                c = self._api.Contracts.Futures[code]
+                if c is not None:
+                    logger.debug("_get_nearest_txf found: %s", code)
+                    return c
+            except Exception:
+                continue
+        logger.warning("_get_nearest_txf: no valid TXF contract found")
+        return None
 
     def _subscribe_startup_contracts(self) -> None:
         import shioaji as sj
@@ -346,6 +357,8 @@ class ShioajiManager:
             "reinitializing":   self._reinitializing,
             "subscribedStocks": len(self._subscribed_stocks),
             "cachedStocks":     len(self._stock_cache),
+            "cachedFutures":    len(self._futures_cache),
+            "txfReference":     self._txf_reference,
         }
 
     async def cleanup(self) -> None:

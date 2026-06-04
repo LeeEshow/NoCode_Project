@@ -163,6 +163,8 @@ def get_switch_status() -> dict:
             "reinitializing":   sm.get("reinitializing", False),
             "subscribedStocks": sm.get("subscribedStocks", 0),
             "cachedStocks":     sm.get("cachedStocks", 0),
+            "cachedFutures":    sm.get("cachedFutures", 0),
+            "txfReference":     sm.get("txfReference"),
         })
     except Exception:
         pass
