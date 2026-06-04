@@ -1,0 +1,75 @@
+name: Test NDC 景氣燈號 Scrape
+
+on:
+  workflow_dispatch:  # 純手動觸發，測試用
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape NDC 景氣燈號
+        run: |
+          python3 - <<'EOF'
+          import requests, re, json, sys
+
+          session = requests.Session()
+          headers_browser = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              "Accept-Language": "zh-TW,zh;q=0.9",
+          }
+
+          # Step 1: 取 CSRF token
+          print(">> Step 1: 取 CSRF token...")
+          page = session.get(
+              "https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1",
+              headers=headers_browser,
+              timeout=20,
+          )
+          print(f"   HTTP {page.status_code}")
+          if page.status_code != 200:
+              print("FAIL: 無法取得頁面")
+              sys.exit(1)
+
+          csrf_m = re.search(r'csrf-token"\s+content="([^"]+)"', page.text)
+          if not csrf_m:
+              print("FAIL: 找不到 CSRF token")
+              sys.exit(1)
+          csrf = csrf_m.group(1)
+          print(f"   CSRF: {csrf[:20]}...")
+
+          # Step 2: 取景氣指標資料
+          print(">> Step 2: 取景氣指標資料...")
+          api_res = session.post(
+              "https://index.ndc.gov.tw/n/json/data/eco/indicators",
+              headers={
+                  **headers_browser,
+                  "Content-Type": "application/json",
+                  "X-CSRF-TOKEN": csrf,
+                  "Referer": "https://index.ndc.gov.tw/n/zh_tw/data/eco/indicators_table1",
+              },
+              json={},
+              timeout=20,
+          )
+          print(f"   HTTP {api_res.status_code}")
+          if api_res.status_code != 200:
+              print("FAIL: API 回傳非 200")
+              sys.exit(1)
+
+          payload = api_res.json()
+          line_obj = payload.get("line", {})
+          sr5 = next((v for v in line_obj.values() if v.get("code") == "SR0005"), None)
+          if not sr5:
+              print("FAIL: 找不到 SR0005（景氣對策信號）")
+              sys.exit(1)
+
+          valid_data = [d for d in sr5.get("data", []) if d.get("y") is not None]
+          if not valid_data:
+              print("FAIL: SR0005 無有效資料")
+              sys.exit(1)
+
+          latest = valid_data[-1]
+          print(f"\nSUCCESS: 景氣燈號抓取成功")
+          print(f"   最新期別: {latest.get('x')}")
+          print(f"   分數:     {latest.get('y')}")
+          print(f"   燈號:     {latest.get('light')}")
+          EOF
