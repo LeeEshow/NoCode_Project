@@ -23,16 +23,8 @@ export interface MarketIndexDTO {
   isUp:      boolean;
 }
 
-export interface ExportIndicatorDTO {
-  month:   string;
-  score:   number;
-  light:   'red' | 'yellow-red' | 'green' | 'yellow-blue' | 'blue';
-  label:   string;
-}
-
 export interface MarketDataDTO {
-  indices:         MarketIndexDTO[];
-  exportIndicator: ExportIndicatorDTO | null;
+  indices: MarketIndexDTO[];
 }
 
 /* ── 股票搜尋 ───────────────────────────────────────────────── */

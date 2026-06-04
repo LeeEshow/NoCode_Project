@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import type { ApiResponse, MarketDataDTO, MarketIndexDTO, ExportIndicatorDTO, IndexKBar } from '../types';
+import type { ApiResponse, MarketDataDTO, MarketIndexDTO, IndexKBar } from '../types';
 
 /* 後端 IndexCard 欄位 */
 interface RawIndexCard {
@@ -8,14 +8,6 @@ interface RawIndexCard {
   price:         number | null;
   change:        number | null;
   changePercent: number | null;
-}
-
-/* 後端 ExportIndicator 欄位 */
-interface RawExportIndicator {
-  period:     string;
-  score:      number | null;
-  light:      string | null;
-  lightLabel: string | null;
 }
 
 function toMarketIndex(raw: RawIndexCard): MarketIndexDTO {
@@ -32,15 +24,6 @@ function toMarketIndex(raw: RawIndexCard): MarketIndexDTO {
   };
 }
 
-function toExportIndicator(raw: RawExportIndicator): ExportIndicatorDTO {
-  return {
-    month: raw.period,
-    score: raw.score  ?? 0,
-    light: (raw.light ?? 'green') as ExportIndicatorDTO['light'],
-    label: raw.lightLabel ?? '',
-  };
-}
-
 export async function fetchIndexKbars(start?: string, end?: string): Promise<IndexKBar[]> {
   const params: Record<string, string> = {};
   if (start) params.start = start;
@@ -50,15 +33,6 @@ export async function fetchIndexKbars(start?: string, end?: string): Promise<Ind
 }
 
 export async function fetchMarketData(): Promise<MarketDataDTO> {
-  const [indicesRes, indicatorRes] = await Promise.all([
-    api.get<ApiResponse<RawIndexCard[]>>('/market/indices'),
-    api.get<ApiResponse<RawExportIndicator | null>>('/market/export-indicator').catch(() => null),
-  ]);
-
-  const indices = indicesRes.data.data.map(toMarketIndex);
-
-  const rawIndicator = indicatorRes?.data?.data ?? null;
-  const exportIndicator = rawIndicator ? toExportIndicator(rawIndicator) : null;
-
-  return { indices, exportIndicator };
+  const res = await api.get<ApiResponse<RawIndexCard[]>>('/market/indices');
+  return { indices: res.data.data.map(toMarketIndex) };
 }

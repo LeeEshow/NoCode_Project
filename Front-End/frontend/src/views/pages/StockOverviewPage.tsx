@@ -442,7 +442,6 @@ export default function StockOverviewPage() {
         {/* ── 市場指數列（P2-09）── */}
         <MarketIndicesRow
           indices={market.data?.indices ?? []}
-          exportIndicator={market.data?.exportIndicator ?? null}
           loading={market.loading}
         />
 
