@@ -6,6 +6,7 @@ import { createTransaction } from '../../../models/transactionModel';
 import { fetchTransactions } from '../../../models/transactionModel';
 import { recalculateHoldings } from '../../../models/holdingModel';
 import { calcCostFromTransactions } from '../../../viewmodels/useTransactionsViewModel';
+import { useSnapshotStore } from '../../../stores/snapshotStore';
 import { toast } from '../../components/Toast/toastStore';
 import type { StockSearchResultDTO } from '../../../types';
 
@@ -95,6 +96,13 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
       const txs  = await fetchTransactions(stockCode);
       const calc = calcCostFromTransactions(txs);
       await recalculateHoldings([{ stockCode, ...calc }]);
+
+      /* 連動流動資金：新增持股視同買入，扣除總金額 */
+      const snap = useSnapshotStore.getState();
+      if (snap.loaded) {
+        await snap.update(snap.cashBalance - totalAmount);
+      }
+
       toast.success(`${stockCode} ${stockName} 已新增至庫存`);
       onSuccess();
       onClose();
