@@ -76,7 +76,7 @@ class ShioajiManager:
             self._stock_cache[tick.code] = {
                 "price":         float(tick.close),
                 "change":        float(tick.price_chg),
-                "changePercent": float(tick.pct_chg),
+                "changePercent": float(tick.pct_chg) / 100,
                 "high":          float(tick.high),
                 "low":           float(tick.low),
                 "volume":        int(tick.total_volume),
@@ -252,7 +252,7 @@ class ShioajiManager:
                     self._stock_cache[sid] = {
                         "price":         float(snap.close),
                         "change":        float(snap.change_price),
-                        "changePercent": float(snap.change_rate),
+                        "changePercent": float(snap.change_rate) / 100,
                         "high":          float(snap.high),
                         "low":           float(snap.low),
                         "volume":        int(snap.total_volume),
@@ -300,7 +300,7 @@ class ShioajiManager:
         return {
             "price":         float(snap.close),
             "change":        float(snap.change_price),
-            "changePercent": float(snap.change_rate),
+            "changePercent": float(snap.change_rate) / 100,
             "high":          float(snap.high),
             "low":           float(snap.low),
             "volume":        int(snap.total_volume),

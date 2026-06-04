@@ -1,6 +1,6 @@
 # 個人理財雲端系統
 
-個人投資組合管理平台，整合台股即時報價、風險量化、再平衡決策、外幣資產管理（含匯率/Duration 曝險分析）與長期投報計畫追蹤，部署於 Azure 雲端。
+個人投資組合管理平台，整合台股即時報價、風險量化、再平衡決策、外幣資產管理（含匯率/Duration 曝險分析）與長期投報計畫追蹤，部署於 Google Cloud。
 
 ---
 
@@ -52,18 +52,22 @@
   └─ Azure Static Web Apps（前端，Free）
        ├─ Easy Auth（Microsoft 帳號登入）
        └─ React 19 + TypeScript + Vite
+            └─ API 呼叫 → https://fintarck-proxy-1077248196503.asia-east1.run.app/api/v1
 
-Azure App Service Plan B1（Linux，~$13 USD/月）
-  └─ finance-backend-py → Python FastAPI（API /api/v1/*）
-                          整合 Shioaji WebSocket + Yahoo Finance fallback
-                          MCP Server（SSE + JSON-RPC 2.0）
+Cloud Run `fintarck-proxy`（asia-east1，免費額度）
+  └─ Nginx reverse proxy → GCE backend :8000
+
+GCE e2-small `fintarck-backend`（asia-east1-b，~$13.65 USD/月）
+  └─ Python FastAPI（API /api/v1/*）
+       整合 Shioaji WebSocket + Yahoo Finance fallback
+       MCP Server（Streamable HTTP + SSE，22 Tools）
 
 Firebase Firestore（Spark 免費方案）
 
 GitHub Actions
-  ├─ deploy-python-backend.yml   → 推送 Back-End/python-backend/** 自動部署後端
+  ├─ deploy-python-backend.yml   → 推送 Back-End/python-backend/** SSH 部署至 GCE
   ├─ azure-static-web-apps-*.yml → 推送 Front-End/frontend/** 自動部署前端
-  └─ daily-snapshot.yml          → 每日 14:00（台灣時間）自動快照
+  └─ daily-snapshot.yml          → 每日 14:00（台灣時間）自動快照 + FinMind 同步
 ```
 
 ### 前端（`Front-End/frontend/`）
@@ -94,7 +98,7 @@ GitHub Actions
 
 報價來源切換策略：盤中優先走 Shioaji WebSocket，盤外 fallback Yahoo Finance；Circuit Breaker 自動偵測異常（失敗 3 次 → 冷卻 60 秒）。**未設定 `SJ_API_KEY` 時全程使用 Yahoo Finance（Yahoo-only 模式），無需 Shioaji 帳號。**
 
-另內建 **MCP Server**（`/api/v1/mcp/sse` + `/api/v1/mcp`），提供 18 個 AI Tool 供外部 AI Agent 存取理財資料。
+另內建 **MCP Server**（`/api/v1/mcp`，Streamable HTTP + SSE 雙傳輸），提供 22 個 AI Tool 供外部 AI Agent 存取理財資料。
 
 ---
 
@@ -181,30 +185,31 @@ py -3.14 -m pytest tests/test_m6_mcp.py       # 單模組測試
 |------|------|
 | `FIRESTORE_PROJECT_ID` | Firebase 專案 ID |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Service Account JSON 路徑（本機） |
-| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Service Account JSON（base64，Azure 部署） |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Service Account JSON（base64，GCE / CI 部署用） |
 | `PORT` | 監聽 port（預設 `8000`） |
-| `SKIP_AUTH` | `true` = 跳過 Azure EasyAuth（本機開發用） |
+| `SKIP_AUTH` | `true` = 跳過 EasyAuth 驗證（本機開發用） |
 | `SJ_API_KEY` | 永豐金 API Key（**選填**；未設定則全程使用 Yahoo Finance） |
 | `SJ_SECRET_KEY` | 永豐金 Secret Key（**選填**） |
 | `MCP_ACCESS_KEY` | MCP Server API Key（**選填**；未設定則 MCP 端點不需驗證） |
 
 ---
 
-## 部署（Azure）
+## 部署
 
-完整部署步驟、環境變數設定、CI/CD 設定與常見除錯紀錄詳見 [`Docs/Azure-Deployment.md`](Docs/Azure-Deployment.md)。
+完整部署步驟、環境變數設定、CI/CD 設定與常見除錯紀錄詳見 [`Docs/Cloud-Deployment.md`](Docs/Cloud-Deployment.md)。
 
 | 服務 | 方案 | 月費 |
 |------|------|------|
-| Azure Static Web Apps | Free | $0 |
-| Azure App Service Plan B1 | Linux B1 | ~$13 USD |
+| GCE e2-small（後端） | 隨需付費 | ~$13.65 USD |
+| Cloud Run Proxy | 免費額度 | $0 |
+| Azure Static Web Apps（前端） | Free | $0 |
 | Firebase Firestore | Spark（免費） | $0 |
 
 **CI/CD**：推送至 `main` 分支自動觸發對應 GitHub Actions workflow 部署。
 
 ### Yahoo-only 模式（無永豐金帳號）
 
-不需設定 `SJ_API_KEY` / `SJ_SECRET_KEY`，後端即自動切換為 Yahoo Finance 模式，功能完整可用。詳細步驟見 [`Docs/Azure-Deployment.md`](Docs/Azure-Deployment.md)。
+不需設定 `SJ_API_KEY` / `SJ_SECRET_KEY`，後端即自動切換為 Yahoo Finance 模式，功能完整可用。詳細步驟見 [`Docs/Cloud-Deployment.md`](Docs/Cloud-Deployment.md)。
 
 ---
 
@@ -212,7 +217,7 @@ py -3.14 -m pytest tests/test_m6_mcp.py       # 單模組測試
 
 | 文件 | 說明 |
 |------|------|
-| [`Docs/Azure-Deployment.md`](Docs/Azure-Deployment.md) | Azure 部署完整紀錄（架構、參數、除錯） |
+| [`Docs/Cloud-Deployment.md`](Docs/Cloud-Deployment.md) | 雲端部署完整紀錄（GCE / Cloud Run / Azure SWA 架構、參數、除錯） |
 | [`Docs/REQUIREMENTS.md`](Docs/REQUIREMENTS.md) | 功能規劃與設計決策 |
 | [`Docs/Backend-Node.md`](Docs/Backend-Node.md) | 舊 Node.js 後端架構（歷史存檔，實際服務已移除） |
 | [`Docs/Frontend-React.md`](Docs/Frontend-React.md) | 前端 MVVM 架構設計原則 |

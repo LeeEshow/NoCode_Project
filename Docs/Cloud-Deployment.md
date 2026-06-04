@@ -1,8 +1,8 @@
 # 雲端部署文件
 
-> 最後更新：2026-06-03  
-> 目前架構：Azure Static Web Apps（前端）+ **GCE e2-micro（後端，現役）**  
-> 後端已於 2026-06-03 從 Azure App Service B1 遷移至 Google Compute Engine（M11）。
+> 最後更新：2026-06-04  
+> 目前架構：Azure Static Web Apps（前端）+ Cloud Run Proxy + **GCE e2-micro（後端，現役）**  
+> 後端於 2026-06-03 從 Azure App Service 遷移至 GCE；Cloud Run Proxy 於 2026-06-04 完成部署。
 
 ---
 
@@ -11,9 +11,8 @@
 | 項目 | 狀態 |
 |------|------|
 | **GCE VM `fintarck-backend`（asia-east1-b）** | ✅ 現役主後端 |
-| **Duck DNS `eshowfintarck.duckdns.org` → `35.201.176.69`** | ✅ |
-| **Nginx + Let's Encrypt SSL（HTTPS 443）** | ✅ |
 | **systemd `fastapi.service` 常駐** | ✅ |
+| Duck DNS `eshowfintarck.duckdns.org` | 🗑️ 已移除（Nginx / Certbot 一併卸載） |
 | **Cloud Run `fintarck-proxy`（公司防火牆穿透）** | ✅ 已部署 |
 | **前端 `.env.production` 切換至 Cloud Run URL** | ✅ |
 | **`deploy-python-backend.yml` GCE SSH 部署** | ✅ 已完成 |
@@ -40,11 +39,9 @@ Cloud Run `fintarck-proxy`（asia-east1，免費額度）
 
 GCE e2-micro（asia-east1-b，~$7 USD/月）
   ├─ IP：35.201.176.69（Static External IP）
-  ├─ Domain：eshowfintarck.duckdns.org（Duck DNS 免費，指向上述 IP）
-  ├─ Nginx（443 HTTPS / 80 → redirect）→ proxy_pass → 127.0.0.1:8000
   ├─ port 8000 對外開放（GCE 防火牆 allow-uvicorn-8000）
   └─ systemd fastapi.service → uvicorn main:app --port 8000
-       └─ Python FastAPI 後端（M1–M11 全部功能）
+       └─ Python FastAPI 後端（M1–M12 全部功能）
 
 Firebase Firestore（Spark 免費方案）
   └─ 同 Google 網路，延遲 ~1–5ms（相較 Azure 跨雲 20–50ms 大幅改善）
@@ -71,7 +68,6 @@ GitHub Actions
 |------|-----|
 | 前端（Azure SWA） | `https://gray-bay-05c35e200.7.azurestaticapps.net` |
 | 後端（Cloud Run Proxy） | `https://fintarck-proxy-1077248196503.asia-east1.run.app` |
-| 後端（GCE 直連，家用/非公司） | `https://eshowfintarck.duckdns.org` |
 | 後端 API | `https://fintarck-proxy-1077248196503.asia-east1.run.app/api/v1` |
 | MCP Server | `https://fintarck-proxy-1077248196503.asia-east1.run.app/api/v1/mcp?key=<MCP_ACCESS_KEY>` |
 
@@ -89,7 +85,6 @@ GitHub Actions
 | OS | Ubuntu 22.04 LTS |
 | 外部 IP | `35.201.176.69`（Static） |
 | 內部 IP | `10.140.0.2`（nic0） |
-| Domain | `eshowfintarck.duckdns.org`（Duck DNS） |
 | GCP Project ID | `project-235e3c4b-e334-41b4-847` |
 
 ### 環境變數（`/app/Back-End/python-backend/.env`）
@@ -136,44 +131,10 @@ journalctl -u fastapi -f          # 即時 log
 journalctl -u fastapi -n 100      # 最近 100 行
 ```
 
-### Nginx 設定（`/etc/nginx/sites-available/fastapi`）
-
-```nginx
-server {
-    listen 80;
-    server_name eshowfintarck.duckdns.org;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name eshowfintarck.duckdns.org;
-
-    ssl_certificate /etc/ssl/eshowfintarck/fullchain.pem;
-    ssl_certificate_key /etc/ssl/eshowfintarck/key.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_read_timeout 86400;
-    }
-}
-```
-
-SSL 由 Certbot 自動管理（`certbot --nginx -d eshowfintarck.duckdns.org`）。
-
 ### 健康檢查
 
 ```bash
-# 透過 Cloud Run proxy
-curl https://fintarck-proxy-1077248196503.asia-east1.run.app/health
-
-# 直連 GCE（非公司網路）
-curl https://eshowfintarck.duckdns.org/health
+curl https://fintarck-proxy-1077248196503.asia-east1.run.app/api/v1/health
 ```
 
 ---
@@ -239,7 +200,7 @@ curl https://eshowfintarck.duckdns.org/health
 1. `POST /api/v1/snapshots/record`
 2. `POST /api/v1/finmind/sync`（基本面 + 三大法人）
 
-Backend URL 寫死於 workflow `env` 區塊（`https://eshowfintarck.duckdns.org`），`CRON_SECRET` 仍讀 Secret。
+Backend URL 讀取 `${{ secrets.BACKEND_URL }}`（已設為 Cloud Run Proxy URL），`CRON_SECRET` 讀 Secret。
 
 ---
 
@@ -256,12 +217,10 @@ Backend URL 寫死於 workflow `env` 區塊（`https://eshowfintarck.duckdns.org
 
 Cloud Run 免費額度：**200 萬次請求 / 月**，個人使用不超過。
 
-**GCE 防火牆規則**（已建立）：
+**GCE 防火牆規則**（現役）：
 
 | 規則名稱 | Protocol/Port | 說明 |
 |---------|---------------|------|
-| `default-allow-http` | tcp:80 | Nginx HTTP |
-| `default-allow-https` | tcp:443 | Nginx HTTPS |
 | `default-allow-ssh` | tcp:22 | SSH 管理 |
 | `allow-uvicorn-8000` | tcp:8000 | Cloud Run → uvicorn 直連 |
 
@@ -315,17 +274,11 @@ gcloud compute ssh fintarck-backend --zone=asia-east1-b
 # 查看即時 log
 journalctl -u fastapi -f
 
-# 查看 Nginx 錯誤 log
-sudo tail -f /var/log/nginx/error.log
+# 確認 port 8000 監聽狀態
+sudo ss -tlnp | grep 8000
 
-# 確認 port 監聽狀態
-sudo ss -tlnp | grep -E '80|443|8000'
-
-# 確認 Nginx 設定正確
-sudo nginx -t
-
-# 憑證到期時間
-sudo certbot certificates
+# 健康檢查（本機直連）
+curl http://localhost:8000/api/v1/health
 ```
 
 ---
