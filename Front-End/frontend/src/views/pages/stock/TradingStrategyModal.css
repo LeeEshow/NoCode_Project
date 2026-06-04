@@ -184,6 +184,26 @@
   justify-content: center;
 }
 
+/* ── 進場價列（價格 + 建議同行）────────────────────────────────────────── */
+
+.ts-modal__entry-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.ts-modal__advice--can {
+  font-size: var(--text-sm);
+  color: var(--down);
+}
+
+.ts-modal__advice--no {
+  font-size: var(--text-sm);
+  color: var(--up);
+}
+
 .ts-modal__label-name {
   color: var(--label);
   display: flex;
@@ -196,26 +216,6 @@
   color: var(--dim);
 }
 
-/* ── 進場價列（價格 + 建議同行）────────────────────────────────────────── */
-
-.ts-modal__entry-price-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-/* ── 可進場 / 不建議進場（有色文字）────────────────────────────────────── */
-
-.ts-modal__advice--can {
-  font-size: var(--text-sm);
-  color: var(--down);
-}
-
-.ts-modal__advice--no {
-  font-size: var(--text-sm);
-  color: var(--up);
-}
 
 /* ── AI 建議 ─────────────────────────────────────────────────────────────── */
 

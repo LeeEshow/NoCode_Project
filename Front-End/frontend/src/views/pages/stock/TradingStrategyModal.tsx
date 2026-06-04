@@ -54,15 +54,6 @@ function calcPct(price: number, lo: number, hi: number): number {
   return Math.max(0, Math.min(105, (price - lo) / (hi - lo) * 100));
 }
 
-type EntryAdvice = 'can' | 'no' | 'none';
-
-function getEntryAdvice(current: number, trigger: number): EntryAdvice {
-  if (current <= 0 || trigger <= 0) return 'none';
-  const ratio = (current - trigger) / trigger;
-  if (ratio > 0.03) return 'no';
-  if (ratio >= -0.05) return 'can';
-  return 'none';
-}
 
 export default function TradingStrategyModal({
   open, stockCode, stockName, strategy, currentPrice = 0, onDismiss, onClose,
@@ -97,8 +88,9 @@ export default function TradingStrategyModal({
     const curPct     = currentPrice > 0 ? calcPct(currentPrice, lo, hi) : entryPct;
     const fillPct    = Math.min(curPct, 100);
     const dotLeft    = Math.min(curPct, 103);       // 超過目標時最多顯示到 103%
-    const aboveEntry = currentPrice > strategy.triggerPrice;
-    const advice     = getEntryAdvice(currentPrice, strategy.triggerPrice);
+    const aboveEntry  = currentPrice > strategy.triggerPrice;
+    const canEnter    = currentPrice > 0 && currentPrice <= strategy.triggerPrice;
+    const noEnter     = currentPrice > 0 && currentPrice > strategy.triggerPrice;
 
     barSection = (
       <div className="ts-modal__bar-wrap">
@@ -150,8 +142,8 @@ export default function TradingStrategyModal({
             <div className="ts-modal__label-name">進場價</div>
             <div className="ts-modal__entry-price-row">
               <span className="num-value">${fmtPrice(strategy.triggerPrice)}</span>
-              {advice === 'can' && <span className="ts-modal__advice--can">可進場</span>}
-              {advice === 'no'  && <span className="ts-modal__advice--no">不建議</span>}
+              {canEnter && <span className="ts-modal__advice--can">可進場</span>}
+              {noEnter  && <span className="ts-modal__advice--no">不建議</span>}
             </div>
           </div>
         </div>
