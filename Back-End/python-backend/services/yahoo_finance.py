@@ -52,6 +52,8 @@ def get_all_stocks() -> list[dict]:
 
 def resolve_symbol(stock_id: str) -> str:
     """判斷 TSE/OTC 後綴，回傳 Yahoo Finance 代號"""
+    if stock_id.startswith("^"):
+        return stock_id
     all_stocks = get_all_stocks()
     found = next((s for s in all_stocks if s.get("code") == stock_id), None)
     if found and found.get("market") == "OTC":

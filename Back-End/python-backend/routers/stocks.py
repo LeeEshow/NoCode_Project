@@ -33,8 +33,16 @@ async def search(q: str = Query(default="")):
     loop = asyncio.get_event_loop()
     all_stocks = await loop.run_in_executor(None, get_all_stocks)
 
+    INDEX_ENTRIES = [
+        {"stockId": "^TWII", "name": "加權指數", "market": "INDEX"},
+    ]
+
     keyword = q.lower()
-    results = [
+    index_results = [
+        e for e in INDEX_ENTRIES
+        if e["stockId"].lower().startswith(keyword) or keyword in e["name"].lower()
+    ]
+    stock_results = [
         {
             "stockId": s.get("code", ""),
             "name":    s.get("name", ""),
@@ -43,7 +51,7 @@ async def search(q: str = Query(default="")):
         for s in all_stocks
         if s.get("code", "").lower().startswith(keyword) or keyword in s.get("name", "").lower()
     ]
-    return {"success": True, "data": results[:20]}
+    return {"success": True, "data": (index_results + stock_results)[:20]}
 
 
 # ─── GET /stocks/list/meta ────────────────────────────────────────────────────
