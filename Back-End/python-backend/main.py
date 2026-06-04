@@ -81,11 +81,12 @@ async def lifespan(app: FastAPI):
                     loop.run_in_executor(None, _read_stock_ids),
                     timeout=10,
                 )
-                await asyncio.wait_for(
-                    _sj.warmup_stocks(stock_ids),
-                    timeout=35,
-                )
-                logger.info("Shioaji warmup complete: %d stocks", len(stock_ids))
+                # 注意：warmup_stocks 內的 subscribe_stocks → asyncio.to_thread 在
+                # Python 3.14 環境下 cancel 不可靠（shioaji quote.subscribe 阻塞 ack）。
+                # 改為背景執行，讓 uvicorn 先 yield 開始接受連線，
+                # cache 由 warmup 完成後或後續 tick push 自動填充。
+                asyncio.ensure_future(_sj.warmup_stocks(stock_ids))
+                logger.info("Shioaji warmup started in background (%d stocks)", len(stock_ids))
         except Exception as e:
             logger.warning("Shioaji warmup failed (non-critical): %s", e)
 

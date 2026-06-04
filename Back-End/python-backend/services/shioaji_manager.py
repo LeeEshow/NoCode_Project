@@ -240,7 +240,12 @@ class ShioajiManager:
             return
 
         # 1. 訂閱 WebSocket tick
-        await self.subscribe_stocks(stock_ids)
+        # 注意：quote.subscribe 在 shioaji 1.5.0 / Python 3.14 環境下可能阻塞等 ack，
+        # 用 wait_for 限制最多 15 秒，超時後繼續執行 snapshot 填充 cache。
+        try:
+            await asyncio.wait_for(self.subscribe_stocks(stock_ids), timeout=15)
+        except Exception as e:
+            logger.warning("subscribe_stocks timeout/error (non-critical): %s", e)
 
         # 2. 一次性 HTTP snapshot 填充 cache
         #    啟動時連線池全新，不存在 Azure NAT 殭屍連線問題，風險低
