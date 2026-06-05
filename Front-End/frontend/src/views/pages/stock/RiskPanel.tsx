@@ -419,6 +419,7 @@ export default function RiskPanel({
   const concVal   = Math.round(concentrationLimit * 100);
 
   return (
+    <Tooltip.Provider>
     <div className="ft-panel" style={{ marginBottom: 16 }}>
 
       {/* ── 收折標題列 ── */}
@@ -562,7 +563,6 @@ export default function RiskPanel({
         aria-hidden={!expanded}
       >
         <div className="risk-panel-body__inner">
-          <Tooltip.Provider>
         <div className="tab-panel-body" style={{ padding: '0 16px 16px' }}>
 
             {/* ── Tab 導覽列 ── */}
@@ -1169,7 +1169,7 @@ export default function RiskPanel({
             </div>
 
           </div>
-        </Tooltip.Provider>
+        </div>
         </div>
       </div>
 
@@ -1241,5 +1241,6 @@ export default function RiskPanel({
         </div>
       </Modal>
     </div>
+    </Tooltip.Provider>
   );
 }
