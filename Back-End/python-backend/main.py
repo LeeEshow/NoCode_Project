@@ -93,8 +93,8 @@ async def lifespan(app: FastAPI):
     if _warmup_task is not None and not _warmup_task.done():
         _warmup_task.cancel()
         try:
-            await _warmup_task
-        except (asyncio.CancelledError, Exception):
+            await asyncio.wait_for(_warmup_task, timeout=5)
+        except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
             pass
     try:
         from services.shioaji_manager import shioaji_manager

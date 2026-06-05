@@ -130,16 +130,26 @@ class ShioajiManager:
         from datetime import date
         _MONTH = "ABCDEFGHIJKL"
         today = date.today()
-        today_str = today.strftime("%Y/%m/%d")
         for offset in (0, 1):
             m = today.month - 1 + offset
             y_str = str(today.year + m // 12)[-1]
             code = f"TXF{_MONTH[m % 12]}{y_str}"
             try:
                 c = self._api.Contracts.Futures[code]
-                if c is not None and str(getattr(c, "delivery_date", "9999/99/99")) >= today_str:
-                    logger.debug("_get_nearest_txf found: %s", code)
-                    return c
+                if c is None:
+                    continue
+                raw = getattr(c, "delivery_date", None)
+                if raw is None:
+                    continue
+                # delivery_date 可能是 date 物件或 "YYYY/MM/DD" 字串，統一轉 date 比較
+                if isinstance(raw, date):
+                    delivery = raw
+                else:
+                    delivery = date.fromisoformat(str(raw).replace("/", "-"))
+                if delivery < today:
+                    continue
+                logger.debug("_get_nearest_txf found: %s", code)
+                return c
             except Exception:
                 continue
         logger.warning("_get_nearest_txf: no valid TXF contract found")
@@ -215,9 +225,10 @@ class ShioajiManager:
             except asyncio.TimeoutError:
                 logger.warning("subscribe_stocks shield timeout 15s, waiting thread to commit")
                 await task  # 等 thread 完成，確保 succeeded list 被填入
+        finally:
+            # update 放 finally：外層 wait_for/CancelledError 也能記錄已成功的訂閱
             self._subscribed_stocks.update(succeeded)
             logger.info("Subscribed %d/%d stocks", len(succeeded), len(to_sub))
-        finally:
             for sid in to_sub:
                 self._subscribing_stocks.discard(sid)
 
@@ -393,6 +404,8 @@ class ShioajiManager:
         """取得加權指數（TSE001）日 K，從 Shioaji 1 分鐘 K 棒聚合而來。"""
         def _fetch() -> list[dict]:
             from datetime import datetime, timezone, timedelta
+            if self._api is None:
+                return []
             contract = self._api.Contracts.Indexs["TSE001"]
             kbars = self._api.kbars(contract=contract, start=start, end=end)
             if not kbars or not kbars.ts:

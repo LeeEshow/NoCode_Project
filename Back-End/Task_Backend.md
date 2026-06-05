@@ -102,35 +102,4 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 
 ## 代辦事項
 
-### Code Review 待修清單（2026-06-05，前端 AI review）
-
-#### 🔴 H-1｜`_subscribed_stocks.update()` 被外層 timeout 跳過
-**檔案**：`services/shioaji_manager.py`  
-**問題**：`warmup_stocks` 用 `wait_for(timeout=15)` 包住 `subscribe_stocks`，但 `subscribe_stocks` 內部 shield 也是 15s。兩個 timeout 同時觸發時，外層 CancelledError 在 `await task`（無 timeout）這行打斷執行，導致 `_subscribed_stocks.update(succeeded)` 永遠不被呼叫。成功訂閱的股票不被記錄，下次重跑視為未訂閱，Shioaji 端重複訂閱報錯。  
-**修法**：`warmup_stocks` 的外層 timeout 改為 `30`（> 內層 `15`），或把 `_subscribed_stocks.update(succeeded)` 移進 `finally` 區塊。
-
-#### 🔴 H-2｜`get_index_kbars` 在 shutdown 後存取 `self._api = None`
-**檔案**：`services/shioaji_manager.py`、`routers/market.py`  
-**問題**：`shutdown()` 新增 `self._api = None`，但 `get_index_kbars` 的 `_fetch` closure 直接用 `self._api.Contracts`，不走有 None 防護的 `.api` property。Router 只 catch `asyncio.TimeoutError`，shutdown 競態時 `AttributeError` 變成未處理的 500。  
-**修法**：`_fetch` 第一行加 `if self._api is None: return []`。
-
-#### 🟡 M-1｜`delivery_date` 字串比較假設格式為 `YYYY/MM/DD`
-**檔案**：`services/shioaji_manager.py`（`_get_nearest_txf`）  
-**問題**：`today_str = today.strftime("%Y/%m/%d")` 跟 `str(getattr(c, "delivery_date", ...))` 做字串比較。若 Shioaji 回傳 `datetime.date` 物件，`str()` 產出 `YYYY-MM-DD`（dash），`-`（0x2D）< `/`（0x2F），比較永遠 False，兩個月份合約全被拒絕 → TXF 訂閱靜默消失。  
-**修法**：統一轉成 `datetime.date` 物件後再比較，不依賴字串格式。
-
-#### 🟡 M-2｜`await _warmup_task` 在 shutdown 時無 timeout，可能卡住進程
-**檔案**：`main.py`  
-**問題**：`_warmup_task.cancel()` 後執行 `await _warmup_task` 無 timeout。`subscribe_stocks` 內的 `await task`（shield 後）會等 Shioaji thread 完成，若 broker 網路 I/O 卡住，systemd graceful period 跑完後強制 kill，等同髒關機。  
-**修法**：
-```python
-try:
-    await asyncio.wait_for(_warmup_task, timeout=5)
-except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-    pass
-```
-
-#### 🟢 L-1｜`INDEX_ENTRIES` 每次 request 重建
-**檔案**：`routers/stocks.py`  
-**問題**：`INDEX_ENTRIES = [...]` 定義在 handler 函式內，每次 `/stocks/search` 都重新分配 list。  
-**修法**：移到 module-level 常數。
+（無）
