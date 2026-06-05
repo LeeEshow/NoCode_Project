@@ -1170,7 +1170,6 @@ export default function RiskPanel({
 
           </div>
         </div>
-        </div>
       </div>
 
       {/* ρ 計算結果預覽 Modal */}
