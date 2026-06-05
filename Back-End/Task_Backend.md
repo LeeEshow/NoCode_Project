@@ -95,3 +95,118 @@ py -3.14 -m pytest tests/ -v   # 全套，目標 0 failures
 ---
 
 ## 代辦事項
+
+### [Code Review] Shioaji 設計問題修正（2026-06-04 審查）
+
+> 來源：Claude Code Review（high effort，7 角度審查）
+> 背景：shioaji 1.5.0 遷移 + 啟動卡死修正後的整體審查
+> **`diff_rate / 100` 單位問題已於審查當日修正（見 shioaji_manager.py line 81）**
+
+---
+
+#### 🔴 HIGH — 必須修
+
+**H-1｜`get_cached_futures` 迭代 dict 時 `on_event` 從執行緒 `.clear()` → RuntimeError**
+
+- **位置**：`services/shioaji_manager.py` `get_cached_futures()` 方法
+- **問題**：`for code, data in self._futures_cache.items()` 在主執行緒迭代時，shioaji 背景執行緒可能同時執行 `on_event(event_code=2)` 的 `self._futures_cache.clear()`，觸發 `RuntimeError: dictionary changed size during iteration`，API 回傳 500。
+- **修法**：改為先取快照再迭代
+  ```python
+  def get_cached_futures(self) -> Optional[dict]:
+      for code, data in list(self._futures_cache.items()):  # list() 先拍快照
+          if "TXF" in code and _is_fresh(data):
+              return data
+      return None
+  ```
+
+**H-2｜`asyncio.ensure_future(warmup_stocks)` 背景 Task 在 shutdown 前未取消，warmup thread 對已登出 API 發請求**
+
+- **位置**：`main.py` lifespan + `shioaji_manager.py` `shutdown()`
+- **問題**：`asyncio.ensure_future` 回傳的 Task 未儲存 handle。`lifespan` yield 後若 shutdown 觸發，`shutdown()` 先 logout，warmup 背景 Task 仍在 `_warmup_snap` 內呼叫 `self._api.snapshots()`，對死 session 發請求，thread 被卡住直到 SDK timeout。
+- **修法**：儲存 Task handle，shutdown 前先 cancel
+  ```python
+  # lifespan 中
+  _warmup_task = asyncio.ensure_future(_sj.warmup_stocks(stock_ids))
+
+  yield
+
+  # shutdown 段
+  if _warmup_task and not _warmup_task.done():
+      _warmup_task.cancel()
+      try:
+          await _warmup_task
+      except (asyncio.CancelledError, Exception):
+          pass
+  await shioaji_manager.shutdown()
+  ```
+
+---
+
+#### 🟡 MEDIUM — 應修
+
+**M-1｜`subscribe_stocks` timeout 後已成功訂閱的股票未寫入 `_subscribed_stocks`，斷線重連後遺漏**
+
+- **位置**：`shioaji_manager.py` `subscribe_stocks()` + `warmup_stocks()`
+- **問題**：`asyncio.wait_for(subscribe_stocks, timeout=15)` 超時時 Task 被 cancel，`finally` 清掉 `_subscribing_stocks`，但 `self._subscribed_stocks.update(succeeded)` 永遠不執行。那些 thread 已實際訂閱的股票成了「無主訂閱」，斷線重連時 `_resubscribe_startup` 從 `_subscribed_stocks` 重建清單，會漏掉這些股票。
+- **修法**：用 `asyncio.shield` 保護 thread 完成後的 commit
+  ```python
+  task = asyncio.ensure_future(asyncio.to_thread(_sub_all))
+  try:
+      await asyncio.wait_for(asyncio.shield(task), timeout=15)
+  except asyncio.TimeoutError:
+      logger.warning("subscribe_stocks shield timeout 15s, waiting for thread to commit")
+      await task  # 讓 thread 自行完成（不 cancel），確保 succeeded 能被 update
+  self._subscribed_stocks.update(succeeded)
+  ```
+
+**M-2｜`shutdown()` 不清空 `self._api`，與 `cleanup()` 行為不一致**
+
+- **位置**：`shioaji_manager.py` `shutdown()` vs `cleanup()`
+- **問題**：`cleanup()` 在 reinitialize 流程中會 `self._api = None`，但正常服務關閉走 `shutdown()`，只做 logout 不 null `_api`。如果 warmup 背景 thread 在 logout 後讀 `self._api`，會對死 session 操作。
+- **修法**：`shutdown()` logout 後補 `self._api = None`
+  ```python
+  async def shutdown(self) -> None:
+      if self._api and self._connected:
+          await asyncio.to_thread(self._api.logout)
+          self._connected = False
+          self._api = None   # ← 新增，防止後續 thread 存取死 session
+          logger.info("Shioaji logged out")
+  ```
+
+**M-3｜`asyncio.wait_for` 超時拋 `CancelledError`（`BaseException`），`except Exception` 抓不到，timeout 發生時完全無 log**
+
+- **位置**：`shioaji_manager.py` `warmup_stocks()` line 247
+- **問題**：Python 3.8+ `asyncio.CancelledError` 是 `BaseException` 的子類，不是 `Exception`。`subscribe_stocks` 超時時警告訊息永遠不會印出，難以診斷。
+- **修法**：
+  ```python
+  except (Exception, asyncio.CancelledError) as e:
+      logger.warning("subscribe_stocks timeout/error (non-critical): %s", e)
+  ```
+
+---
+
+#### 🟠 LOW — 可排期
+
+**L-1｜`_get_nearest_txf` 不檢查合約是否已到期，每月第三週三後訂閱到過期合約**
+
+- **位置**：`shioaji_manager.py` `_get_nearest_txf()`
+- **問題**：`c is not None` 只確認物件存在，不看 `delivery_date`。每月 TXF 到期後（第三週三），當月合約物件仍存在 API 中，`_get_nearest_txf` 回傳已到期合約，訂閱後不會有 tick，`_futures_cache` 整日為空。
+- **修法**：加 `delivery_date` 過期判斷
+  ```python
+  from datetime import date as _date
+  today_str = _date.today().isoformat()
+  if c is not None and str(getattr(c, "delivery_date", "9999")) >= today_str:
+      return c
+  ```
+
+**L-2｜`_warmup_snap` 使用 `snap.total_volume`，shioaji 1.5.0 snapshot DTO 欄位名稱未確認**
+
+- **位置**：`shioaji_manager.py` `_warmup_snap()` line 274 + `_snap_to_dict()` line 316
+- **問題**：tick 路徑已改為 `tick.vol_sum`（1.5.0 改名），但 snapshot DTO 的 `total_volume` 欄位是否也改名尚未確認。若已改名，`AttributeError` 被 `except` 吞掉，warmup 靜默填入 0 筆，影響開盤前的 cache 暖身效果。
+- **修法**：實際跑 `api.snapshots()` 並 `print(dir(snap))` 確認欄位名稱，必要時更新兩處。
+
+**L-3｜`Semaphore.locked()` 不是原子操作，並發請求可能超過 3 並行上限（TOCTOU）**
+
+- **位置**：`shioaji_manager.py` `get_stock_snapshot()` line 331
+- **問題**：`if self._snap_single_sem.locked(): return None` 和後續 `async with self._snap_single_sem:` 之間非原子。多個並發請求同時通過 `locked()` 檢查，實際並行可能超過 3。
+- **修法**：移除 `locked()` 提前返回，改為直接進 `wait_for` 讓 semaphore 自然排隊；或加 `asyncio.wait_for` 限時取得。

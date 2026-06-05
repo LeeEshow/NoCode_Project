@@ -65,6 +65,7 @@ async def lifespan(app: FastAPI):
 
     # ── Shioaji 個股暖身（訂閱持股 + 關注清單 tick，並呼叫一次 snapshot 填充 cache）
     from services.api_switch import shioaji_enabled as _sj_enabled
+    _warmup_task = None
     if _sj_enabled():
         try:
             from services.shioaji_manager import shioaji_manager as _sj
@@ -81,11 +82,7 @@ async def lifespan(app: FastAPI):
                     loop.run_in_executor(None, _read_stock_ids),
                     timeout=10,
                 )
-                # 注意：warmup_stocks 內的 subscribe_stocks → asyncio.to_thread 在
-                # Python 3.14 環境下 cancel 不可靠（shioaji quote.subscribe 阻塞 ack）。
-                # 改為背景執行，讓 uvicorn 先 yield 開始接受連線，
-                # cache 由 warmup 完成後或後續 tick push 自動填充。
-                asyncio.ensure_future(_sj.warmup_stocks(stock_ids))
+                _warmup_task = asyncio.ensure_future(_sj.warmup_stocks(stock_ids))
                 logger.info("Shioaji warmup started in background (%d stocks)", len(stock_ids))
         except Exception as e:
             logger.warning("Shioaji warmup failed (non-critical): %s", e)
@@ -93,6 +90,12 @@ async def lifespan(app: FastAPI):
     yield
 
     # ── Shioaji shutdown ──────────────────────────────────────────────────────
+    if _warmup_task is not None and not _warmup_task.done():
+        _warmup_task.cancel()
+        try:
+            await _warmup_task
+        except (asyncio.CancelledError, Exception):
+            pass
     try:
         from services.shioaji_manager import shioaji_manager
         await shioaji_manager.shutdown()

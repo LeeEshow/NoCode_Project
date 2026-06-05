@@ -78,7 +78,7 @@ class ShioajiManager:
             self._stock_cache[tick.code] = {
                 "price":         float(tick.close),
                 "change":        float(tick.diff_price),
-                "changePercent": float(tick.diff_rate),
+                "changePercent": float(tick.diff_rate) / 100,
                 "high":          float(tick.high),
                 "low":           float(tick.low),
                 "volume":        int(tick.vol_sum),
@@ -130,13 +130,14 @@ class ShioajiManager:
         from datetime import date
         _MONTH = "ABCDEFGHIJKL"
         today = date.today()
+        today_str = today.strftime("%Y/%m/%d")
         for offset in (0, 1):
             m = today.month - 1 + offset
             y_str = str(today.year + m // 12)[-1]
             code = f"TXF{_MONTH[m % 12]}{y_str}"
             try:
                 c = self._api.Contracts.Futures[code]
-                if c is not None:
+                if c is not None and str(getattr(c, "delivery_date", "9999/99/99")) >= today_str:
                     logger.debug("_get_nearest_txf found: %s", code)
                     return c
             except Exception:
@@ -208,7 +209,12 @@ class ShioajiManager:
                     except Exception as e:
                         logger.warning("subscribe_stock failed %s: %s", sid, e)
 
-            await asyncio.to_thread(_sub_all)
+            task = asyncio.ensure_future(asyncio.to_thread(_sub_all))
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=15)
+            except asyncio.TimeoutError:
+                logger.warning("subscribe_stocks shield timeout 15s, waiting thread to commit")
+                await task  # 等 thread 完成，確保 succeeded list 被填入
             self._subscribed_stocks.update(succeeded)
             logger.info("Subscribed %d/%d stocks", len(succeeded), len(to_sub))
         finally:
@@ -244,7 +250,7 @@ class ShioajiManager:
         # 用 wait_for 限制最多 15 秒，超時後繼續執行 snapshot 填充 cache。
         try:
             await asyncio.wait_for(self.subscribe_stocks(stock_ids), timeout=15)
-        except Exception as e:
+        except (Exception, asyncio.CancelledError) as e:
             logger.warning("subscribe_stocks timeout/error (non-critical): %s", e)
 
         # 2. 一次性 HTTP snapshot 填充 cache
@@ -289,7 +295,7 @@ class ShioajiManager:
     # ─── 期貨 cache ────────────────────────────────────────────────────────────
 
     def get_cached_futures(self) -> Optional[dict]:
-        for code, data in self._futures_cache.items():
+        for code, data in list(self._futures_cache.items()):  # list() 防止 on_event .clear() 並發
             if "TXF" in code and _is_fresh(data):
                 return data
         return None
@@ -316,7 +322,7 @@ class ShioajiManager:
         return {
             "price":         float(snap.close),
             "change":        float(snap.change_price),
-            "changePercent": float(snap.change_rate) / 100,
+            "changePercent": float(snap.change_rate),
             "high":          float(snap.high),
             "low":           float(snap.low),
             "volume":        int(snap.total_volume),
@@ -327,10 +333,8 @@ class ShioajiManager:
         """
         單股 HTTP snapshot（/system/shioaji-test 診斷端點專用）。
         Option B shield pattern 防止 timeout 後 thread 堆積。
+        Semaphore(3) 自然排隊，不做 locked() 提前返回（TOCTOU）。
         """
-        if self._snap_single_sem.locked():
-            return None
-
         def _snap() -> Optional[dict]:
             try:
                 contract = self._api.Contracts.Stocks[stock_id]
@@ -429,6 +433,7 @@ class ShioajiManager:
         if self._api and self._connected:
             await asyncio.to_thread(self._api.logout)
             self._connected = False
+            self._api = None  # 防止 warmup 背景 thread 在 logout 後存取死 session
             logger.info("Shioaji logged out")
 
 
