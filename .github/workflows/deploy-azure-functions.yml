@@ -31,7 +31,7 @@ jobs:
 
           HTTP_STATUS=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
             -X POST \
-            "https://fintarck-scraper.scm.azurewebsites.net/api/zipdeploy?SCM_DO_BUILD_DURING_DEPLOYMENT=true" \
+            "https://fintarck-scraper-ajdefrb4g8gwdzg2.scm.japaneast-01.azurewebsites.net/api/zipdeploy?SCM_DO_BUILD_DURING_DEPLOYMENT=true" \
             -u "${USERNAME}:${PASSWORD}" \
             -H "Content-Type: application/zip" \
             --data-binary @deploy.zip)
