@@ -29,8 +29,9 @@ jobs:
 
       - name: Deploy to Azure Functions
         run: |
-          az functionapp deployment source config-zip \
+          az functionapp deploy \
             --resource-group finance-app-rg \
             --name fintarck-scraper \
-            --src deploy.zip \
+            --src-path deploy.zip \
+            --type zip \
             --build-remote true
