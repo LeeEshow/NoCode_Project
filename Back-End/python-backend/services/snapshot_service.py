@@ -1,7 +1,7 @@
 """每日快照自動記錄服務（對應 Node.js snapshotsController.record）"""
+import asyncio
 from datetime import datetime, timezone, timedelta
 from google.cloud.firestore_v1.base_query import FieldFilter
-from core.executors import get_executor
 from services.firestore import get_db
 from services.rate_helper import get_live_rate_map
 from services.yahoo_finance import get_quote, _f, _yf_chart
@@ -31,14 +31,19 @@ def _get_vix() -> tuple:
         return None, None
 
 
-def record_snapshot() -> dict:
-    """計算並寫入當日快照（冪等 merge）"""
+async def record_snapshot() -> dict:
+    """計算並寫入當日快照（冪等 merge）
+
+    修正：不再使用 executor 嵌套（Rule D 違規）。
+    所有 Firestore 同步操作透過 asyncio.to_thread() offload，
+    VIX + 各股報價以 asyncio.gather() 並行取得。
+    """
     db = get_db()
     today = _taiwan_date_str()
     current_year = int(today[:4])
 
     # 讀取 holdings
-    holdings_snap = db.collection("holdings").get()
+    holdings_snap = await asyncio.to_thread(lambda: db.collection("holdings").get())
     holdings = []
     for doc in holdings_snap:
         d = doc.to_dict()
@@ -50,59 +55,61 @@ def record_snapshot() -> dict:
         })
     active = [h for h in holdings if h["sharesHeld"] > 0]
 
-    # 讀取 foreign_assets
-    assets_snap = db.collection("foreign_assets").get()
+    # 並行讀取 foreign_assets / 匯率 / 前一年快照 / 最新快照 / planConfig
+    (
+        assets_snap,
+        rate_map,
+        prev_year_snap,
+        latest_snap,
+        plan_doc,
+    ) = await asyncio.gather(
+        asyncio.to_thread(lambda: db.collection("foreign_assets").get()),
+        asyncio.to_thread(get_live_rate_map),
+        asyncio.to_thread(lambda: (
+            db.collection("daily_snapshots")
+            .where(filter=FieldFilter("date", ">=", f"{current_year - 1}-01-01"))
+            .where(filter=FieldFilter("date", "<=", f"{current_year - 1}-12-31"))
+            .order_by("date", direction="DESCENDING")
+            .limit(1)
+            .get()
+        )),
+        asyncio.to_thread(lambda: (
+            db.collection("daily_snapshots")
+            .order_by("date", direction="DESCENDING")
+            .limit(1)
+            .get()
+        )),
+        asyncio.to_thread(lambda: db.collection("plan_config").document("main").get()),
+    )
+
     foreign_assets = [doc.to_dict() for doc in assets_snap]
 
-    # 取得即時匯率
-    rate_map = get_live_rate_map()
-
-    # 取前一年最後快照（execCapital 用）
-    prev_year_snap = (
-        db.collection("daily_snapshots")
-        .where(filter=FieldFilter("date", ">=", f"{current_year - 1}-01-01"))
-        .where(filter=FieldFilter("date", "<=", f"{current_year - 1}-12-31"))
-        .order_by("date", direction="DESCENDING")
-        .limit(1)
-        .get()
-    )
-    prev_data = prev_year_snap[0].to_dict() if prev_year_snap else {}
+    prev_data    = prev_year_snap[0].to_dict() if prev_year_snap else {}
     exec_capital = (
         (prev_data.get("stock_value", 0) or 0)
         + (prev_data.get("forex_value", 0) or 0)
         + (prev_data.get("cash_balance", 0) or 0)
     ) if prev_data else 0
 
-    # 取最近快照繼承 cashBalance
-    latest_snap = (
-        db.collection("daily_snapshots")
-        .order_by("date", direction="DESCENDING")
-        .limit(1)
-        .get()
-    )
     cash_balance = latest_snap[0].to_dict().get("cash_balance", 0) if latest_snap else 0
+    reinvest     = float(plan_doc.to_dict().get("current_year_reinvest", 0)) if plan_doc.exists else 0
 
-    # 取 planConfig.currentYearReinvest
-    plan_doc = db.collection("plan_config").document("main").get()
-    reinvest = float(plan_doc.to_dict().get("current_year_reinvest", 0)) if plan_doc.exists else 0
-
-    # 並行取各股報價 + VIX（使用共用 executor）
+    # 並行取 VIX + 各股報價（asyncio.to_thread，不再嵌套 executor）
     needed_ids = [h["stockId"] for h in active]
+    tasks = [asyncio.to_thread(_get_vix)] + [
+        asyncio.to_thread(get_quote, sid) for sid in needed_ids
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    vix_result          = results[0]
+    vix, market_state_auto = (
+        vix_result if not isinstance(vix_result, Exception) else (None, None)
+    )
+
     quotes: dict[str, dict] = {}
-
-    def fetch_quote(stock_id):
-        return stock_id, get_quote(stock_id)
-
-    executor = get_executor()
-    vix_fut = executor.submit(_get_vix)
-    quote_futures = {executor.submit(fetch_quote, sid): sid for sid in needed_ids}
-    vix, market_state_auto = vix_fut.result()
-    for fut in quote_futures:
-        try:
-            sid, q = fut.result()
-            quotes[sid] = q
-        except Exception:
-            pass
+    for sid, result in zip(needed_ids, results[1:]):
+        if not isinstance(result, Exception):
+            quotes[sid] = result
 
     # 計算 stockValue / unrealizedProfit
     stock_value       = 0.0
@@ -110,8 +117,8 @@ def record_snapshot() -> dict:
     snapshot_holdings = []
 
     for h in active:
-        sid = h["stockId"]
-        q = quotes.get(sid, {})
+        sid           = h["stockId"]
+        q             = quotes.get(sid, {})
         current_price = _f(q.get("price"), 0.0)
         current_value = round(h["sharesHeld"] * current_price)
         upl           = round((current_price - h["avgCost"]) * h["sharesHeld"])
@@ -122,12 +129,12 @@ def record_snapshot() -> dict:
             unrealized_profit += (current_price - h["avgCost"]) * h["sharesHeld"]
 
         snapshot_holdings.append({
-            "stockCode":       sid,
-            "stockName":       stock_name,
-            "shares":          h["sharesHeld"],
-            "costAvg":         h["avgCost"],
-            "currentPrice":    current_price,
-            "currentValue":    current_value,
+            "stockCode":        sid,
+            "stockName":        stock_name,
+            "shares":           h["sharesHeld"],
+            "costAvg":          h["avgCost"],
+            "currentPrice":     current_price,
+            "currentValue":     current_value,
             "unrealizedProfit": upl,
         })
 
@@ -145,7 +152,7 @@ def record_snapshot() -> dict:
     # 寫入快照（merge 冪等）
     from firebase_admin import firestore as fs
     ref = db.collection("daily_snapshots").document(today)
-    ref.set({
+    await asyncio.to_thread(lambda: ref.set({
         "date":              today,
         "exec_capital":      round(exec_capital),
         "reinvest":          round(reinvest),
@@ -158,9 +165,9 @@ def record_snapshot() -> dict:
         "vix":               vix,
         "market_state_auto": market_state_auto,
         "recorded_at":       fs.SERVER_TIMESTAMP,
-    }, merge=True)
+    }, merge=True))
 
-    updated = ref.get().to_dict()
+    updated = await asyncio.to_thread(lambda: ref.get().to_dict())
     return _deserialize_snapshot_dict(today, updated)
 
 
@@ -175,14 +182,14 @@ def _deserialize_snapshot_dict(date_id: str, d: dict) -> dict:
     normalized_holdings = []
     for h in raw_holdings:
         normalized_holdings.append({
-            "stockCode":       h.get("stockCode", ""),
-            "stockName":       h.get("stockName", ""),
+            "stockCode":        h.get("stockCode", ""),
+            "stockName":        h.get("stockName", ""),
             # 相容舊後端的 sharesHeld 欄位
-            "shares":          h.get("shares") if h.get("shares") is not None else h.get("sharesHeld", 0),
-            "costAvg":         h.get("costAvg", 0),
-            "currentPrice":    h.get("currentPrice", 0),
+            "shares":           h.get("shares") if h.get("shares") is not None else h.get("sharesHeld", 0),
+            "costAvg":          h.get("costAvg", 0),
+            "currentPrice":     h.get("currentPrice", 0),
             # 相容舊後端的 stockValue 欄位
-            "currentValue":    h.get("currentValue") if h.get("currentValue") is not None else h.get("stockValue", 0),
+            "currentValue":     h.get("currentValue") if h.get("currentValue") is not None else h.get("stockValue", 0),
             "unrealizedProfit": h.get("unrealizedProfit", 0),
         })
 

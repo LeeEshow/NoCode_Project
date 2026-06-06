@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# 防止多個 /record 請求並發觸發同一快照（asyncio.Lock，process 內唯一）
+_record_lock = asyncio.Lock()
+
 
 def deserialize_snapshot(doc) -> dict:
     return _deserialize_snapshot_dict(doc.id, doc.to_dict())
@@ -21,7 +24,7 @@ def deserialize_snapshot(doc) -> dict:
 # ─── GET /snapshots ───────────────────────────────────────────────────────────
 
 @router.get("")
-async def get_snapshots(year: int | None = Query(default=None)):
+def get_snapshots(year: int | None = Query(default=None)):
     if year is not None and not (2000 <= year <= 2100):
         raise HTTPException(status_code=400, detail="year 參數格式錯誤（例：?year=2025）")
 
@@ -86,8 +89,10 @@ def _bg_sync_watchlist_finmind() -> None:
 
 @router.post("/record")
 async def record(background_tasks: BackgroundTasks):
-    loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, record_snapshot)
+    if _record_lock.locked():
+        raise HTTPException(status_code=409, detail="快照記錄正在進行中，請稍後再試")
+    async with _record_lock:
+        data = await record_snapshot()
     background_tasks.add_task(_bg_recalculate_risk)
     background_tasks.add_task(_bg_sync_watchlist_finmind)
     return {"success": True, "data": data}
@@ -96,7 +101,7 @@ async def record(background_tasks: BackgroundTasks):
 # ─── POST /snapshots ──────────────────────────────────────────────────────────
 
 @router.post("")
-async def create_snapshot(body: dict):
+def create_snapshot(body: dict):
     date = body.get("date")
     if not date or not re.match(r"^\d{4}-\d{2}-\d{2}$", str(date)):
         raise HTTPException(status_code=400, detail="date 為必填欄位，格式 YYYY-MM-DD")
@@ -131,7 +136,7 @@ async def create_snapshot(body: dict):
 # ─── GET /snapshots/{date} ────────────────────────────────────────────────────
 
 @router.get("/{date}")
-async def get_by_date(date: str):
+def get_by_date(date: str):
     db = get_db()
     doc = db.collection("daily_snapshots").document(date).get()
     if not doc.exists:
@@ -142,7 +147,7 @@ async def get_by_date(date: str):
 # ─── PUT /snapshots/{date} ────────────────────────────────────────────────────
 
 @router.put("/{date}")
-async def update_snapshot(date: str, body: dict):
+def update_snapshot(date: str, body: dict):
     cash_balance = body.get("cashBalance")
     note         = body.get("note")
 
