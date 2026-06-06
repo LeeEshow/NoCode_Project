@@ -70,10 +70,9 @@ def find_all_asset_tags(stock_code: str | None = None) -> list[dict]:
 
 @router.get("")
 async def get_all():
-    loop = asyncio.get_event_loop()
     holdings, all_asset_tags = await asyncio.gather(
-        loop.run_in_executor(None, find_all_holdings),
-        loop.run_in_executor(None, find_all_asset_tags),
+        asyncio.to_thread(find_all_holdings),
+        asyncio.to_thread(find_all_asset_tags),
     )
 
     tags_by_stock: dict[str, list] = {}
@@ -107,8 +106,7 @@ async def get_all():
 
 @router.get("/prices")
 async def get_prices():
-    loop = asyncio.get_event_loop()
-    holdings = await loop.run_in_executor(None, find_all_holdings)
+    holdings = await asyncio.to_thread(find_all_holdings)
     active = [h for h in holdings if h["sharesHeld"] > 0]
     quotes = await get_quotes([h["stockId"] for h in active])
 
@@ -136,7 +134,7 @@ async def get_prices():
 
 @router.get("/{stock_id}")
 async def get_by_id(stock_id: str):
-    h = find_holding_by_id(stock_id)
+    h = await asyncio.to_thread(find_holding_by_id, stock_id)
     if not h:
         raise HTTPException(status_code=404, detail="庫存不存在")
     if h["sharesHeld"] > 0:
@@ -152,7 +150,7 @@ async def get_by_id(stock_id: str):
 # ─── PUT /holdings/reorder ─────────────────────────────────────────────────────
 
 @router.put("/reorder")
-async def reorder(body: dict):
+def reorder(body: dict):
     order = body.get("order")
     if not isinstance(order, list) or len(order) == 0:
         raise HTTPException(status_code=400, detail="order 必須為非空字串陣列")
@@ -168,7 +166,7 @@ async def reorder(body: dict):
 # ─── POST /holdings/recalculate ───────────────────────────────────────────────
 
 @router.post("/recalculate")
-async def recalculate(body: list[dict]):
+def recalculate(body: list[dict]):
     if not body:
         raise HTTPException(status_code=400, detail="Request body 必須為非空陣列")
     db = get_db()
@@ -206,7 +204,7 @@ async def recalculate(body: list[dict]):
 # ─── POST /holdings/:stockCode/tags (M2-B) ────────────────────────────────────
 
 @router.post("/{stock_code}/tags")
-async def create_asset_tag(stock_code: str, body: dict):
+def create_asset_tag(stock_code: str, body: dict):
     tag_name     = body.get("tagName", "").strip()
     weight_ratio = body.get("weightRatio")
 
@@ -231,7 +229,7 @@ async def create_asset_tag(stock_code: str, body: dict):
 # ─── PUT /holdings/:stockCode/tags/:id (M2-B) ─────────────────────────────────
 
 @router.put("/{stock_code}/tags/{tag_id}")
-async def update_asset_tag(stock_code: str, tag_id: str, body: dict):
+def update_asset_tag(stock_code: str, tag_id: str, body: dict):
     weight_ratio = body.get("weightRatio")
     if not isinstance(weight_ratio, (int, float)) or weight_ratio <= 0 or weight_ratio > 100:
         raise HTTPException(status_code=400, detail="weightRatio 必須為 0 < value ≤ 100 的數字")
@@ -250,7 +248,7 @@ async def update_asset_tag(stock_code: str, tag_id: str, body: dict):
 # ─── DELETE /holdings/:stockCode/tags/:id (M2-B) ──────────────────────────────
 
 @router.delete("/{stock_code}/tags/{tag_id}")
-async def delete_asset_tag(stock_code: str, tag_id: str):
+def delete_asset_tag(stock_code: str, tag_id: str):
     db = get_db()
     ref = db.collection("asset_tags").document(tag_id)
     if not ref.get().exists:

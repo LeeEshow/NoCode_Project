@@ -301,7 +301,7 @@ MCP_TOOLS = [
 # ─── Tool 實作 ─────────────────────────────────────────────────────────────────
 
 async def _get_holdings() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -331,7 +331,7 @@ async def _get_holdings() -> dict:
 
 
 async def _get_watchlist() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -341,7 +341,7 @@ async def _get_watchlist() -> dict:
 
 
 async def _get_market_indices() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return _text(await loop.run_in_executor(None, get_indices))
 
 
@@ -350,7 +350,7 @@ async def _get_stock_quote(stock_id: str) -> dict:
 
 
 async def _get_snapshots(year: int | None, limit: int, start_date: str | None, end_date: str | None) -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -377,7 +377,7 @@ async def _get_snapshots(year: int | None, limit: int, start_date: str | None, e
 
 
 async def _get_tags() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -387,7 +387,7 @@ async def _get_tags() -> dict:
 
 
 async def _get_rebalance_rules() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -398,7 +398,7 @@ async def _get_rebalance_rules() -> dict:
 
 
 async def _get_foreign_assets() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -408,7 +408,7 @@ async def _get_foreign_assets() -> dict:
 
 
 async def _get_asset_tags() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -418,7 +418,7 @@ async def _get_asset_tags() -> dict:
 
 
 async def _get_tag_correlation_matrix() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -435,7 +435,7 @@ async def _get_tag_correlation_matrix() -> dict:
 
 
 async def _get_transactions(stock_id: str | None) -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -449,14 +449,14 @@ async def _get_transactions(stock_id: str | None) -> dict:
 
 
 async def _get_stock_history(stock_id: str, start_date: str | None, end_date: str | None, interval: str) -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     data = await loop.run_in_executor(None, get_history_range, stock_id, start_date, end_date, interval)
     return _text(data)
 
 
 async def _get_stock_chip(stock_id: str, limit: int = 20) -> dict:
     """讀取 Firestore stock_chip/{stockId}/records（由 FinMind 每日同步寫入）"""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -486,7 +486,7 @@ async def _get_stock_chip(stock_id: str, limit: int = 20) -> dict:
 
 async def _get_stock_fundamental(stock_id: str) -> dict:
     """讀取 Firestore stock_fundamentals/{stockId}（由 FinMind 每日同步寫入）"""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -500,7 +500,7 @@ async def _get_stock_fundamental(stock_id: str) -> dict:
 
 async def _query_stock_fundamental(stock_id: str) -> dict:
     """直接呼叫 FinMind API 查詢基本面（任意股票，非 Firestore 快取）"""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     from services.finmind import build_stock_fundamental
     data = await loop.run_in_executor(None, build_stock_fundamental, stock_id)
     return _text(_convert_keys(data))
@@ -508,7 +508,7 @@ async def _query_stock_fundamental(stock_id: str) -> dict:
 
 async def _query_stock_chip(stock_id: str, start_date: str | None, limit: int) -> dict:
     """直接呼叫 FinMind API 查詢三大法人（任意股票，非 Firestore 快取）"""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     from services.finmind import fetch_chip, _recent
     effective_start = start_date or _recent(30)
     rows = await loop.run_in_executor(None, fetch_chip, stock_id, effective_start)
@@ -516,7 +516,7 @@ async def _query_stock_chip(stock_id: str, start_date: str | None, limit: int) -
 
 
 async def _get_rebalance_snapshots(limit: int) -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         db = get_db()
@@ -532,7 +532,7 @@ async def _get_rebalance_snapshots(limit: int) -> dict:
 
 
 async def _get_portfolio_tag_analysis() -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read_all():
         db = get_db()
@@ -657,7 +657,7 @@ async def _update_tag(arguments: dict) -> dict:
         if direction not in _VALID_DIRS:
             return _text({"error": "direction must be one of: both, upper_only, lower_only"})
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _run():
         db = get_db()
@@ -773,7 +773,7 @@ async def _set_asset_tags(arguments: dict) -> dict:
             "diff": total_weight - 100,
         })
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _run():
         db = get_db()
@@ -928,7 +928,7 @@ async def _save_trading_strategy(arguments: dict) -> dict:
         "expires_at":      expires_at,
     }
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _write():
         get_db().collection("trading_strategies").document(stock_code).set(doc_data)
@@ -938,7 +938,7 @@ async def _save_trading_strategy(arguments: dict) -> dict:
 
 
 async def _get_trading_strategy(stock_code: str) -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _read():
         doc = get_db().collection("trading_strategies").document(stock_code).get()

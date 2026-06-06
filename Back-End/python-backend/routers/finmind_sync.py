@@ -24,13 +24,11 @@ async def finmind_sync():
     - 個別股票失敗不中斷整批，記錄 errors 後繼續
     - 籌碼同步近 45 天歷史（首次執行可回補）
     """
-    loop = asyncio.get_event_loop()
-
     def _sync():
         db = get_db()
         holdings = db.collection("holdings").get()
         stock_ids = [doc.id for doc in holdings if doc.exists]
         return sync_stocks_finmind(db, stock_ids)
 
-    result = await loop.run_in_executor(None, _sync)
+    result = await asyncio.to_thread(_sync)
     return {"success": True, "data": result}

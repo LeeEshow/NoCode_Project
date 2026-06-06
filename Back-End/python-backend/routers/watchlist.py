@@ -38,8 +38,7 @@ def find_all() -> list[dict]:
 
 @router.get("")
 async def get_all():
-    loop = asyncio.get_event_loop()
-    items = await loop.run_in_executor(None, find_all)
+    items = await asyncio.to_thread(find_all)
 
     stock_ids = [item["stockId"] for item in items]
     quotes = await get_quotes(stock_ids)
@@ -72,7 +71,7 @@ async def get_all():
 # ─── POST /watchlist ───────────────────────────────────────────────────────────
 
 @router.post("")
-async def create(body: dict):
+def create(body: dict):
     stock_id = body.get("stockId")
     target_price = body.get("targetPrice")
     if not stock_id or target_price is None:
@@ -98,7 +97,7 @@ async def create(body: dict):
 # ─── PUT /watchlist/reorder ────────────────────────────────────────────────────
 
 @router.put("/reorder")
-async def reorder(body: dict):
+def reorder(body: dict):
     order = body.get("order")
     if not isinstance(order, list) or len(order) == 0:
         raise HTTPException(status_code=400, detail="order 必須為非空字串陣列")
@@ -114,7 +113,7 @@ async def reorder(body: dict):
 # ─── PUT /watchlist/:stockId ───────────────────────────────────────────────────
 
 @router.put("/{stock_id}")
-async def update(stock_id: str, body: dict):
+def update(stock_id: str, body: dict):
     target_price = body.get("targetPrice")
     note = body.get("note")
     if target_price is None and note is None:
@@ -138,7 +137,7 @@ async def update(stock_id: str, body: dict):
 # ─── DELETE /watchlist/:stockId ────────────────────────────────────────────────
 
 @router.delete("/{stock_id}")
-async def remove(stock_id: str):
+def remove(stock_id: str):
     db = get_db()
     ref = db.collection("watchlist").document(stock_id)
     if not ref.get().exists:

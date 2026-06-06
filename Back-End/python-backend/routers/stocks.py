@@ -29,13 +29,12 @@ def _convert_keys(obj):
 # ─── GET /stocks/search?q= ────────────────────────────────────────────────────
 
 @router.get("/search")
-async def search(q: str = Query(default="")):
+def search(q: str = Query(default="")):
     q = q.strip()
     if not q:
         raise HTTPException(status_code=400, detail="請提供搜尋關鍵字 ?q=")
 
-    loop = asyncio.get_event_loop()
-    all_stocks = await loop.run_in_executor(None, get_all_stocks)
+    all_stocks = get_all_stocks()
 
     keyword = q.lower()
     index_results = [
@@ -57,7 +56,7 @@ async def search(q: str = Query(default="")):
 # ─── GET /stocks/list/meta ────────────────────────────────────────────────────
 
 @router.get("/list/meta")
-async def list_meta():
+def list_meta():
     db = get_db()
     doc = db.collection("stock_list").document("data").get()
     if not doc.exists:
@@ -72,7 +71,7 @@ async def list_meta():
 # ─── POST /stocks/list/refresh ────────────────────────────────────────────────
 
 @router.post("/list/refresh")
-async def list_refresh():
+def list_refresh():
     import os
     if not os.getenv("SHIOAJI_API_URL"):
         raise HTTPException(status_code=400, detail="未設定 SHIOAJI_API_URL，此端點需要 Shioaji 服務")
@@ -125,8 +124,6 @@ async def stock_history(
 
 @router.get("/{stock_id}/profile")
 async def stock_profile(stock_id: str):
-    loop = asyncio.get_event_loop()
-
     def _read():
         db = get_db()
         doc = db.collection("stock_fundamentals").document(stock_id).get()
@@ -134,7 +131,7 @@ async def stock_profile(stock_id: str):
             return None
         return _convert_keys(doc.to_dict())
 
-    data = await loop.run_in_executor(None, _read)
+    data = await asyncio.to_thread(_read)
     return {"success": True, "data": data}
 
 
@@ -146,8 +143,6 @@ async def stock_chip(
     limit: int = Query(default=20, ge=1, le=60),
     start_date: str | None = Query(default=None),
 ):
-    loop = asyncio.get_event_loop()
-
     def _read():
         db = get_db()
         q = (
@@ -172,5 +167,5 @@ async def stock_chip(
         rows.reverse()
         return rows
 
-    data = await loop.run_in_executor(None, _read)
+    data = await asyncio.to_thread(_read)
     return {"success": True, "data": data}

@@ -1,9 +1,8 @@
+import asyncio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from services.tag_risk_service import recalculate_dynamic_risk
 
 router = APIRouter()
@@ -64,7 +63,7 @@ def validate_presets(presets: dict) -> dict:
 # ─── GET /tags ─────────────────────────────────────────────────────────────────
 
 @router.get("")
-async def get_all():
+def get_all():
     db = get_db()
     snap = db.collection("tags").order_by("name").get()
     return {"success": True, "data": [deserialize_tag(doc) for doc in snap]}
@@ -73,7 +72,7 @@ async def get_all():
 # ─── POST /tags ────────────────────────────────────────────────────────────────
 
 @router.post("")
-async def create(body: dict):
+def create(body: dict):
     name = body.get("name")
     base_risk = body.get("baseRisk")
 
@@ -125,15 +124,14 @@ async def recalculate(body: dict):
         raise HTTPException(status_code=400,
             detail="marketState 必須為 neutral / risk-on / risk-off / liquidity-dry")
 
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, recalculate_dynamic_risk, market_state)
+    result = await asyncio.to_thread(recalculate_dynamic_risk, market_state)
     return {"success": True, "data": {"success": True, **result}}
 
 
 # ─── PUT /tags/:id ─────────────────────────────────────────────────────────────
 
 @router.put("/{tag_id}")
-async def update(tag_id: str, body: dict):
+def update(tag_id: str, body: dict):
     db = get_db()
     ref = db.collection("tags").document(tag_id)
     if not ref.get().exists:
@@ -170,9 +168,9 @@ async def update(tag_id: str, body: dict):
     patch: dict = {}
     if name      is not None: patch["name"]              = name.strip()
     if base_risk is not None: patch["base_risk"]         = float(base_risk)
-    if "targetWeight"    in body: patch["target_weight"]      = body["targetWeight"]
-    if "fallbackBehavior" in body: patch["fallback_behavior"] = body.get("fallbackBehavior") or "hold"
-    if "triggerDirection" in body: patch["trigger_direction"] = body.get("triggerDirection") or "both"
+    if "targetWeight"     in body: patch["target_weight"]      = body["targetWeight"]
+    if "fallbackBehavior" in body: patch["fallback_behavior"]  = body.get("fallbackBehavior") or "hold"
+    if "triggerDirection" in body: patch["trigger_direction"]  = body.get("triggerDirection") or "both"
     if "marketStatePresets" in body:
         msp_raw = body["marketStatePresets"]
         patch["market_state_presets"] = serialize_presets(validate_presets(msp_raw) if msp_raw is not None else None)
@@ -184,7 +182,7 @@ async def update(tag_id: str, body: dict):
 # ─── DELETE /tags/:id ──────────────────────────────────────────────────────────
 
 @router.delete("/{tag_id}")
-async def remove(tag_id: str):
+def remove(tag_id: str):
     db = get_db()
     ref = db.collection("tags").document(tag_id)
     tag_doc = ref.get()
