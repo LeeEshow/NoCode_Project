@@ -20,28 +20,17 @@ jobs:
           cd azure-functions
           zip -r ../deploy.zip function_app.py host.json requirements.txt .gitignore
 
-      - name: Deploy to Azure Functions via Kudu
-        env:
-          PUBLISH_PROFILE: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+      - name: Azure Login
         run: |
-          USERNAME=$(echo "$PUBLISH_PROFILE" | grep -oP 'userName="\K[^"]+' | head -1)
-          PASSWORD=$(echo "$PUBLISH_PROFILE" | grep -oP 'userPWD="\K[^"]+' | head -1)
+          az login --service-principal \
+            -u "${{ secrets.AZURE_CLIENT_ID }}" \
+            -p "${{ secrets.AZURE_CLIENT_SECRET }}" \
+            --tenant "${{ secrets.AZURE_TENANT_ID }}"
 
-          echo "Deploying to fintarck-scraper..."
-
-          HTTP_STATUS=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
-            -X POST \
-            "https://fintarck-scraper-ajdefrb4g8gwdzg2.scm.japaneast-01.azurewebsites.net/api/zipdeploy?SCM_DO_BUILD_DURING_DEPLOYMENT=true" \
-            -u "${USERNAME}:${PASSWORD}" \
-            -H "Content-Type: application/zip" \
-            --data-binary @deploy.zip)
-
-          echo "HTTP Status: $HTTP_STATUS"
-          cat /tmp/resp.txt
-
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "Deployment successful!"
-          else
-            echo "Deployment failed!"
-            exit 1
-          fi
+      - name: Deploy to Azure Functions
+        run: |
+          az functionapp deployment source config-zip \
+            --resource-group finance-app-rg \
+            --name fintarck-scraper \
+            --src deploy.zip \
+            --build-remote true
