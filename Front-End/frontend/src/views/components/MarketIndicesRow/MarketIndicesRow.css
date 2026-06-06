@@ -45,10 +45,56 @@
 }
 
 
-/* ── 景氣燈號 / PMI 小卡（120px） ── */
-.mir-card--cycle,
-.mir-card--pmi {
-  flex: 0 0 120px;
+/* ── 景氣 / PMI 合併小卡 ── */
+.mir-card--cpmi {
+  flex: 0 0 160px;
+}
+
+.mir-cpmi-body {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  gap: 0;
+}
+
+.mir-cpmi-half {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mir-cpmi-half:last-child {
+  padding-left: 5px;
+}
+
+/* ── 垂直分隔線 ── */
+.mir-cpmi-divider {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 5px 0 0;
+}
+
+/* ── 景氣燈號值列（dot + 分數）── */
+.mir-cpmi-bc-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* ── PMI 值列（數字 + 狀態文字）── */
+.mir-cpmi-pmi-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.mir-cpmi-status {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 /* ── 無資料空狀態 ── */

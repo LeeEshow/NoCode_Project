@@ -138,51 +138,60 @@ function FuturesCard({
 }
 
 
-function BusinessCycleCard({ indicator }: { indicator: BusinessCycleDTO | null }) {
-  if (!indicator) {
-    return (
-      <div className="mir-card mir-card--cycle">
-        <div className="mir-card-label">景氣燈號</div>
-        <div className="mir-cycle-empty">—</div>
-      </div>
-    );
-  }
-  const color = CYCLE_COLORS[indicator.light] ?? '#6B7681';
-  return (
-    <div className="mir-card mir-card--cycle">
-      <div className="mir-card-label">景氣燈號</div>
-      <div className="mir-cycle-row">
-        <div className="mir-cycle-dot" style={{
-          background: `radial-gradient(circle at 38% 38%, #fff8 0%, ${color} 55%, ${color}88 100%)`,
-          boxShadow: `0 0 4px 1px ${color}55, 0 0 1px 0px ${color}`,
-        }} />
-        <span className="mir-cycle-label" style={{ color }}>{indicator.lightLabel}</span>
-      </div>
-      <div className="mir-cycle-meta">{indicator.period} · {indicator.score}分</div>
-    </div>
-  );
-}
+function CycleAndPmiCard({
+  indicator,
+  pmi,
+}: {
+  indicator: BusinessCycleDTO | null;
+  pmi: PmiDTO | null;
+}) {
+  const bcColor     = indicator ? (CYCLE_COLORS[indicator.light] ?? '#6B7681') : 'var(--dim)';
+  const isExpanding = (pmi?.pmi ?? 0) >= 50;
+  const pmiColor    = pmi ? (isExpanding ? 'var(--up)' : 'var(--accent)') : 'var(--dim)';
+  const pmiStatus   = isExpanding ? '擴張' : '收縮';
 
-function PmiCard({ pmi }: { pmi: PmiDTO | null }) {
-  if (!pmi) {
-    return (
-      <div className="mir-card mir-card--pmi">
-        <div className="mir-card-label">製造業 PMI</div>
-        <div className="mir-cycle-empty">—</div>
-      </div>
-    );
-  }
-  const isExpanding = pmi.pmi >= 50;
-  const color = isExpanding ? 'var(--up)' : 'var(--accent)';
-  const arrow = isExpanding ? '▲' : '▼';
-  const status = isExpanding ? '擴張' : '收縮';
   return (
-    <div className="mir-card mir-card--pmi">
-      <div className="mir-card-label">製造業 PMI</div>
-      <div className="mir-pmi-value" style={{ color }}>{pmi.pmi.toFixed(1)}</div>
-      <div className="mir-cycle-meta">
-        <span style={{ color }}>{arrow} {status}</span>
-        &nbsp;·&nbsp;{pmi.period}
+    <div className="mir-card mir-card--cpmi">
+      <div className="mir-cpmi-body">
+
+        {/* 左：景氣燈號 */}
+        <div className="mir-cpmi-half">
+          <div className="mir-card-label">景氣燈號</div>
+          {indicator ? (
+            <>
+              <div className="mir-cpmi-bc-value">
+                <div className="mir-cycle-dot" style={{
+                  background: `radial-gradient(circle at 38% 38%, #fff8 0%, ${bcColor} 55%, ${bcColor}88 100%)`,
+                  boxShadow: `0 0 4px 1px ${bcColor}55, 0 0 1px 0px ${bcColor}`,
+                  width: 16, height: 16,
+                }} />
+                <span className="mir-cycle-label" style={{ color: bcColor }}>{indicator.score}</span>
+              </div>
+              <div className="mir-cycle-meta">{indicator.period}</div>
+            </>
+          ) : (
+            <div className="mir-cycle-empty">—</div>
+          )}
+        </div>
+
+        <div className="mir-cpmi-divider" />
+
+        {/* 右：PMI */}
+        <div className="mir-cpmi-half">
+          <div className="mir-card-label">PMI</div>
+          {pmi ? (
+            <>
+              <div className="mir-cpmi-pmi-value">
+                <span className="mir-pmi-value" style={{ color: pmiColor }}>{pmi.pmi.toFixed(1)}</span>
+                <span className="mir-cpmi-status" style={{ color: pmiColor }}>{pmiStatus}</span>
+              </div>
+              <div className="mir-cycle-meta">{pmi.period}</div>
+            </>
+          ) : (
+            <div className="mir-cycle-empty">—</div>
+          )}
+        </div>
+
       </div>
     </div>
   );
@@ -275,8 +284,7 @@ export default function MarketIndicesRow({
     >
       {taiex && <StandardCard idx={taiex} href="https://www.wantgoo.com/stock" />}
       <FuturesCard day={futuresDay} night={futuresNight} href="https://www.wantgoo.com/futures/wtxp&" />
-      <BusinessCycleCard indicator={businessCycle} />
-      <PmiCard pmi={pmi} />
+      <CycleAndPmiCard indicator={businessCycle} pmi={pmi} />
 
       {(taiex || futuresDay || futuresNight) && intl.length > 0 && (
         <div className="mir-divider" />
