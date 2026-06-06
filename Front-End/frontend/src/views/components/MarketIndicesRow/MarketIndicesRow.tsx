@@ -11,11 +11,11 @@ function DecNum({ value }: { value: string }) {
 
 /* ── 景氣燈號色對應 ── */
 const CYCLE_COLORS: Record<string, string> = {
-  'red':         '#C96A6A',
+  'red':         '#B87A7A',  /* = var(--up) */
   'yellow-red':  '#B8A06A',
-  'green':       '#7CA88D',
+  'green':       '#7CA88D',  /* = var(--down) */
   'yellow-blue': '#6A9AB8',
-  'blue':        '#6A8FB5',
+  'blue':        '#6A8FB5',  /* = var(--accent) */
 };
 
 /* ── 已知台灣本地指數 symbol（排除後視為國際指數）── */

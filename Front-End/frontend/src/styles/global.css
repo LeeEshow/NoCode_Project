@@ -521,6 +521,24 @@ tr:hover .drag-handle { color: var(--dim); }
 .rd-select-item[data-highlighted] { background: var(--accent-bg); color: var(--accent); }
 .rd-select-item[data-state="checked"] { color: var(--text); }
 
+/* ── Radix Tooltip 統一規格 ── */
+.ft-tooltip {
+  background: #1a1d22;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  line-height: 1.6;
+  z-index: 9999;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  max-width: 240px;
+}
+.ft-tooltip__arrow { fill: #1a1d22; }
+/* 修飾符 */
+.ft-tooltip--wide   { max-width: 320px; }
+.ft-tooltip--nowrap { white-space: nowrap; max-width: unset; }
+
 /* ── Toggle Switch ── */
 .ft-toggle {
   position: relative;

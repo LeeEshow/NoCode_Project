@@ -39,22 +39,14 @@ function ValTooltip({ label, value, color, children }: {
       <Tooltip.Portal>
         <Tooltip.Content
           sideOffset={6}
-          style={{
-            background: '#232b36',
-            border: '1px solid var(--border-hi)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '4px 10px',
-            fontSize: 'var(--text-sm)',
-            fontFamily: 'var(--font-mono)',
-            color: color ?? 'var(--text-value)',
-            zIndex: 9999,
-            boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
-          }}
+          className="ft-tooltip ft-tooltip--nowrap"
+          style={{ fontFamily: 'var(--font-mono)', color: color ?? 'var(--text-value)' }}
         >
           <span style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginRight: 6, fontFamily: 'var(--font-sans)' }}>
             {label}
           </span>
           {sign}{fmt(value, 0)}
+          <Tooltip.Arrow className="ft-tooltip__arrow" />
         </Tooltip.Content>
       </Tooltip.Portal>
     </Tooltip.Root>

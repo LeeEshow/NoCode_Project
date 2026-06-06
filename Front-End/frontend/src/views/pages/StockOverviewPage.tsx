@@ -64,19 +64,6 @@ function computeQuoteSummary(
   return s;
 }
 
-const TOOLTIP_STYLE: React.CSSProperties = {
-  background: '#232b36',
-  border: '1px solid var(--border-hi)',
-  borderRadius: 'var(--radius-sm)',
-  padding: '6px 10px',
-  fontSize: 'var(--text-sm)',
-  color: 'var(--muted)',
-  zIndex: 9999,
-  boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
-  lineHeight: 1.7,
-  whiteSpace: 'nowrap',
-};
-
 function QuoteSummaryBadge({ summary }: { summary: QuoteSummary }) {
   const { sj, tw, yf, er, erDetail } = summary;
 
@@ -102,7 +89,7 @@ function QuoteSummaryBadge({ summary }: { summary: QuoteSummary }) {
   );
 
   return (
-    <Tooltip.Root>
+    <Tooltip.Root delayDuration={300}>
       <Tooltip.Trigger asChild>
         <span
           style={{
@@ -123,8 +110,9 @@ function QuoteSummaryBadge({ summary }: { summary: QuoteSummary }) {
         </span>
       </Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content sideOffset={6} style={TOOLTIP_STYLE}>
+        <Tooltip.Content sideOffset={6} className="ft-tooltip ft-tooltip--nowrap">
           {tooltipContent}
+          <Tooltip.Arrow className="ft-tooltip__arrow" />
         </Tooltip.Content>
       </Tooltip.Portal>
     </Tooltip.Root>
@@ -363,7 +351,7 @@ export default function StockOverviewPage() {
                 side="bottom"
               >
                 {totalUnrealizedProfit >= 0 ? '+' : ''}{fmt(totalUnrealizedProfit)}
-                <Tooltip.Arrow style={{ fill: '#232b36' }} />
+                <Tooltip.Arrow style={{ fill: '#1a1d22' }} />
               </Tooltip.Content>
             </Tooltip.Portal>
           </Tooltip.Root>
@@ -390,7 +378,7 @@ export default function StockOverviewPage() {
                 side="bottom"
               >
                 {totalDailyAmt > 0 ? '+' : ''}{fmt(totalDailyAmt)}
-                <Tooltip.Arrow style={{ fill: '#232b36' }} />
+                <Tooltip.Arrow style={{ fill: '#1a1d22' }} />
               </Tooltip.Content>
             </Tooltip.Portal>
           </Tooltip.Root>
@@ -423,7 +411,7 @@ export default function StockOverviewPage() {
                   side="bottom"
                 >
                   {currentYearReturnValue >= 0 ? '+' : ''}{fmt(currentYearReturnValue)}
-                  <Tooltip.Arrow style={{ fill: '#232b36' }} />
+                  <Tooltip.Arrow style={{ fill: '#1a1d22' }} />
                 </Tooltip.Content>
               </Tooltip.Portal>
             )}

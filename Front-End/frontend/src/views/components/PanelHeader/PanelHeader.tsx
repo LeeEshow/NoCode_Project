@@ -170,14 +170,14 @@ export default function PanelHeader({
               </Tooltip.Trigger>
               <Tooltip.Portal>
                 <Tooltip.Content
-                  className="panel-header__exposure-tooltip"
+                  className="ft-tooltip ft-tooltip--wide"
                   sideOffset={4}
                   side="bottom"
                 >
                   {exposureTooltip.map((line, i) => (
                     <span key={i} style={{ display: 'block' }}>{line}</span>
                   ))}
-                  <Tooltip.Arrow style={{ fill: '#232b36' }} />
+                  <Tooltip.Arrow style={{ fill: '#1a1d22' }} />
                 </Tooltip.Content>
               </Tooltip.Portal>
             </Tooltip.Root>

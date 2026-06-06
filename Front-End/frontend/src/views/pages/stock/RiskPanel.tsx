@@ -13,6 +13,7 @@ import { useSnapshotStore } from '../../../stores/snapshotStore';
 import TagManagerTab from './TagManagerTab';
 import Icon from '../../components/Icon';
 import Modal from '../../components/Modal';
+import { AppTooltip } from '../../components/AppTooltip';
 
 const MARKET_STATE_AUTO_LABEL: Record<string, string> = {
   'risk-on':       'Risk-On',
@@ -89,37 +90,17 @@ interface Props {
 }
 
 /* ── UI-4 Tooltip Helper ── */
-const TOOLTIP_STYLE = {
-  fontSize: 'var(--text-sm)',
-  maxWidth: '220px',
-  background: 'var(--panel)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-sm)',
-  padding: '6px 10px',
-  color: 'var(--text)',
-  lineHeight: 1.5,
-  zIndex: 9999,
-} as const;
-
 function SettingTooltip({ content }: { content: string }) {
   return (
-    <Tooltip.Root delayDuration={300}>
-      <Tooltip.Trigger asChild>
-        <span
-          aria-label="說明"
-          aria-hidden="false"
-          style={{ cursor: 'help', color: 'var(--dim)', userSelect: 'none', lineHeight: 1 }}
-        >
-          <Icon name="info" size={14} />
-        </span>
-      </Tooltip.Trigger>
-      <Tooltip.Portal>
-        <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
-          {content}
-          <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
-        </Tooltip.Content>
-      </Tooltip.Portal>
-    </Tooltip.Root>
+    <AppTooltip content={content} sideOffset={4}>
+      <span
+        aria-label="說明"
+        aria-hidden="false"
+        style={{ cursor: 'help', color: 'var(--dim)', userSelect: 'none', lineHeight: 1 }}
+      >
+        <Icon name="info" size={14} />
+      </span>
+    </AppTooltip>
   );
 }
 
@@ -397,67 +378,45 @@ export default function RiskPanel({
               </span>
             )}
             {deviationCount > 0 && (
-              <Tooltip.Root delayDuration={300}>
-                <Tooltip.Trigger asChild>
-                  <span style={{ color: 'var(--muted)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
-                    <Icon name="warning" size={24} />
-                  </span>
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                  <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
-                    {deviationCount} 個標籤偏離目標配置
-                    <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
-                  </Tooltip.Content>
-                </Tooltip.Portal>
-              </Tooltip.Root>
+              <AppTooltip content={`${deviationCount} 個標籤偏離目標配置`} sideOffset={4}>
+                <span style={{ color: 'var(--muted)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                  <Icon name="warning" size={24} />
+                </span>
+              </AppTooltip>
             )}
             {!expanded && needsMonthlyReminder && (
-              <Tooltip.Root delayDuration={300}>
-                <Tooltip.Trigger asChild>
-                  <span style={{ color: 'var(--muted)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
-                    <Icon name="schedule" size={24} />
-                  </span>
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                  <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
-                    本月尚未執行再平衡
-                    <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
-                  </Tooltip.Content>
-                </Tooltip.Portal>
-              </Tooltip.Root>
+              <AppTooltip content="本月尚未執行再平衡" sideOffset={4}>
+                <span style={{ color: 'var(--muted)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                  <Icon name="schedule" size={24} />
+                </span>
+              </AppTooltip>
             )}
             {mddIcon && (
-              <Tooltip.Root delayDuration={300}>
-                <Tooltip.Trigger asChild>
-                  <span style={{ color: mddIcon.color, cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
-                    <Icon name="trending_down" size={24} />
-                  </span>
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                  <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
+              <AppTooltip
+                sideOffset={4}
+                content={
+                  <>
                     <div>距高點 {(mdd!.currentDrawdown * 100).toFixed(1)}%</div>
                     <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginTop: 2 }}>
                       歷史最大回撤 {(mdd!.maxDrawdown * 100).toFixed(1)}%
                     </div>
-                    <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
-                  </Tooltip.Content>
-                </Tooltip.Portal>
-              </Tooltip.Root>
+                  </>
+                }
+              >
+                <span style={{ color: mddIcon.color, cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                  <Icon name="trending_down" size={24} />
+                </span>
+              </AppTooltip>
             )}
             {marketStateAuto && marketStateAuto !== marketState && (
-              <Tooltip.Root delayDuration={300}>
-                <Tooltip.Trigger asChild>
-                  <span style={{ color: 'var(--accent)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
-                    <Icon name="tips_and_updates" size={24} />
-                  </span>
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                  <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
-                    系統建議：{MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}{vix != null ? `（VIX ${vix.toFixed(1)}）` : ''}
-                    <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
-                  </Tooltip.Content>
-                </Tooltip.Portal>
-              </Tooltip.Root>
+              <AppTooltip
+                sideOffset={4}
+                content={`系統建議：${MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}${vix != null ? `（VIX ${vix.toFixed(1)}）` : ''}`}
+              >
+                <span style={{ color: 'var(--accent)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                  <Icon name="tips_and_updates" size={24} />
+                </span>
+              </AppTooltip>
             )}
           </span>
         </div>
@@ -804,18 +763,12 @@ export default function RiskPanel({
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                                 <span style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{s.name}</span>
                                 {detail && (
-                                  <Tooltip.Root delayDuration={200}>
-                                    <Tooltip.Trigger asChild>
-                                      <span style={{ cursor: 'help', color: 'var(--dim)', lineHeight: 1 }}>
-                                        <Icon name="info" size={13} />
-                                      </span>
-                                    </Tooltip.Trigger>
-                                    <Tooltip.Portal>
-                                      <Tooltip.Content
-                                        role="tooltip"
-                                        sideOffset={5}
-                                        style={{ ...TOOLTIP_STYLE, maxWidth: 260 }}
-                                      >
+                                  <AppTooltip
+                                    delayDuration={200}
+                                    sideOffset={5}
+                                    extraClass="ft-tooltip--wide"
+                                    content={
+                                      <>
                                         <span style={{ display: 'block', color: 'var(--text)', marginBottom: 6 }}>{detail.desc}</span>
                                         <span style={{ display: 'block', color: 'var(--dim)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>預設 Shock：</span>
                                         {detail.shocks.map(sh => (
@@ -827,10 +780,13 @@ export default function RiskPanel({
                                         <span style={{ display: 'block', borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 5, fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>
                                           損失 = Σ（Tag實際權重 × Shock）× 總資產
                                         </span>
-                                        <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
-                                      </Tooltip.Content>
-                                    </Tooltip.Portal>
-                                  </Tooltip.Root>
+                                      </>
+                                    }
+                                  >
+                                    <span style={{ cursor: 'help', color: 'var(--dim)', lineHeight: 1 }}>
+                                      <Icon name="info" size={13} />
+                                    </span>
+                                  </AppTooltip>
                                 )}
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
