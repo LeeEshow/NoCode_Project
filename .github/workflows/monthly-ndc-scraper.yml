@@ -2,7 +2,7 @@ name: Monthly NDC Scraper
 
 on:
   schedule:
-    - cron: '0 22 1 * *'  # 每月 1 日 UTC 22:00 = 台灣時間 2 日 06:00
+    - cron: '0 22 * * 0'  # 每週日 UTC 22:00 = 台灣時間週一 06:00
   workflow_dispatch:       # 也可手動觸發
 
 jobs:
