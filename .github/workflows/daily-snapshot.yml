@@ -6,7 +6,7 @@ on:
   workflow_dispatch:          # 支援手動觸發（測試用）
 
 env:
-  BACKEND_URL: https://eshowfintarck.duckdns.org
+  BACKEND_URL: https://fintarck-proxy-1077248196503.asia-east1.run.app
 
 jobs:
   snapshot:
