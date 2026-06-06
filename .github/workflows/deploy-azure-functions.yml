@@ -27,10 +27,16 @@ jobs:
             -p "${{ secrets.AZURE_CLIENT_SECRET }}" \
             --tenant "${{ secrets.AZURE_TENANT_ID }}"
 
+      - name: Diagnose deployment storage config
+        run: |
+          az rest --method GET \
+            --url "https://management.azure.com/subscriptions/a785fd37-e913-4d06-8082-11f08c63ff23/resourceGroups/finance-app-rg/providers/Microsoft.Web/sites/fintarck-scraper?api-version=2023-12-01" \
+            --query "properties.functionAppConfig" \
+            -o json
+
       - name: Deploy to Azure Functions
         run: |
           az functionapp deployment source config-zip \
             --resource-group finance-app-rg \
             --name fintarck-scraper \
-            --src deploy.zip \
-            --verbose 2>&1
+            --src deploy.zip
