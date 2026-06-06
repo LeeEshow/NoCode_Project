@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { MarketIndexDTO } from '../../../types';
+import type { MarketIndexDTO, BusinessCycleDTO, PmiDTO } from '../../../types';
 import './MarketIndicesRow.css';
 
 /* ── 小數點後小字 helper ── */
@@ -8,6 +8,15 @@ function DecNum({ value }: { value: string }) {
   if (dot === -1) return <>{value}</>;
   return <>{value.slice(0, dot)}<span className="dec-small">{value.slice(dot)}</span></>;
 }
+
+/* ── 景氣燈號色對應 ── */
+const CYCLE_COLORS: Record<string, string> = {
+  'red':         '#C96A6A',
+  'yellow-red':  '#B8A06A',
+  'green':       '#7CA88D',
+  'yellow-blue': '#6A9AB8',
+  'blue':        '#6A8FB5',
+};
 
 /* ── 已知台灣本地指數 symbol（排除後視為國際指數）── */
 const DOMESTIC_SYMBOLS = new Set(['^TWII', 'TAIEX', 'TXF', 'TXF_NIGHT', 'TX00.TW']);
@@ -129,6 +138,56 @@ function FuturesCard({
 }
 
 
+function BusinessCycleCard({ indicator }: { indicator: BusinessCycleDTO | null }) {
+  if (!indicator) {
+    return (
+      <div className="mir-card mir-card--cycle">
+        <div className="mir-card-label">景氣燈號</div>
+        <div className="mir-cycle-empty">—</div>
+      </div>
+    );
+  }
+  const color = CYCLE_COLORS[indicator.light] ?? '#6B7681';
+  return (
+    <div className="mir-card mir-card--cycle">
+      <div className="mir-card-label">景氣燈號</div>
+      <div className="mir-cycle-row">
+        <div className="mir-cycle-dot" style={{
+          background: `radial-gradient(circle at 38% 38%, #fff8 0%, ${color} 55%, ${color}88 100%)`,
+          boxShadow: `0 0 4px 1px ${color}55, 0 0 1px 0px ${color}`,
+        }} />
+        <span className="mir-cycle-label" style={{ color }}>{indicator.lightLabel}</span>
+      </div>
+      <div className="mir-cycle-meta">{indicator.period} · {indicator.score}分</div>
+    </div>
+  );
+}
+
+function PmiCard({ pmi }: { pmi: PmiDTO | null }) {
+  if (!pmi) {
+    return (
+      <div className="mir-card mir-card--pmi">
+        <div className="mir-card-label">製造業 PMI</div>
+        <div className="mir-cycle-empty">—</div>
+      </div>
+    );
+  }
+  const isExpanding = pmi.pmi >= 50;
+  const color = isExpanding ? 'var(--up)' : 'var(--accent)';
+  const arrow = isExpanding ? '▲' : '▼';
+  const status = isExpanding ? '擴張' : '收縮';
+  return (
+    <div className="mir-card mir-card--pmi">
+      <div className="mir-card-label">製造業 PMI</div>
+      <div className="mir-pmi-value" style={{ color }}>{pmi.pmi.toFixed(1)}</div>
+      <div className="mir-cycle-meta">
+        <span style={{ color }}>{arrow} {status}</span>
+        &nbsp;·&nbsp;{pmi.period}
+      </div>
+    </div>
+  );
+}
+
 function SkeletonCards({ count }: { count: number }) {
   return (
     <>
@@ -142,12 +201,16 @@ function SkeletonCards({ count }: { count: number }) {
 /* ── 主元件 ── */
 
 export interface MarketIndicesRowProps {
-  indices: MarketIndexDTO[];
-  loading: boolean;
+  indices:       MarketIndexDTO[];
+  businessCycle: BusinessCycleDTO | null;
+  pmi:           PmiDTO | null;
+  loading:       boolean;
 }
 
 export default function MarketIndicesRow({
   indices,
+  businessCycle,
+  pmi,
   loading,
 }: MarketIndicesRowProps) {
   const rowRef    = useRef<HTMLDivElement>(null);
@@ -212,6 +275,8 @@ export default function MarketIndicesRow({
     >
       {taiex && <StandardCard idx={taiex} href="https://www.wantgoo.com/stock" />}
       <FuturesCard day={futuresDay} night={futuresNight} href="https://www.wantgoo.com/futures/wtxp&" />
+      <BusinessCycleCard indicator={businessCycle} />
+      <PmiCard pmi={pmi} />
 
       {(taiex || futuresDay || futuresNight) && intl.length > 0 && (
         <div className="mir-divider" />

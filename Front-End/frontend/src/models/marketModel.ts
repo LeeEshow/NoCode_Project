@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import type { ApiResponse, MarketDataDTO, MarketIndexDTO, IndexKBar } from '../types';
+import type { ApiResponse, MarketDataDTO, MarketIndexDTO, BusinessCycleDTO, PmiDTO, IndexKBar } from '../types';
 
 /* 後端 IndexCard 欄位 */
 interface RawIndexCard {
@@ -32,7 +32,29 @@ export async function fetchIndexKbars(start?: string, end?: string): Promise<Ind
   return res.data.data;
 }
 
+interface RawNdcIndicators {
+  businessCycle: { period: string; score: number; light: string; lightLabel: string } | null;
+  pmi:           { period: string; pmi: number; nextPublish: string | null } | null;
+}
+
+interface IndicesResponse extends ApiResponse<RawIndexCard[]> {
+  ndcIndicators?: RawNdcIndicators;
+}
+
 export async function fetchMarketData(): Promise<MarketDataDTO> {
-  const res = await api.get<ApiResponse<RawIndexCard[]>>('/market/indices');
-  return { indices: res.data.data.map(toMarketIndex) };
+  const res = await api.get<IndicesResponse>('/market/indices');
+  const ndc = res.data.ndcIndicators;
+
+  const businessCycle: BusinessCycleDTO | null = ndc?.businessCycle
+    ? {
+        period:     ndc.businessCycle.period,
+        score:      ndc.businessCycle.score,
+        light:      ndc.businessCycle.light as BusinessCycleDTO['light'],
+        lightLabel: ndc.businessCycle.lightLabel,
+      }
+    : null;
+
+  const pmi: PmiDTO | null = ndc?.pmi ?? null;
+
+  return { indices: res.data.data.map(toMarketIndex), businessCycle, pmi };
 }

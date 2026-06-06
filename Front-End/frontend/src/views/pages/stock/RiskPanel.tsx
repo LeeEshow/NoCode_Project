@@ -302,85 +302,6 @@ export default function RiskPanel({
     if (next) onExpand?.();
   }
 
-  function buildRiskClipboardText(): string {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-
-    const tagMap = new Map(tags.map(t => [t.name, t]));
-
-    function dirLabel(dir: string | undefined): string {
-      if (dir === 'upper_only') return '僅上限↓';
-      if (dir === 'lower_only') return '僅下限↑';
-      return '雙向±';
-    }
-
-    const lines: string[] = [
-      '=== 風險 / 再平衡配置報告 ===',
-      `產生時間：${timestamp}`,
-      '',
-      '【Tag 標籤配置】',
-      '標籤名稱\t當前配比\t目標配置\t觸發限制\t偏差\t狀態',
-    ];
-
-    for (const s of tagStats) {
-      const actual = `${s.actualWeight.toFixed(1)}%`;
-      const target = s.targetWeight != null ? `${s.targetWeight.toFixed(1)}%` : '—';
-      const dir    = dirLabel(tagMap.get(s.tagName)?.triggerDirection);
-      const delta  = s.targetWeight != null
-        ? `${s.delta >= 0 ? '+' : ''}${s.delta.toFixed(1)}%`
-        : '—';
-      const status = s.targetWeight == null ? '無目標' : s.triggered ? '⚠ 偏差觸發' : '正常';
-      lines.push(`${s.tagName}\t${actual}\t${target}\t${dir}\t${delta}\t${status}`);
-    }
-
-    /* 相關性矩陣 */
-    if (tags.length >= 2) {
-      lines.push('', '【Tag 相關性矩陣（ρ）】');
-
-      const header = '\t' + tags.map(t => t.name).join('\t');
-      lines.push(header);
-
-      /* 預建 Map，避免雙重迴圈內 O(n) find */
-      const corrMap = new Map(
-        correlationMatrix.flatMap(e => [
-          [`${e.tagA}|${e.tagB}`, e.rho],
-          [`${e.tagB}|${e.tagA}`, e.rho],
-        ])
-      );
-
-      for (const ta of tags) {
-        const cells = tags.map(tb => {
-          if (ta.name === tb.name) return '1.00';
-          const rho = corrMap.get(`${ta.name}|${tb.name}`);
-          return rho != null ? rho.toFixed(2) : '—';
-        });
-        lines.push(`${ta.name}\t${cells.join('\t')}`);
-      }
-    }
-
-    lines.push('', '【股票 Tag 配置】', '代碼\t名稱\t標籤（持股權重%）');
-
-    for (const h of holdings) {
-      const tagPart = h.tags.length > 0
-        ? h.tags.map(t => `${t.tagName}(${t.weightRatio}%)`).join(' ')
-        : '—';
-      lines.push(`${h.stockCode}\t${h.stockName}\t${tagPart}`);
-    }
-
-    return lines.join('\n');
-  }
-
-  async function handleCopyClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(buildRiskClipboardText());
-      toast.success('已複製配置報告到剪貼簿');
-    } catch {
-      toast.error('複製失敗，請確認瀏覽器權限');
-    }
-  }
-
   /* MDD 圖示狀態 */
   const mddIcon = useMemo(() => {
     if (!mdd || mdd.currentDrawdown === 0) return null;
@@ -423,7 +344,7 @@ export default function RiskPanel({
     <div className="ft-panel" style={{ marginBottom: 16 }}>
 
       {/* ── 收折標題列 ── */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '8px 10px', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', gap: 8 }}>
 
         {/* 左側：可點擊展開/收折 */}
         <div
@@ -443,16 +364,7 @@ export default function RiskPanel({
           {/* 標題 */}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <Icon name={expanded ? 'expand_less' : 'expand_more'} size={24} style={{ color: 'var(--muted)' }} />
-            <span
-              onClick={handleCopyClick}
-              title="點擊複製配置報告"
-              style={{
-                fontWeight: 500, whiteSpace: 'nowrap', color: 'var(--text)',
-                cursor: 'copy', userSelect: 'none',
-                borderBottom: '1px dashed var(--dim)',
-                paddingBottom: 1,
-              }}
-            >
+            <span style={{ fontWeight: 500, whiteSpace: 'nowrap', color: 'var(--text)' }}>
               風險/再平衡模組
             </span>
           </span>
@@ -486,19 +398,39 @@ export default function RiskPanel({
               </span>
             )}
             {deviationCount > 0 && (
-              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 24, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Icon name="warning" size={24} /> {deviationCount} 標籤偏差
-              </span>
+              <Tooltip.Root delayDuration={300}>
+                <Tooltip.Trigger asChild>
+                  <span style={{ color: 'var(--muted)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                    <Icon name="warning" size={24} />
+                  </span>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
+                    {deviationCount} 個標籤偏離目標配置
+                    <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
             )}
             {!expanded && needsMonthlyReminder && (
-              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Icon name="schedule" size={24} /> 本月尚未再平衡
-              </span>
+              <Tooltip.Root delayDuration={300}>
+                <Tooltip.Trigger asChild>
+                  <span style={{ color: 'var(--muted)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                    <Icon name="schedule" size={24} />
+                  </span>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
+                    本月尚未執行再平衡
+                    <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
             )}
             {mddIcon && (
               <Tooltip.Root delayDuration={300}>
                 <Tooltip.Trigger asChild>
-                  <span style={{ color: mddIcon.color, whiteSpace: 'nowrap', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                  <span style={{ color: mddIcon.color, cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
                     <Icon name="trending_down" size={24} />
                   </span>
                 </Tooltip.Trigger>
@@ -514,9 +446,19 @@ export default function RiskPanel({
               </Tooltip.Root>
             )}
             {marketStateAuto && marketStateAuto !== marketState && (
-              <span style={{ color: 'var(--accent)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Icon name="tips_and_updates" size={24} /> 系統建議：{MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}{vix != null ? `（VIX ${vix.toFixed(1)}）` : ''}
-              </span>
+              <Tooltip.Root delayDuration={300}>
+                <Tooltip.Trigger asChild>
+                  <span style={{ color: 'var(--accent)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
+                    <Icon name="tips_and_updates" size={24} />
+                  </span>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content role="tooltip" style={TOOLTIP_STYLE} sideOffset={4}>
+                    系統建議：{MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}{vix != null ? `（VIX ${vix.toFixed(1)}）` : ''}
+                    <Tooltip.Arrow style={{ fill: 'var(--border)' }} />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
             )}
           </span>
         </div>

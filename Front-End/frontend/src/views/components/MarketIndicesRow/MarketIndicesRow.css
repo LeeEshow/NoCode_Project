@@ -45,6 +45,56 @@
 }
 
 
+/* ── 景氣燈號 / PMI 小卡（120px） ── */
+.mir-card--cycle,
+.mir-card--pmi {
+  flex: 0 0 120px;
+}
+
+/* ── 無資料空狀態 ── */
+.mir-cycle-empty {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  color: var(--dim);
+}
+
+/* ── 景氣燈號：燈點列 ── */
+.mir-cycle-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mir-cycle-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mir-cycle-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+
+/* ── PMI 主數值 ── */
+.mir-pmi-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 500;
+}
+
+/* ── 共用 meta 行（期別、分數）── */
+.mir-cycle-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--dim);
+  margin-top: auto;
+  padding-top: 3px;
+}
+
 /* ── 卡片內元素 ── */
 .mir-card-label {
   font-size: var(--text-sm);

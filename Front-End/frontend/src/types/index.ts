@@ -23,8 +23,23 @@ export interface MarketIndexDTO {
   isUp:      boolean;
 }
 
+export interface BusinessCycleDTO {
+  period:     string;
+  score:      number;
+  light:      'red' | 'yellow-red' | 'green' | 'yellow-blue' | 'blue';
+  lightLabel: string;
+}
+
+export interface PmiDTO {
+  period:      string;
+  pmi:         number;
+  nextPublish: string | null;
+}
+
 export interface MarketDataDTO {
-  indices: MarketIndexDTO[];
+  indices:       MarketIndexDTO[];
+  businessCycle: BusinessCycleDTO | null;
+  pmi:           PmiDTO | null;
 }
 
 /* ── 股票搜尋 ───────────────────────────────────────────────── */

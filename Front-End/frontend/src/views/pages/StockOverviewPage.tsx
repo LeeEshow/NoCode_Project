@@ -442,6 +442,8 @@ export default function StockOverviewPage() {
         {/* ── 市場指數列（P2-09）── */}
         <MarketIndicesRow
           indices={market.data?.indices ?? []}
+          businessCycle={market.data?.businessCycle ?? null}
+          pmi={market.data?.pmi ?? null}
           loading={market.loading}
         />
 

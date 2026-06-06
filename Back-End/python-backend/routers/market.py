@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from services.yahoo_finance import get_indices, get_forex_rates
 from services.api_switch import shioaji_enabled
 from services.cache import cache_get, cache_set
+from services.firestore import get_db
+
 from utils.market_hours import is_market_open
 
 logger = logging.getLogger(__name__)
@@ -23,10 +25,29 @@ def _sj_to_index_card(id_: str, name: str, data: dict) -> dict:
     }
 
 
+def _get_ndc_indicators() -> dict:
+    """從 Firestore 讀取景氣燈號 + PMI（同步，供 asyncio.to_thread 使用）"""
+    try:
+        db = get_db()
+        col = db.collection("market_indicators")
+        bc_doc  = col.document("business_cycle").get()
+        pmi_doc = col.document("pmi").get()
+        return {
+            "businessCycle": bc_doc.to_dict()  if bc_doc.exists  else None,
+            "pmi":           pmi_doc.to_dict() if pmi_doc.exists else None,
+        }
+    except Exception:
+        logger.exception("Failed to read market_indicators from Firestore")
+        return {"businessCycle": None, "pmi": None}
+
+
 @router.get("/indices")
 async def market_indices():
     loop = asyncio.get_running_loop()
-    cards = await loop.run_in_executor(None, get_indices)
+    cards, ndc = await asyncio.gather(
+        loop.run_in_executor(None, get_indices),
+        asyncio.to_thread(_get_ndc_indicators),
+    )
 
     # 盤中且 Shioaji 已啟用時，台指期（index 1）以 WebSocket tick cache 覆蓋
     # TAIEX（index 0）由 Yahoo Finance ^TWII 提供（Index 不支援 Tick 訂閱）
@@ -37,7 +58,7 @@ async def market_indices():
             if futures:
                 cards[1] = _sj_to_index_card("futures", "台指期", futures)
 
-    return {"success": True, "data": cards}
+    return {"success": True, "data": cards, "ndcIndicators": ndc}
 
 
 @router.get("/forex-rates")
