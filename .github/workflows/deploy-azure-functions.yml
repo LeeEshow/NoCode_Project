@@ -33,5 +33,4 @@ jobs:
             --resource-group finance-app-rg \
             --name fintarck-scraper \
             --src-path deploy.zip \
-            --type zip \
-            --build-remote true
+            --type zip
