@@ -13,7 +13,6 @@ import { useSnapshotStore } from '../../../stores/snapshotStore';
 import TagManagerTab from './TagManagerTab';
 import Icon from '../../components/Icon';
 import Modal from '../../components/Modal';
-import { toast } from '../../components/Toast';
 
 const MARKET_STATE_AUTO_LABEL: Record<string, string> = {
   'risk-on':       'Risk-On',
