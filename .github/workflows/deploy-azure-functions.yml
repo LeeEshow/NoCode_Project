@@ -29,21 +29,8 @@ jobs:
 
       - name: Deploy to Azure Functions
         run: |
-          TOKEN=$(az account get-access-token --resource https://management.azure.com/ --query accessToken -o tsv)
-
-          HTTP_STATUS=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
-            -X POST \
-            "https://fintarck-scraper-ajdefrb4g8gwdzg2.scm.japaneast-01.azurewebsites.net/api/zipdeploy?SCM_DO_BUILD_DURING_DEPLOYMENT=true" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/zip" \
-            --data-binary @deploy.zip)
-
-          echo "HTTP Status: $HTTP_STATUS"
-          cat /tmp/resp.txt
-
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "Deployment successful!"
-          else
-            echo "Deployment failed with status $HTTP_STATUS"
-            exit 1
-          fi
+          az functionapp deploy \
+            --resource-group finance-app-rg \
+            --name fintarck-scraper \
+            --src-path deploy.zip \
+            --verbose
