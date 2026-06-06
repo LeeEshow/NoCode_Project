@@ -1,6 +1,6 @@
 """
 FinTarck Azure Functions — NDC 指標爬蟲
-每天 UTC 02:00（台灣時間 10:00）執行，抓取：
+每週一 UTC 22:00（台灣時間週一 06:00）執行，抓取：
   - 景氣對策信號（景氣燈號）
   - 採購經理人指數（PMI）
 結果寫入 Firestore collection: market_indicators
@@ -172,7 +172,7 @@ def _parse_pmi(payload: dict) -> dict | None:
 # ─── Timer Trigger（每天 UTC 02:00）────────────────────────────────────────
 
 @app.timer_trigger(
-    schedule="0 0 2 * * *",
+    schedule="0 0 22 * * 0",  # 每週日 UTC 22:00 = 週一台灣時間 06:00
     arg_name="timer",
     run_on_startup=False,
     use_monitor=True,
