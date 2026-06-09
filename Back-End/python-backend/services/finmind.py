@@ -10,6 +10,7 @@ from datetime import date, timedelta, datetime, timezone
 
 import requests
 from core.settings import get_settings
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 logger = logging.getLogger(__name__)
 FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data"
@@ -304,3 +305,129 @@ def sync_stocks_finmind(db, stock_ids: list[str], chip_days: int = 45) -> dict:
             errors.append({"stockId": sid, "error": str(exc)})
 
     return {"synced": synced, "errors": errors}
+
+
+# ─── M13：觸發條件自動評估 ──────────────────────────────────────────────────────
+
+_CHIP_FIELD_MAP = {
+    "chip_dealer_buy":  "dealer",
+    "chip_foreign_buy": "foreign",
+    "chip_trust_buy":   "trust",
+}
+
+
+def _eval_tranche_status(tranche: dict) -> dict:
+    """H-3: chip_* 全 true + manual 全 true → triggered（在 Firestore snake_case dict 上操作）"""
+    rules    = tranche.get("trigger_rules") or []
+    statuses = tranche.get("rule_statuses") or {}
+
+    chip_rules   = [r for r in rules if r.get("type") in _CHIP_FIELD_MAP]
+    manual_rules = [r for r in rules if r.get("type") == "manual"]
+
+    if not chip_rules and not manual_rules:
+        return tranche
+
+    for r in chip_rules:
+        if statuses.get(r["type"]) is not True:
+            return tranche
+
+    for _ in manual_rules:
+        if statuses.get("manual") is not True:
+            return tranche
+
+    return {**tranche, "status": "triggered"}
+
+
+def evaluate_trigger_rules(db) -> dict:
+    """評估所有 active/triggered 策略的 chip_* 觸發條件，batch write 結果回 Firestore。
+
+    - 只評估 chip_dealer_buy / chip_foreign_buy / chip_trust_buy（後端每日評估）
+    - price_* 和 manual 由前端或使用者確認，本函式跳過
+    - 各策略失敗不中斷整批
+    回傳 {"evaluated": int, "errors": [...]}
+    """
+    today      = date.today().isoformat()
+    evaluated  = 0
+    errors: list[dict] = []
+
+    try:
+        strategies = db.collection("trading_strategies").where(
+            filter=FieldFilter("status", "in", ["active", "triggered"])
+        ).get()
+    except Exception as exc:
+        logger.error("evaluate_trigger_rules: 讀取策略失敗: %s", exc)
+        return {"evaluated": 0, "errors": [{"error": str(exc)}]}
+
+    for sdoc in strategies:
+        try:
+            d          = sdoc.to_dict()
+            stock_code = d.get("stock_code") or sdoc.id
+            tranches   = list(d.get("tranches") or [])
+            if not tranches:
+                continue
+
+            evaluated_at = datetime.now(timezone.utc).isoformat()
+            changed      = False
+
+            for i, tranche in enumerate(tranches):
+                rules      = tranche.get("trigger_rules") or []
+                chip_rules = [r for r in rules if r.get("type") in _CHIP_FIELD_MAP]
+                if not chip_rules:
+                    continue
+
+                rule_statuses  = dict(tranche.get("rule_statuses") or {})
+                tranche_changed = False
+
+                for rule in chip_rules:
+                    rtype  = rule.get("type")
+                    field  = _CHIP_FIELD_MAP[rtype]
+                    period = max(int(rule.get("period") or 1), 1)
+
+                    chip_docs = (
+                        db.collection("stock_chip")
+                        .document(stock_code)
+                        .collection("records")
+                        .order_by("date", direction="DESCENDING")
+                        .limit(period)
+                        .get()
+                    )
+                    rows   = [doc.to_dict() for doc in chip_docs]
+                    result = len(rows) == period and all(row.get(field, 0) > 0 for row in rows)
+
+                    if rule_statuses.get(rtype) != result:
+                        rule_statuses[rtype] = result
+                        tranche_changed      = True
+
+                if tranche_changed:
+                    updated = {**tranche, "rule_statuses": rule_statuses, "rule_evaluated_at": evaluated_at}
+                    tranches[i] = _eval_tranche_status(updated)
+                    changed     = True
+
+            if not changed:
+                continue
+
+            # 重新計算 strategy.status（H-3）
+            current    = d.get("status", "active")
+            dismissed  = d.get("dismissed", False)
+            expires_at = d.get("expires_at")
+
+            if dismissed:
+                new_status = "dismissed"
+            elif expires_at and str(expires_at)[:10] < today and current in ("active", "triggered"):
+                new_status = "expired"
+            elif current == "active" and any(t.get("status") == "triggered" for t in tranches):
+                new_status = "triggered"
+            else:
+                new_status = current
+
+            db.collection("trading_strategies").document(sdoc.id).update({
+                "tranches": tranches,
+                "status":   new_status,
+            })
+            evaluated += 1
+
+        except Exception as exc:
+            logger.error("evaluate_trigger_rules 失敗 %s: %s", sdoc.id, exc)
+            errors.append({"stockCode": sdoc.id, "error": str(exc)})
+
+    return {"evaluated": evaluated, "errors": errors}
