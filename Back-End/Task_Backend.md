@@ -522,3 +522,22 @@ camelCase：`shares`，型別 `int`
 ### 前端顯示
 
 批次標題行直接顯示：`第 N 批  $X – $Y  ·  10 股`
+
+---
+
+## TriggerRule.period / value 必填驗證（2026-06-09 新增）
+
+`save_trading_strategy` 工具的 schema 補強：
+
+| rule.type | 必填欄位 | 範例 |
+|-----------|---------|------|
+| `chip_dealer_buy` | `period: int`（連買天數） | `{"type":"chip_dealer_buy","period":3}` |
+| `chip_foreign_buy` | `period: int` | `{"type":"chip_foreign_buy","period":5}` |
+| `chip_trust_buy` | `period: int` | `{"type":"chip_trust_buy","period":3}` |
+| `price_above_ma` | `period: int`（MA 週期，如 5/20/60） | `{"type":"price_above_ma","period":20}` |
+| `price_above` | `value: float`（價格） | `{"type":"price_above","value":2300}` |
+| `price_below` | `value: float` | `{"type":"price_below","value":2100}` |
+| `price_in_range` | 無（由 tranche.priceLow/priceHigh 決定） | — |
+| `manual` | 無 | — |
+
+後端 `save_trading_strategy` 接收時需驗證：缺少必填欄位回傳 400 並說明哪個 rule 缺少哪個欄位。

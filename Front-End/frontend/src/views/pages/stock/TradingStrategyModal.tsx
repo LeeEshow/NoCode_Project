@@ -91,12 +91,12 @@ function fmtAxis(n: number | null | undefined): string {
 function ruleDisplayName(rule: TriggerRule): string {
   switch (rule.type) {
     case 'price_in_range':   return '現價落入區間';
-    case 'price_above':      return `現價 > $${rule.value ?? ''}`;
-    case 'price_below':      return `現價 < $${rule.value ?? ''}`;
-    case 'price_above_ma':   return `站穩 MA${rule.period ?? ''}`;
-    case 'chip_dealer_buy':  return `自營商連買 ${rule.period ?? ''} 日`;
-    case 'chip_foreign_buy': return `外資連買 ${rule.period ?? ''} 日`;
-    case 'chip_trust_buy':   return `投信連買 ${rule.period ?? ''} 日`;
+    case 'price_above':      return rule.value  != null ? `現價 > $${rule.value}`   : '現價突破';
+    case 'price_below':      return rule.value  != null ? `現價 < $${rule.value}`   : '現價跌破';
+    case 'price_above_ma':   return rule.period != null ? `站穩 MA${rule.period}`   : '站穩均線';
+    case 'chip_dealer_buy':  return rule.period != null ? `自營商連買 ${rule.period} 日` : '自營商連買';
+    case 'chip_foreign_buy': return rule.period != null ? `外資連買 ${rule.period} 日`   : '外資連買';
+    case 'chip_trust_buy':   return rule.period != null ? `投信連買 ${rule.period} 日`   : '投信連買';
     case 'manual':           return '需人工確認';
     default:                 return rule.type;
   }
