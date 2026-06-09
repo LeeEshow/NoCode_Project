@@ -106,7 +106,7 @@
 .tsm-price-axis__band {
   position: absolute;
   top: 50%;
-  height: 12px;
+  height: 10px;
   transform: translateY(-50%);
   background: var(--accent);
   opacity: 0.5;

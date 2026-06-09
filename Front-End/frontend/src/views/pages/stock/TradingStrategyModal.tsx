@@ -213,15 +213,14 @@ export default function TradingStrategyModal({
   const tranches    = strategy.tranches ?? [];
   const hasTranches = tranches.length > 0;
 
-  /* Price axis geometry */
+  /* Price axis geometry：右端 = 停利下限，若現價超出則以現價為右端 */
   const hasPriceData = strategy.stopLossPrice != null
-    && strategy.targetPriceHigh != null
-    && strategy.targetPriceLow  != null;
-  const stopLoss   = strategy.stopLossPrice   ?? 0;
-  const targetHigh = strategy.targetPriceHigh ?? 0;
-  const targetLow  = strategy.targetPriceLow  ?? 0;
-  const axisRange  = targetHigh - stopLoss;
-  const toPct      = (p: number) =>
+    && strategy.targetPriceLow != null;
+  const stopLoss  = strategy.stopLossPrice  ?? 0;
+  const targetLow = strategy.targetPriceLow ?? 0;
+  const axisRight = currentPrice > 0 && currentPrice > targetLow ? currentPrice : targetLow;
+  const axisRange = axisRight - stopLoss;
+  const toPct     = (p: number) =>
     axisRange > 0 ? clampPct((p - stopLoss) / axisRange * 100) : 50;
 
   const canDismiss = !strategy.dismissed && status !== 'expired' && status !== 'dismissed';
