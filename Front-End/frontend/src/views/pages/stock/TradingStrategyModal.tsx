@@ -1,202 +1,395 @@
+import { useState } from 'react';
 import Modal from '../../components/Modal';
+import StatusBadge from '../../components/StatusBadge';
+import type { BadgeVariant } from '../../components/StatusBadge';
 import Icon from '../../components/Icon';
-import { computeStrategyStatus } from '../../../utils/tradingStrategy';
-import type { TradingStrategyDTO } from '../../../types';
+import { resolveStrategyStatus, ruleKey, mergeRealTimePriceStatuses } from '../../../utils/tradingStrategy';
+import type { TradingStrategyDTO, StrategyTranche, TriggerRule } from '../../../types';
 import './TradingStrategyModal.css';
 
 export interface TradingStrategyModalProps {
-  open:          boolean;
-  stockCode:     string;
-  stockName:     string;
-  strategy:      TradingStrategyDTO | null;
-  currentPrice?: number;
-  onDismiss:     () => void;
-  onClose:       () => void;
+  open:            boolean;
+  strategy:        TradingStrategyDTO;
+  currentPrice:    number;
+  sparkline?:      number[];
+  positionShares?: number;
+  onDismiss:       () => void;
+  onClose:         () => void;
+  onConfirmRule?:  (batch: number, ruleType: string, confirmed: boolean) => void;
 }
 
-const TRADE_TYPE_LABEL: Record<string, string> = {
-  entry:       '建倉',
-  add:         '加碼',
-  reduce:      '減碼',
-  exit:        '清倉',
-  stop_loss:   '止損',
-  take_profit: '止盈',
-  watch:       '觀察',
+/* ── helpers ── */
+
+function fmtPrice(n: number | null | undefined, dec = 2): string {
+  if (n == null) return '–';
+  return n.toLocaleString('zh-TW', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function clampPct(v: number): number {
+  return Math.max(0, Math.min(100, v));
+}
+
+/* Badge 映射 */
+const TRADE_TEXT: Record<string, string> = {
+  entry: '買進', add: '加碼', reduce: '減碼', exit: '出場',
+  stop_loss: '止損', take_profit: '止盈', watch: '觀察',
+  buy: '買進', sell: '賣出',
 };
-
-const TIMEFRAME_LABEL: Record<string, string> = {
-  short:  '短線',
-  medium: '中線',
-  long:   '長線',
+const TRADE_VAR: Record<string, BadgeVariant> = {
+  entry: 'accent', add: 'accent', reduce: 'up', exit: 'up',
+  stop_loss: 'up', take_profit: 'down', watch: 'muted',
+  buy: 'accent', sell: 'up',
 };
-
-const CONFIDENCE_LABEL: Record<string, string> = {
-  high:   '高',
-  medium: '中',
-  low:    '低',
-};
-
-
-function fmtPrice(n: number) {
-  return n.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function tfText(tf: string): string {
+  if (tf === 'short')  return '短期';
+  if (tf === 'medium') return '中期';
+  if (tf === 'long')   return '長期';
+  /* 後端可能送 "1-2週 (…)" 或 "3-6月" 等自然語言格式 */
+  if (tf.includes('週') || tf.toLowerCase().includes('week'))  return '短期';
+  if (tf.includes('月') || tf.toLowerCase().includes('month')) return '中期';
+  if (tf.includes('年') || tf.toLowerCase().includes('year'))  return '長期';
+  return tf;
+}
+function tfVar(tf: string): BadgeVariant {
+  const label = tfText(tf);
+  if (label === '短期') return 'accent';
+  if (label === '中期') return 'flat';
+  return 'muted';
 }
 
-function fmtDate(isoStr: string) {
-  const d = new Date(isoStr);
-  const m = (d.getMonth() + 1).toString().padStart(2, '0');
-  const day = d.getDate().toString().padStart(2, '0');
-  return `${m}/${day}`;
+function confText(c: string): string {
+  if (c === 'high')   return '高信心';
+  if (c === 'medium') return '中信心';
+  if (c === 'low')    return '低信心';
+  const n = parseFloat(c);
+  if (!isNaN(n)) return n >= 0.7 ? '高信心' : n >= 0.4 ? '中信心' : '低信心';
+  return c;
+}
+function confVar(c: string): BadgeVariant {
+  if (c === 'high')   return 'down';
+  if (c === 'medium') return 'flat';
+  if (c === 'low')    return 'muted';
+  const n = parseFloat(c);
+  if (!isNaN(n)) return n >= 0.7 ? 'down' : n >= 0.4 ? 'flat' : 'muted';
+  return 'muted';
 }
 
-/** 將 price 換算成 [0, 105] 的百分比（允許略超 100 以示突破目標） */
-function calcPct(price: number, lo: number, hi: number): number {
-  if (hi <= lo) return 50;
-  return Math.max(0, Math.min(105, (price - lo) / (hi - lo) * 100));
+function fmtAxis(n: number | null | undefined): string {
+  if (n == null) return '–';
+  return n.toLocaleString('zh-TW', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: n % 1 === 0 ? 0 : 2,
+  });
 }
 
+function ruleDisplayName(rule: TriggerRule): string {
+  switch (rule.type) {
+    case 'price_in_range':   return '現價落入區間';
+    case 'price_above':      return `現價 > $${rule.value ?? ''}`;
+    case 'price_below':      return `現價 < $${rule.value ?? ''}`;
+    case 'price_above_ma':   return `站穩 MA${rule.period ?? ''}`;
+    case 'chip_dealer_buy':  return `自營商連買 ${rule.period ?? ''} 日`;
+    case 'chip_foreign_buy': return `外資連買 ${rule.period ?? ''} 日`;
+    case 'chip_trust_buy':   return `投信連買 ${rule.period ?? ''} 日`;
+    case 'manual':           return '需人工確認';
+    default:                 return rule.type;
+  }
+}
+
+/* ── TrancheRow ── */
+
+function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule, defaultExpanded = false }: {
+  tranche:         StrategyTranche;
+  tradeType:       string;
+  currentPrice:    number;
+  sparkline:       number[];
+  onConfirmRule?:  (batch: number, ruleType: string, confirmed: boolean) => void;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const merged = mergeRealTimePriceStatuses(tranche, currentPrice, sparkline);
+  const mod =
+    tranche.status === 'triggered' ? ' tsm-tranche--triggered' :
+    tranche.status === 'skipped'   ? ' tsm-tranche--skipped'   : '';
+
+  const statusVar: Record<string, BadgeVariant> = { triggered: 'down', pending: 'muted', waiting: 'muted', skipped: 'muted' };
+
+  const rules   = tranche.triggerRules ?? [];
+  const hasRules = rules.length > 0;
+  const passed  = rules.filter(r => merged[ruleKey(r)] === true).length;
+
+  function statusLabel(): string {
+    if (tranche.status === 'triggered') return '已觸及';
+    if (tranche.status === 'skipped')   return '已略過';
+    return hasRules ? `等待中 ${passed}/${rules.length}` : '等待中';
+  }
+
+  function RuleStatus({ rule }: { rule: TriggerRule }) {
+    const k   = ruleKey(rule);
+    const val = k in merged ? merged[k] : undefined;
+    if (val === true)  return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--pass">✅ 達成</span>;
+    if (val === false) return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--fail">❌ 未達成</span>;
+    if (rule.type === 'manual') return (
+      <span className="tsm-tranche__rule-status">
+        {onConfirmRule
+          ? <>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: '0.78rem', padding: '2px 8px' }}
+                onClick={e => { e.stopPropagation(); onConfirmRule(tranche.batch, 'manual', true); }}
+              >✓ 確認達成</button>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: '0.78rem', padding: '2px 8px' }}
+                onClick={e => { e.stopPropagation(); onConfirmRule(tranche.batch, 'manual', false); }}
+              >✗ 未達成</button>
+            </>
+          : <span className="tsm-tranche__rule-status--wait">⏳ 評估中</span>
+        }
+      </span>
+    );
+    return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--wait">⏳ 評估中</span>;
+  }
+
+  return (
+    <div className={`tsm-tranche${mod}`}>
+      <div
+        className={`tsm-tranche__header${hasRules ? ' tsm-tranche__header--clickable' : ''}`}
+        onClick={() => hasRules && setExpanded(v => !v)}
+        role={hasRules ? 'button' : undefined}
+        tabIndex={hasRules ? 0 : undefined}
+        onKeyDown={hasRules ? e => e.key === 'Enter' && setExpanded(v => !v) : undefined}
+      >
+        <div className="tsm-tranche__title-group">
+          <span className="tsm-tranche__num">第 {tranche.batch} 批</span>
+          <StatusBadge variant={TRADE_VAR[tradeType] ?? 'accent'}>
+            {TRADE_TEXT[tradeType] ?? tradeType}
+          </StatusBadge>
+          <span className="tsm-tranche__range num-value">
+            ${fmtAxis(tranche.priceLow)} – {fmtAxis(tranche.priceHigh)}
+          </span>
+          <span className="tsm-tranche__size">{tranche.shares} 股</span>
+        </div>
+        <div className="tsm-tranche__header-right">
+          <StatusBadge variant={statusVar[tranche.status] ?? 'muted'}>
+            {statusLabel()}
+          </StatusBadge>
+          {hasRules && (
+            <Icon
+              name={expanded ? 'expand_less' : 'expand_more'}
+              size={18}
+              aria-hidden="true"
+            />
+          )}
+        </div>
+      </div>
+
+      {expanded && hasRules && (
+        <div className="tsm-tranche__rules">
+          {tranche.triggerRules!.map((rule, i) => (
+            <div key={i} className="tsm-tranche__rule">
+              <span className="tsm-tranche__rule-name">{ruleDisplayName(rule)}</span>
+              <RuleStatus rule={rule} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main ── */
 
 export default function TradingStrategyModal({
-  open, stockCode, stockName, strategy, currentPrice = 0, onDismiss, onClose,
+  open, strategy, currentPrice, sparkline = [], onDismiss, onClose, onConfirmRule,
 }: TradingStrategyModalProps) {
-  const status = strategy ? computeStrategyStatus(strategy, currentPrice) : null;
-  const canDismiss = strategy != null && !strategy.dismissed && status !== 'expired' && status !== 'dismissed';
+  const status      = resolveStrategyStatus(strategy, currentPrice);
+  const tranches    = strategy.tranches ?? [];
+  const hasTranches = tranches.length > 0;
 
-  const handleDismiss = () => {
-    onDismiss();
-    onClose();
-  };
+  /* Price axis geometry */
+  const hasPriceData = strategy.stopLossPrice != null
+    && strategy.targetPriceHigh != null
+    && strategy.targetPriceLow  != null;
+  const stopLoss   = strategy.stopLossPrice   ?? 0;
+  const targetHigh = strategy.targetPriceHigh ?? 0;
+  const targetLow  = strategy.targetPriceLow  ?? 0;
+  const axisRange  = targetHigh - stopLoss;
+  const toPct      = (p: number) =>
+    axisRange > 0 ? clampPct((p - stopLoss) / axisRange * 100) : 50;
+
+  const canDismiss = !strategy.dismissed && status !== 'expired' && status !== 'dismissed';
 
   const footer = (
-    <div className="ts-modal__footer-actions">
-      {canDismiss && (
-        <button className="btn-ghost" onClick={handleDismiss}>忽略</button>
-      )}
+    <div className="tsm-footer">
+      <button
+        className="btn-ghost"
+        disabled={!canDismiss}
+        onClick={() => { onDismiss(); onClose(); }}
+      >
+        {strategy.dismissed ? '已忽略' : '忽略此策略'}
+      </button>
       <button className="btn-ghost btn-ghost--accent" onClick={onClose}>關閉</button>
     </div>
   );
 
-  // ── 進度條計算 ─────────────────────────────────────────────────────────────
-  let barSection: React.ReactNode = null;
-  if (strategy && strategy.stopLossPrice != null) {
-    const hasTarget  = strategy.targetPrice != null;
-    const lo         = strategy.stopLossPrice;
-    // 無目標時，以「止損→進場價」距離的 2 倍為右邊界，給進度條留空間
-    const hi         = hasTarget
-      ? strategy.targetPrice!
-      : strategy.triggerPrice + (strategy.triggerPrice - lo);
-    const entryPct   = calcPct(strategy.triggerPrice, lo, hi);
-    const curPct     = currentPrice > 0 ? calcPct(currentPrice, lo, hi) : entryPct;
-    const fillPct    = Math.min(curPct, 100);
-    const dotLeft    = Math.min(curPct, 103);       // 超過目標時最多顯示到 103%
-    const aboveEntry  = currentPrice > strategy.triggerPrice;
-    const canEnter    = currentPrice > 0 && currentPrice <= strategy.triggerPrice;
-    const noEnter     = currentPrice > 0 && currentPrice > strategy.triggerPrice;
-
-    barSection = (
-      <div className="ts-modal__bar-wrap">
-        {/* 上方標籤：止損（左）+ 現價（動態）+ 目標（右） */}
-        <div className="ts-modal__bar-labels-top">
-          <div className="ts-modal__label ts-modal__label--stop-abs">
-            <div className="ts-modal__label-name">止損</div>
-            <div className="num-value">${fmtPrice(strategy.stopLossPrice)}</div>
-          </div>
-          {currentPrice > 0 && (
-            <div className="ts-modal__label ts-modal__label--current-abs" style={{ left: `${dotLeft}%` }}>
-              <div className="ts-modal__label-name">現價</div>
-              <div className="num-value">${fmtPrice(currentPrice)}</div>
-            </div>
-          )}
-          <div className="ts-modal__label ts-modal__label--target-abs">
-            {hasTarget ? (
-              <>
-                <div className="ts-modal__label-name">目標</div>
-                <div className="num-value">${fmtPrice(strategy.targetPrice!)}</div>
-              </>
-            ) : (
-              <div className="ts-modal__label-name ts-modal__label-name--dim">持有中 →</div>
-            )}
-          </div>
-        </div>
-
-        {/* Rail */}
-        <div className="ts-modal__rail">
-          <div
-            className={`ts-modal__rail-fill ${aboveEntry ? 'ts-modal__rail-fill--profit' : 'ts-modal__rail-fill--risk'}`}
-            style={{ width: `${fillPct}%` }}
-          />
-          {/* 節點：止損 */}
-          <div className="ts-modal__node ts-modal__node--stop" style={{ left: '0%' }} />
-          {/* 節點：進場價 */}
-          <div className="ts-modal__node ts-modal__node--entry" style={{ left: `${entryPct}%` }} />
-          {/* 節點：目標（有才顯示） */}
-          {hasTarget && <div className="ts-modal__node ts-modal__node--target" style={{ left: '100%' }} />}
-          {/* 現價指示點 */}
-          {currentPrice > 0 && (
-            <div className="ts-modal__dot" style={{ left: `${dotLeft}%` }} />
-          )}
-        </div>
-
-        {/* 下方標籤：進場價（依百分比動態定位） */}
-        <div className="ts-modal__bar-labels-bottom">
-          <div className="ts-modal__label ts-modal__label--entry-abs" style={{ left: `${entryPct}%` }}>
-            <div className="ts-modal__label-name">進場價</div>
-            <div className="ts-modal__entry-price-row">
-              <span className="num-value">${fmtPrice(strategy.triggerPrice)}</span>
-              {canEnter && <span className="ts-modal__advice--can">可進場</span>}
-              {noEnter  && <span className="ts-modal__advice--no">不建議</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <Modal open={open} size="sm" onClose={onClose} footer={footer}>
-      {/* Header：代碼 + 名稱 */}
-      <div className="ts-modal__header">
-        <div>
-          <span className="stock-code">{stockCode}</span>
-          <span className="stock-name" style={{ marginLeft: 8 }}>{stockName}</span>
+    <Modal open={open} size="lg" onClose={onClose} footer={footer}>
+
+      {/* ── 1. 策略標頭 ── */}
+      <div className="tsm-header">
+        <div className="tsm-header__left">
+          <div className="tsm-header__title">
+            <span className="tsm-header__code">{strategy.stockCode}</span>
+            <span className="tsm-header__name">{strategy.stockName}</span>
+          </div>
+          <div className="tsm-header__meta">
+            均成本 ${fmtPrice(strategy.referencePrice)}
+            &nbsp;·&nbsp;建立 {fmtDate(strategy.createdAt)}
+            {strategy.expiresAt && <>&nbsp;·&nbsp;到期 {fmtDate(strategy.expiresAt)}</>}
+            {strategy.riskRewardRatio != null && <>&nbsp;·&nbsp;R:R&nbsp;<span className="num-value">1:{strategy.riskRewardRatio.toFixed(1)}</span></>}
+          </div>
         </div>
-      </div>
-
-      {strategy ? (
-        <>
-          {/* 上方列：操作 chip + 週期 chip + 信心 */}
-          <div className="ts-modal__bar-top">
-            <div className="ts-modal__chips">
-              <span className="ts-modal__chip">{TRADE_TYPE_LABEL[strategy.tradeType] ?? strategy.tradeType}</span>
-              <span className="ts-modal__chip">{TIMEFRAME_LABEL[strategy.timeframe] ?? strategy.timeframe}</span>
-              <span className="ts-modal__meta">信心：{CONFIDENCE_LABEL[strategy.confidence] ?? strategy.confidence}</span>
-            </div>
-          </div>
-
-          {/* 進度條 */}
-          {barSection}
-
-          {/* AI 建議 summary */}
-          <div className="ts-modal__summary">
-            <div className="ts-modal__summary-label">
-              <span className="ts-modal__summary-date">{fmtDate(strategy.createdAt)}</span>
-              AI 建議
-              {status === 'expired' && (
-                <span className="ts-modal__expired-badge">建議已過期</span>
-              )}
-            </div>
-            <p className="ts-modal__summary-text">{strategy.summary}</p>
-          </div>
-        </>
-      ) : (
-        /* 空狀態 */
-        <div className="ts-modal__empty">
-          <Icon name="tips_and_updates" size={32} />
-          <span>尚無 AI 交易策略</span>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--dim)' }}>
-            可透過 AI 助理分析後生成策略
+        <div className="tsm-header__badges">
+          <StatusBadge variant={TRADE_VAR[strategy.tradeType] ?? 'accent'}>
+            {TRADE_TEXT[strategy.tradeType] ?? strategy.tradeType}
+          </StatusBadge>
+          <StatusBadge variant={confVar(strategy.confidence)}>
+            {confText(strategy.confidence)}
+          </StatusBadge>
+          <StatusBadge variant={tfVar(strategy.timeframe)}>
+            {tfText(strategy.timeframe)}
+          </StatusBadge>
+          <span style={{ marginLeft: 8 }}>
+            <StatusBadge variant={
+              status === 'triggered' ? 'down'   :
+              status === 'active'    ? 'accent' : 'muted'
+            }>
+              {status === 'triggered' ? '已觸發' :
+               status === 'active'    ? '觀察中' :
+               status === 'expired'   ? '已過期' : '已忽略'}
+            </StatusBadge>
           </span>
         </div>
+      </div>
+
+      {/* ── 2. 價格座標軸 ── */}
+      {hasPriceData && (
+        <div className="tsm-price-axis">
+          <div className="tsm-price-axis__stop">
+            停損<br />${fmtAxis(stopLoss)}
+          </div>
+
+          <div className="tsm-price-axis__track-wrap">
+            <div className="tsm-price-axis__line" />
+
+            {currentPrice > 0 && axisRange > 0 && (
+              <div
+                className="tsm-price-axis__fill"
+                style={{ width: `${toPct(currentPrice)}%` }}
+              />
+            )}
+
+            {tranches.map(t => (
+              <div
+                key={`band-${t.batch}`}
+                className="tsm-price-axis__band"
+                style={{
+                  left:  `${toPct(t.priceLow)}%`,
+                  width: `${Math.max(toPct(t.priceHigh) - toPct(t.priceLow), 0.5)}%`,
+                }}
+              />
+            ))}
+
+            <div className="tsm-price-axis__dot tsm-price-axis__dot--stop"   style={{ left: '0%' }} />
+            <div className="tsm-price-axis__dot tsm-price-axis__dot--target" style={{ left: `${toPct(targetLow)}%` }} />
+            {/* 目標下緣標籤（仿批次區間）*/}
+            <div
+              className="tsm-price-axis__label"
+              style={{ left: `${toPct(targetLow)}%`, color: 'var(--down)' }}
+            >
+              ${fmtAxis(targetLow)}
+            </div>
+
+            {tranches.map(t => {
+              const leftPct = toPct(t.priceLow);
+              const rightPct = toPct(t.priceHigh);
+              const midPct   = clampPct((leftPct + rightPct) / 2);
+              return (
+                <div key={`tl-${t.batch}`}>
+                  <div className="tsm-price-axis__dot tsm-price-axis__dot--entry tsm-price-axis__dot--sm" style={{ left: `${leftPct}%`  }} />
+                  <div className="tsm-price-axis__dot tsm-price-axis__dot--entry tsm-price-axis__dot--sm" style={{ left: `${rightPct}%` }} />
+                  <div className="tsm-price-axis__label" style={{ left: `${midPct}%` }}>
+                    第{t.batch}批&nbsp;${fmtAxis(t.priceLow)}&nbsp;–&nbsp;{fmtAxis(t.priceHigh)}
+                  </div>
+                </div>
+              );
+            })}
+
+            {currentPrice > 0 && (
+              <>
+                <span className="tsm-price-axis__dot--current" style={{ left: `${toPct(currentPrice)}%` }}>★</span>
+                <div  className="tsm-price-axis__label--current" style={{ left: `${Math.min(toPct(currentPrice), 95)}%` }}>
+                  現價<br />${fmtAxis(currentPrice)}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="tsm-price-axis__target">
+            目標<br />${fmtAxis(targetHigh)}
+          </div>
+        </div>
       )}
+
+      {/* ── 3. 狀態摘要 + 進場批次 ── */}
+      {(hasTranches || strategy.triggerPrice != null) && (
+        <div className="tsm-tranches">
+
+          {hasTranches
+            ? (() => {
+                const sorted = [...tranches].sort((a, b) => a.batch - b.batch);
+                const firstPendingBatch = sorted.find(
+                  t => t.status === 'pending' || t.status === 'waiting'
+                )?.batch ?? -1;
+                return sorted.map(t => (
+                  <TrancheRow
+                    key={t.batch}
+                    tranche={t}
+                    tradeType={strategy.tradeType}
+                    currentPrice={currentPrice}
+                    sparkline={sparkline}
+                    onConfirmRule={onConfirmRule}
+                    defaultExpanded={t.batch === firstPendingBatch}
+                  />
+                ));
+              })()
+            : (
+                /* 舊資料 fallback */
+                <div className="tsm-tranche">
+                  <div className="tsm-tranche__header">
+                    <span className="tsm-tranche__num">進場</span>
+                    <span className="tsm-tranche__range num-value">${fmtPrice(strategy.triggerPrice)}</span>
+                  </div>
+                </div>
+              )
+          }
+        </div>
+      )}
+
+      {/* ── 4. AI 綜合建議 ── */}
+      {strategy.summary && (
+        <div className="tsm-summary">
+          <span className="tsm-summary__label">AI建議：</span>
+          {strategy.summary}
+        </div>
+      )}
+
     </Modal>
   );
 }

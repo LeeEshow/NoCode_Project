@@ -11,6 +11,22 @@
 
 ## 待辦
 
+目前無待辦項目。
+
+---
+
+### ✅ F-01 交易策略 DTO 改版 + UI 全面重設計（已完成 2026-06-09）
+
+> 關聯後端任務：`Task_Backend.md M13`
+
+**完成項目**
+- `types/index.ts`：新增 `TriggerRule`、`TrancheStatus`、`StrategyTranche`，更新 `TradingStrategyDTO`
+- `utils/tradeCost.ts`：費率常數抽出，`useRebalanceViewModel` 改 import
+- `utils/tradingStrategy.ts`：新增 `resolveStrategyStatus()`、`ruleKey()`、`mergeRealTimePriceStatuses()`
+- `TradingStrategyModal`：全面重設計（price axis 進度條、批次規則展開、現價下方標籤）
+- `HoldingsTable` / `WatchlistTable`：策略欄改為批次進度 + StatusBadge
+- `useTradingStrategyViewModel`：`dismiss()` 樂觀更新同步 `dismissed: true` + `status: 'dismissed'`
+
 ---
 
 ## UI 設計要點（全 Phase 適用）

@@ -18,3 +18,12 @@ export async function dismiss(stockCode: string): Promise<void> {
 export async function remove(stockCode: string): Promise<void> {
   await api.delete(`/trading-strategies/${stockCode}`);
 }
+
+export async function updateRuleStatus(
+  stockCode: string,
+  batch: number,
+  ruleType: string,
+  confirmed: boolean,
+): Promise<void> {
+  await api.patch(`/trading-strategies/${stockCode}/rule-status`, { batch, ruleType, confirmed });
+}

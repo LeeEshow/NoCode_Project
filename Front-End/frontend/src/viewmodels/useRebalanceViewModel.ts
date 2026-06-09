@@ -3,6 +3,7 @@ import type {
   HoldingDTO, TagStat, KLineDTO,
   RebalanceRulesDTO, RebalanceSuggestion, RebalanceAction,
 } from '../types';
+import { FEE_RATE, TAX_RATE, SLIPPAGE_RATE } from '../utils/tradeCost';
 
 export interface RebalanceResult {
   suggestions:      RebalanceSuggestion[];
@@ -10,10 +11,6 @@ export interface RebalanceResult {
   dynamicThreshold: number;
   totalAsset:       number;
 }
-
-const FEE_RATE      = 0.001425;  /* 手續費 0.1425%，買賣雙邊 */
-const TAX_RATE      = 0.003;     /* 證交稅 0.3%，僅賣出 */
-const SLIPPAGE_RATE = 0.001;     /* 滑價估算 0.1% */
 
 /* ── 標準差（樣本）── */
 function stdDev(arr: number[]): number {

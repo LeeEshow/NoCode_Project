@@ -650,21 +650,77 @@ export type TradeType =
 export type StrategyConfidence = 'high' | 'medium' | 'low';
 export type StrategyTimeframe  = 'short' | 'medium' | 'long';
 
-/** 前端計算的顯示狀態（不存 DB） */
+/**
+ * 策略生命週期狀態。
+ * - 新資料（M13）：後端維護並回傳，前端直接使用。
+ * - 舊資料（只有 triggerPrice）：後端僅能回傳 'active'/'expired'/'dismissed'，
+ *   'triggered' 由前端 resolveStrategyStatus() 補算。
+ */
 export type StrategyStatus = 'active' | 'triggered' | 'expired' | 'dismissed';
 
+// ── 觸發規則 ──────────────────────────────────────────────────
+
+export type TriggerRuleType =
+  | 'price_in_range'   // 現價落在 priceLow ~ priceHigh（與 tranche 自動連動）
+  | 'price_above'      // 現價 > value
+  | 'price_below'      // 現價 < value
+  | 'price_above_ma'   // 現價 > MA(period)，前端即時評估
+  | 'chip_dealer_buy'  // 自營商淨買 > 0，連續 period 日，後端每日評估
+  | 'chip_foreign_buy' // 外資淨買 > 0，連續 period 日，後端每日評估
+  | 'chip_trust_buy'   // 投信淨買 > 0，連續 period 日，後端每日評估
+  | 'manual';          // 宏觀事件，使用者手動確認，永遠 null
+
+export interface TriggerRule {
+  type:    TriggerRuleType;
+  value?:  number;   // price_above / price_below 使用
+  period?: number;   // MA 週期（5/20/60）或籌碼連續天數
+}
+
+// ── 批次腳本 ──────────────────────────────────────────────────
+
+export type TrancheStatus = 'pending' | 'triggered' | 'skipped';
+
+export interface StrategyTranche {
+  batch:            number;
+  priceLow:         number;
+  priceHigh:        number;
+  sizeRatio:        number;           // 佔總部位比例 0.0–1.0
+  shares:           number;           // AI 建議股數（entry/add=買進；reduce/exit=賣出）
+  triggerCondition: string;
+  triggerRules?:    TriggerRule[];
+  /** 後端每日評估結果，key 格式由 ruleKey() 決定；只含 chip_* 類，price 類由前端即時計算 */
+  ruleStatuses?:    Record<string, boolean | null>;
+  status:           TrancheStatus;
+}
+
+// ── 主 DTO ────────────────────────────────────────────────────
+
 export interface TradingStrategyDTO {
+  // 識別
   stockCode:      string;
   stockName:      string;
+  createdAt:      string;
+  expiresAt?:     string;
+  // 定性
   tradeType:      TradeType;
-  triggerPrice:   number;
-  referencePrice: number;
-  targetPrice?:   number;
-  stopLossPrice?: number;
-  confidence:     StrategyConfidence;
   timeframe:      StrategyTimeframe;
-  summary:        string;
-  dismissed:      boolean;
-  createdAt:      string;   /* ISO datetime */
-  expiresAt?:     string;   /* ISO datetime */
+  confidence:     StrategyConfidence;
+  referencePrice: number;
+  // 多批次進場（新）；後端 fallback 補值，舊資料可能為空陣列
+  tranches:               StrategyTranche[];
+  // 風控（舊資料可能為 null，後端未完成回填時的向後相容）
+  stopLossPrice:          number | null;
+  targetPriceLow:         number | null;
+  targetPriceHigh:        number | null;
+  riskRewardRatio:        number | null;
+  // 條件
+  triggerCondition:       string;
+  invalidationCondition:  string;
+  summary:                string;
+  // 狀態
+  status:                 StrategyStatus;
+  dismissed:              boolean;
+  // 舊欄位（deprecated，向後相容）
+  triggerPrice?:          number;
+  targetPrice?:           number;
 }

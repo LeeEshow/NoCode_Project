@@ -622,18 +622,25 @@ export default function StockOverviewPage() {
       />
 
       {/* F01：AI 交易策略 */}
-      <TradingStrategyModal
-        open={strategyModal.open}
-        stockCode={strategyModal.stockCode}
-        stockName={strategyModal.stockName}
-        strategy={strategyVm.strategies[strategyModal.stockCode] ?? null}
-        currentPrice={
-          holdings.items.find(h => h.stockCode === strategyModal.stockCode)?.currentPrice
-          ?? watchlist.items.find(i => i.stockCode === strategyModal.stockCode)?.currentPrice
-        }
-        onDismiss={() => strategyVm.dismiss(strategyModal.stockCode)}
-        onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
-      />
+      {(() => {
+        const activeStrategy = strategyVm.strategies[strategyModal.stockCode];
+        if (!activeStrategy) return null;
+        const matchHolding  = holdings.items.find(h => h.stockCode === strategyModal.stockCode);
+        const matchWatchlist = watchlist.items.find(i => i.stockCode === strategyModal.stockCode);
+        return (
+          <TradingStrategyModal
+            open={strategyModal.open}
+            strategy={activeStrategy}
+            currentPrice={matchHolding?.currentPrice ?? matchWatchlist?.currentPrice ?? 0}
+            sparkline={holdings.sparklines?.[strategyModal.stockCode] ?? []}
+            positionShares={matchHolding?.shares}
+            onDismiss={() => strategyVm.dismiss(strategyModal.stockCode)}
+            onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
+            onConfirmRule={(batch, ruleType, confirmed) =>
+              strategyVm.confirmManualRule(strategyModal.stockCode, batch, ruleType, confirmed)}
+          />
+        );
+      })()}
     </div>
   );
 }

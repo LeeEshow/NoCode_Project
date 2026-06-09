@@ -13,7 +13,7 @@ import { CSS } from '@dnd-kit/utilities';
 import SparkLine from '../../components/Charts/SparkLine';
 import StockExpandPanel from '../../components/StockExpandPanel';
 import Icon from '../../components/Icon';
-import { computeStrategyStatus } from '../../../utils/tradingStrategy';
+import { resolveStrategyStatus } from '../../../utils/tradingStrategy';
 import type {
   HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO,
   TagDTO, AddHoldingTagPayload, UpdateHoldingTagPayload,
@@ -112,9 +112,10 @@ const HoldingRow = memo(function HoldingRow({
     useSortable({ id: h.stockCode });
 
   const showStrategy = strategy != null && !strategy.dismissed;
-  const strategyTriggered = showStrategy
-    ? computeStrategyStatus(strategy, h.currentPrice) === 'triggered'
-    : false;
+  const stratStatus  = showStrategy ? resolveStrategyStatus(strategy, h.currentPrice) : null;
+  const stratColor   =
+    stratStatus === 'triggered' ? 'var(--down)' :
+    stratStatus === 'active'    ? 'var(--accent)' : 'var(--muted)';
 
   const cls   = h.changePct === 0 ? 'txt-flat' : (h.isUp ? 'txt-up' : 'txt-down');
   const arrow = h.changePct === 0 ? '—' : (h.isUp ? '▲' : '▼');
@@ -215,10 +216,9 @@ const HoldingRow = memo(function HoldingRow({
               className="btn-icon"
               aria-label={`查看 ${h.stockName} AI 交易策略`}
               onClick={e => { e.stopPropagation(); onOpenStrategy?.(h.stockCode); }}
-              title="AI 交易策略"
-              style={{ color: strategyTriggered ? 'var(--up)' : 'var(--accent)', flexShrink: 0 }}
+              style={{ color: stratColor }}
             >
-              <Icon name="tips_and_updates" size={16} />
+              <Icon name="tips_and_updates" size={20} />
             </button>
           )}
         </div>

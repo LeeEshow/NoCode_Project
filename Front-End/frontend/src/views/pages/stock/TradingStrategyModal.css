@@ -1,278 +1,286 @@
-/* ── Header ─────────────────────────────────────────────────────────────── */
+/* ── Header ──────────────────────────────────────────────────────────────── */
 
-.ts-modal__header {
+.tsm-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
 }
 
-/* ── 上方列：chips + 現價 ─────────────────────────────────────────────── */
+.tsm-header__left {
+  flex: 1;
+  min-width: 0;
+}
 
-.ts-modal__bar-top {
+.tsm-header__title {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 4px;
 }
 
-.ts-modal__chips {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.tsm-header__code {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
 }
 
-.ts-modal__chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-xs);
-  background: var(--accent-bg);
-  border: 1px solid var(--accent-bd);
-  color: var(--accent);
-  font-size: var(--text-md);
-  font-family: var(--font-sans);
-}
-
-.ts-modal__meta {
-  font-size: var(--text-md);
+.tsm-header__name {
+  font-size: 1rem;
   color: var(--muted);
 }
 
+.tsm-header__meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
-/* ── 進度條容器 ──────────────────────────────────────────────────────────── */
+.tsm-header__badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 
-.ts-modal__bar-wrap {
+/* ── Price Axis ───────────────────────────────────────────────────────────── */
+
+.tsm-price-axis {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 20px;
-  padding: 0 4px;     /* 防止節點圓圈被裁切 */
 }
 
-/* Rail：底條 */
-.ts-modal__rail {
+.tsm-price-axis__stop {
+  font-size: 0.78rem;
+  color: var(--up);
+  text-align: right;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.tsm-price-axis__target {
+  font-size: 0.78rem;
+  color: var(--down);
+  text-align: left;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.tsm-price-axis__track-wrap {
+  flex: 1;
   position: relative;
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  margin: 0;
+  height: 56px;
+  overflow: visible;
 }
 
-/* 填色段（從左到現價） */
-.ts-modal__rail-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.4s ease;
-}
-
-.ts-modal__rail-fill--profit {
-  background: var(--down);    /* 綠色：現價高於進場，獲利 */
-  opacity: 0.6;
-}
-
-.ts-modal__rail-fill--risk {
-  background: var(--up);      /* 紅色：現價低於進場，尚未達標 */
-  opacity: 0.5;
-}
-
-/* 節點圓圈 */
-.ts-modal__node {
+.tsm-price-axis__line {
   position: absolute;
   top: 50%;
+  left: 0;
+  right: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+.tsm-price-axis__fill {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  background: var(--accent);
+  opacity: 0.22;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.tsm-price-axis__band {
+  position: absolute;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  background: var(--accent);
+  opacity: 0.5;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.tsm-price-axis__dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  transform: translate(-50%, -50%);
 }
 
-.ts-modal__node--stop {
-  background: var(--up);
-  border: 2px solid var(--surface);
-}
+.tsm-price-axis__dot--sm     { width: 8px; height: 8px; }
+.tsm-price-axis__dot--stop   { background: var(--up); }
+.tsm-price-axis__dot--target { background: var(--down); }
+.tsm-price-axis__dot--entry  { background: var(--accent); }
 
-.ts-modal__node--entry {
-  background: var(--accent);
-  border: 2px solid var(--surface);
-}
-
-.ts-modal__node--target {
-  background: var(--down);
-  border: 2px solid var(--surface);
-}
-
-/* 現價指示點（較大，較亮） */
-.ts-modal__dot {
+.tsm-price-axis__dot--current {
   position: absolute;
   top: 50%;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text);
-  border: 2px solid var(--surface);
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 6px rgba(205, 214, 224, 0.4);
-  transition: left 0.4s ease;
-  z-index: 1;
+  font-size: 1rem;
+  color: var(--text);        /* 統一白色 */
+  line-height: 1;
+  background: none;
+  border-radius: 0;
 }
 
-/* ── 標籤列（上方：止損 + 目標）────────────────────────────────────────── */
+.tsm-price-axis__label {
+  position: absolute;
+  bottom: calc(50% + 8px);
+  transform: translateX(-50%);
+  font-size: 0.78rem;        /* 與停損/目標一致 */
+  color: var(--accent);      /* 與進場色帶一致 */
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.3;
+}
 
-.ts-modal__bar-labels-top {
-  position: relative;
-  min-height: 38px;
+.tsm-price-axis__label--current {
+  position: absolute;
+  top: calc(50% + 8px);
+  transform: translateX(-50%);
+  font-size: 0.78rem;        /* 與停損/目標一致 */
+  color: var(--text);        /* 統一白色 */
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* ── Tranches ─────────────────────────────────────────────────────────────── */
+
+.tsm-tranches { margin-bottom: 16px; }
+
+.tsm-tranche {
+  border-left: 3px solid var(--accent);
+  padding: 8px 0 8px 14px;
   margin-bottom: 6px;
 }
+.tsm-tranche:last-child { margin-bottom: 0; }
+.tsm-tranche--triggered { border-left-color: var(--down); }
+.tsm-tranche--skipped   { border-left-color: var(--muted); opacity: 0.5; }
 
-/* ── 標籤列（下方：進場價）──────────────────────────────────────────────── */
-
-.ts-modal__bar-labels-bottom {
-  position: relative;
-  min-height: 50px;
-  margin-top: 6px;
-}
-
-/* ── 共用標籤基底 ────────────────────────────────────────────────────────── */
-
-.ts-modal__label {
-  position: absolute;
+.tsm-tranche__header {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--text-md);
-}
-
-/* 止損：靠左底部對齊 */
-.ts-modal__label--stop-abs {
-  bottom: 0;
-  left: 0;
-  align-items: flex-start;
-}
-
-/* 目標：靠右底部對齊 */
-.ts-modal__label--target-abs {
-  bottom: 0;
-  right: 0;
-  align-items: flex-end;
-}
-
-/* 現價：水平置中於 dotLeft 位置，底部對齊 */
-.ts-modal__label--current-abs {
-  bottom: 0;
-  transform: translateX(-50%);
+  justify-content: space-between;
   align-items: center;
-  text-align: center;
+  border-radius: 4px;
+  padding: 7px 0;
+  user-select: none;
 }
 
-.ts-modal__label--current-abs .ts-modal__label-name {
-  justify-content: center;
+.tsm-tranche__header--clickable {
+  cursor: pointer;
 }
 
-/* 進場價：水平置中於 entryPct 位置，垂直置中於底部容器 */
-.ts-modal__label--entry-abs {
-  top: 50%;
-  transform: translate(-50%, -50%);
-  align-items: center;
-  text-align: center;
+.tsm-tranche__header--clickable:hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.ts-modal__label--entry-abs .ts-modal__label-name {
-  justify-content: center;
-}
-
-/* ── 進場價列（價格 + 建議同行）────────────────────────────────────────── */
-
-.ts-modal__entry-price-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.ts-modal__advice--can {
-  font-size: var(--text-sm);
-  color: var(--down);
-}
-
-.ts-modal__advice--no {
-  font-size: var(--text-sm);
-  color: var(--up);
-}
-
-.ts-modal__label-name {
-  color: var(--label);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.ts-modal__label-name--dim {
-  color: var(--dim);
-}
-
-
-/* ── AI 建議 ─────────────────────────────────────────────────────────────── */
-
-.ts-modal__summary {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.ts-modal__summary-label {
+.tsm-tranche__header-right {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--text-md);
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--label);
+  flex-shrink: 0;
+  color: var(--muted);
 }
 
-.ts-modal__summary-date {
-  color: var(--dim);
-  font-weight: 400;
+.tsm-tranche__title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 
-.ts-modal__expired-badge {
-  padding: 1px 6px;
-  border-radius: var(--radius-xs);
-  background: var(--up-bg);
-  border: 1px solid var(--up-bd);
-  color: var(--up);
-  font-size: var(--text-sm);
-  font-weight: 500;
+.tsm-tranche__num {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
 }
 
-.ts-modal__summary-text {
-  font-size: var(--text-md);
+.tsm-tranche__range {
+  font-size: 0.9rem;
+  color: var(--text-value);
+  font-variant-numeric: tabular-nums;
+  margin: 0 6px;
+}
+
+.tsm-tranche__size {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.tsm-tranche__rules {
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 6px;
+}
+
+.tsm-tranche__rule {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 0.82rem;
+  gap: 12px;
+}
+
+.tsm-tranche__rule-name {
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+}
+
+.tsm-tranche__rule-status {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tsm-tranche__rule-status--pass { color: var(--down); }
+.tsm-tranche__rule-status--fail { color: var(--up); }
+.tsm-tranche__rule-status--wait { color: var(--muted); }
+
+/* ── Summary ──────────────────────────────────────────────────────────────── */
+
+.tsm-summary {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.6;
-  margin: 0;
 }
 
-/* ── Footer ─────────────────────────────────────────────────────────────── */
+.tsm-summary__label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
 
-.ts-modal__footer-actions {
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+
+.tsm-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-/* ── 空狀態 ──────────────────────────────────────────────────────────────── */
-
-.ts-modal__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 32px 0 20px;
-  color: var(--muted);
-  text-align: center;
+  width: 100%;
 }

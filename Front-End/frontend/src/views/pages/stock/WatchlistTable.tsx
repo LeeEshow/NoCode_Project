@@ -12,7 +12,9 @@ import SparkLine from '../../components/Charts/SparkLine';
 import StockExpandPanel from '../../components/StockExpandPanel';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Icon from '../../components/Icon';
-import { computeStrategyStatus } from '../../../utils/tradingStrategy';
+import { resolveStrategyStatus } from '../../../utils/tradingStrategy';
+import StatusBadge from '../../components/StatusBadge';
+import type { BadgeVariant } from '../../components/StatusBadge';
 import type { WatchlistItemDTO, KLineDTO, StockProfileDTO, ChipDTO, TradingStrategyDTO } from '../../../types';
 
 function fmt(n: number, decimals = 2) {
@@ -53,10 +55,17 @@ const WatchlistRow = memo(function WatchlistRow({
     useSortable({ id: item.id });
 
   const isBuy = item.signal === 'buy';
-  const hasStrategy = strategy != null && !strategy.dismissed;
-  const isTriggered = hasStrategy && strategy
-    ? computeStrategyStatus(strategy, item.currentPrice) === 'triggered'
-    : false;
+  const hasStrategy    = strategy != null && !strategy.dismissed;
+  const stratStatus    = hasStrategy ? resolveStrategyStatus(strategy, item.currentPrice) : null;
+  const hasTranches    = hasStrategy && strategy.tranches.length > 0;
+  const triggeredCount = hasTranches ? strategy.tranches.filter(t => t.status === 'triggered').length : 0;
+  const totalCount     = hasTranches ? strategy.tranches.length : 0;
+  const stratBadgeVar: BadgeVariant =
+    stratStatus === 'triggered' ? 'down' :
+    stratStatus === 'active'    ? 'accent' : 'muted';
+  const stratBadgeLabel =
+    stratStatus === 'triggered' ? '已觸發' :
+    stratStatus === 'active'    ? '觀察中' : '已過期';
 
   const cls   = item.changePct === 0 ? 'txt-flat' : (item.isUp ? 'txt-up' : 'txt-down');
   const arrow = item.changePct === 0 ? '—' : (item.isUp ? '▲' : '▼');
@@ -124,30 +133,32 @@ const WatchlistRow = memo(function WatchlistRow({
         <span className="mono" style={{ color: 'var(--muted)' }}>{fmt(item.targetPrice)}</span>
       </td>
       <td className="center">
-        <button
-          className="btn-ghost"
-          style={{
-            background: isBuy ? 'var(--down-bg)' : 'var(--accent-bg)',
-            border: `1px solid ${isBuy ? 'var(--down-bd)' : 'var(--accent-bd)'}`,
-            color: isBuy ? 'var(--down)' : 'var(--accent)',
-            padding: '2px 8px',
-            fontSize: 12,
-            borderRadius: 4,
-            cursor: 'pointer',
-            position: 'relative',
-          }}
-          onClick={e => { e.stopPropagation(); onOpenStrategy?.(item.stockCode); }}
-          aria-label={`查看 ${item.stockName} AI 交易策略`}
-        >
-          {isBuy ? '買進' : '觀望'}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <button
+            className="btn-ghost"
+            style={{
+              background: isBuy ? 'var(--down-bg)' : 'var(--accent-bg)',
+              border: `1px solid ${isBuy ? 'var(--down-bd)' : 'var(--accent-bd)'}`,
+              color: isBuy ? 'var(--down)' : 'var(--accent)',
+              padding: '2px 8px',
+              fontSize: 12,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {isBuy ? '買進' : '觀望'}
+          </button>
           {hasStrategy && (
-            <span style={{
-              position: 'absolute', top: -4, right: -4,
-              width: 6, height: 6, borderRadius: '50%',
-              background: isTriggered ? 'var(--up)' : 'var(--accent)',
-            }} />
+            <button
+              className="btn-ghost"
+              aria-label={`查看 ${item.stockName} AI 交易策略`}
+              onClick={e => { e.stopPropagation(); onOpenStrategy?.(item.stockCode); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 7px', fontSize: '0.72rem' }}
+            >
+              {hasTranches && <span className="num-value">{triggeredCount}/{totalCount} 批次</span>}
+              <StatusBadge variant={stratBadgeVar}>{stratBadgeLabel}</StatusBadge>
+            </button>
           )}
-        </button>
+        </div>
       </td>
       <td className="center">
         <div style={{ display: 'inline-flex', gap: 5 }}>
