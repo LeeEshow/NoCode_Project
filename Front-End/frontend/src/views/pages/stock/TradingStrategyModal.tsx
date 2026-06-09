@@ -347,9 +347,6 @@ export default function TradingStrategyModal({
               )}
             </div>
 
-            <div className="tsm-price-axis__target">
-              目標<br />${fmtAxis(targetHigh)}
-            </div>
           </div>
         </Tooltip.Provider>
       )}

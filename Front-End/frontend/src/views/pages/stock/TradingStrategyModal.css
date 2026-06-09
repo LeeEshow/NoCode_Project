@@ -85,32 +85,32 @@
   top: 50%;
   left: 0;
   right: 0;
-  height: 10px;
+  height: 8px;
   transform: translateY(-50%);
   background: rgba(255, 255, 255, 0.08);
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
 .tsm-price-axis__fill {
   position: absolute;
   top: 50%;
   left: 0;
-  height: 10px;
+  height: 8px;
   transform: translateY(-50%);
   background: var(--accent);
   opacity: 0.22;
-  border-radius: 5px;
+  border-radius: 4px;
   pointer-events: none;
 }
 
 .tsm-price-axis__band {
   position: absolute;
   top: 50%;
-  height: 14px;
+  height: 12px;
   transform: translateY(-50%);
   background: var(--accent);
   opacity: 0.5;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 .tsm-price-axis__dot {
