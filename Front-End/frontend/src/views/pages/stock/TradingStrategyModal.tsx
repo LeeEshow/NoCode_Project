@@ -329,12 +329,6 @@ export default function TradingStrategyModal({
 
               <div className="tsm-price-axis__dot tsm-price-axis__dot--stop"   style={{ left: '0%' }} />
               <div className="tsm-price-axis__dot tsm-price-axis__dot--target" style={{ left: `${toPct(targetLow)}%` }} />
-              <div
-                className="tsm-price-axis__label"
-                style={{ left: `${toPct(targetLow)}%`, color: 'var(--down)' }}
-              >
-                ${fmtAxis(targetLow)}
-              </div>
 
               {currentPrice > 0 && (
                 <>
@@ -346,6 +340,9 @@ export default function TradingStrategyModal({
               )}
             </div>
 
+            <div className="tsm-price-axis__target">
+              目標下限<br />${fmtAxis(targetLow)}
+            </div>
           </div>
         </Tooltip.Provider>
       )}
