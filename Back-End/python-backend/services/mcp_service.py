@@ -911,7 +911,9 @@ async def _set_asset_tags(arguments: dict) -> dict:
 _VALID_TRADE_TYPES = {"entry", "add", "reduce", "exit", "stop_loss", "take_profit", "watch"}
 _VALID_CONFIDENCE  = {"high", "medium", "low"}
 _VALID_TIMEFRAME   = {"short", "medium", "long"}
-_CHIP_RULE_TYPES   = frozenset({"chip_dealer_buy", "chip_foreign_buy", "chip_trust_buy"})
+_CHIP_RULE_TYPES        = frozenset({"chip_dealer_buy", "chip_foreign_buy", "chip_trust_buy"})
+_PERIOD_REQUIRED_TYPES  = frozenset({"chip_dealer_buy", "chip_foreign_buy", "chip_trust_buy", "price_above_ma"})
+_VALUE_REQUIRED_TYPES   = frozenset({"price_above", "price_below"})
 
 
 def _compute_risk_reward(trade_type: str, ref_price: float, stop_loss, tgt_low) -> float | None:
@@ -995,10 +997,16 @@ async def _save_trading_strategy(arguments: dict) -> dict:
                 rtype = r.get("type", "")
                 if rtype in _CHIP_RULE_TYPES or rtype == "manual":
                     rule_statuses[rtype] = None  # 初始 null，等批次評估
-            # 過濾 triggerRules 只保留允許欄位
+            # 驗證必填欄位 + 過濾 triggerRules 只保留允許欄位
             clean_rules = []
             for r in rules:
-                entry: dict = {"type": r["type"]}
+                rtype      = r.get("type", "")
+                batch_num  = t.get("batch", "?")
+                if rtype in _PERIOD_REQUIRED_TYPES and not isinstance(r.get("period"), int):
+                    return _text({"error": f"batch {batch_num} 的 rule '{rtype}' 缺少必填欄位 period（整數）"})
+                if rtype in _VALUE_REQUIRED_TYPES and r.get("value") is None:
+                    return _text({"error": f"batch {batch_num} 的 rule '{rtype}' 缺少必填欄位 value（數值）"})
+                entry: dict = {"type": rtype}
                 if "value" in r:
                     entry["value"] = r["value"]
                 if "period" in r:

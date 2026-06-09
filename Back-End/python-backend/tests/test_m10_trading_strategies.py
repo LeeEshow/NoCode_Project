@@ -377,6 +377,36 @@ async def test_save_strategy_no_tranches_and_no_trigger_price(client):
     assert "error" in result
 
 
+async def test_save_strategy_chip_rule_missing_period(client):
+    """chip_dealer_buy 缺 period → 錯誤"""
+    bad_tranches = [
+        {
+            **_VALID_PAYLOAD["tranches"][0],
+            "size_ratio": 1.0,
+            "trigger_rules": [{"type": "chip_dealer_buy"}],  # 缺 period
+        }
+    ]
+    bad    = {**_VALID_PAYLOAD, "tranches": bad_tranches}
+    result = _mcp_parse(await _mcp_call(client, "save_trading_strategy", bad))
+    assert "error" in result
+    assert "period" in result["error"]
+
+
+async def test_save_strategy_price_above_missing_value(client):
+    """price_above 缺 value → 錯誤"""
+    bad_tranches = [
+        {
+            **_VALID_PAYLOAD["tranches"][0],
+            "size_ratio": 1.0,
+            "trigger_rules": [{"type": "price_above"}],  # 缺 value
+        }
+    ]
+    bad    = {**_VALID_PAYLOAD, "tranches": bad_tranches}
+    result = _mcp_parse(await _mcp_call(client, "save_trading_strategy", bad))
+    assert "error" in result
+    assert "value" in result["error"]
+
+
 # ─── M9 錯誤情境（保留既有測試）────────────────────────────────────────────────
 
 async def test_update_tag_nonexistent_returns_error(client):
