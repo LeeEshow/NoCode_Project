@@ -678,7 +678,7 @@ export interface TriggerRule {
 
 // ── 批次腳本 ──────────────────────────────────────────────────
 
-export type TrancheStatus = 'pending' | 'triggered' | 'skipped';
+export type TrancheStatus = 'pending' | 'triggered' | 'skipped' | 'waiting';
 
 export interface StrategyTranche {
   batch:            number;
