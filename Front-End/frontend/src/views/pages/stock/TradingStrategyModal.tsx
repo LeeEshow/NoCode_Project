@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import Modal from '../../components/Modal';
 import StatusBadge from '../../components/StatusBadge';
 import type { BadgeVariant } from '../../components/StatusBadge';
@@ -280,71 +281,77 @@ export default function TradingStrategyModal({
 
       {/* ── 2. 價格座標軸 ── */}
       {hasPriceData && (
-        <div className="tsm-price-axis">
-          <div className="tsm-price-axis__stop">
-            停損<br />${fmtAxis(stopLoss)}
-          </div>
-
-          <div className="tsm-price-axis__track-wrap">
-            <div className="tsm-price-axis__line" />
-
-            {currentPrice > 0 && axisRange > 0 && (
-              <div
-                className="tsm-price-axis__fill"
-                style={{ width: `${toPct(currentPrice)}%` }}
-              />
-            )}
-
-            {tranches.map(t => (
-              <div
-                key={`band-${t.batch}`}
-                className="tsm-price-axis__band"
-                style={{
-                  left:  `${toPct(t.priceLow)}%`,
-                  width: `${Math.max(toPct(t.priceHigh) - toPct(t.priceLow), 0.5)}%`,
-                }}
-              />
-            ))}
-
-            <div className="tsm-price-axis__dot tsm-price-axis__dot--stop"   style={{ left: '0%' }} />
-            <div className="tsm-price-axis__dot tsm-price-axis__dot--target" style={{ left: `${toPct(targetLow)}%` }} />
-            {/* 目標下緣標籤（仿批次區間）*/}
-            <div
-              className="tsm-price-axis__label"
-              style={{ left: `${toPct(targetLow)}%`, color: 'var(--down)' }}
-            >
-              ${fmtAxis(targetLow)}
+        <Tooltip.Provider delayDuration={200}>
+          <div className="tsm-price-axis">
+            <div className="tsm-price-axis__stop">
+              停損<br />${fmtAxis(stopLoss)}
             </div>
 
-            {tranches.map(t => {
-              const leftPct = toPct(t.priceLow);
-              const rightPct = toPct(t.priceHigh);
-              const midPct   = clampPct((leftPct + rightPct) / 2);
-              return (
-                <div key={`tl-${t.batch}`}>
-                  <div className="tsm-price-axis__dot tsm-price-axis__dot--entry tsm-price-axis__dot--sm" style={{ left: `${leftPct}%`  }} />
-                  <div className="tsm-price-axis__dot tsm-price-axis__dot--entry tsm-price-axis__dot--sm" style={{ left: `${rightPct}%` }} />
-                  <div className="tsm-price-axis__label" style={{ left: `${midPct}%` }}>
-                    第{t.batch}批&nbsp;${fmtAxis(t.priceLow)}&nbsp;–&nbsp;{fmtAxis(t.priceHigh)}
+            <div className="tsm-price-axis__track-wrap">
+              <div className="tsm-price-axis__line" />
+
+              {currentPrice > 0 && axisRange > 0 && (
+                <div
+                  className="tsm-price-axis__fill"
+                  style={{ width: `${toPct(currentPrice)}%` }}
+                />
+              )}
+
+              {tranches.map(t => {
+                const leftPct  = toPct(t.priceLow);
+                const rightPct = toPct(t.priceHigh);
+                return (
+                  <Tooltip.Root key={`band-${t.batch}`}>
+                    <Tooltip.Trigger asChild>
+                      <div
+                        className="tsm-price-axis__band"
+                        style={{
+                          left:   `${leftPct}%`,
+                          width:  `${Math.max(rightPct - leftPct, 0.5)}%`,
+                          cursor: 'default',
+                        }}
+                      />
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content
+                        sideOffset={10}
+                        className="ft-tooltip ft-tooltip--nowrap"
+                      >
+                        第{t.batch}批&nbsp;
+                        <span className="num-value">
+                          ${fmtAxis(t.priceLow)}&nbsp;–&nbsp;{fmtAxis(t.priceHigh)}
+                        </span>
+                        <Tooltip.Arrow className="ft-tooltip__arrow" />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                );
+              })}
+
+              <div className="tsm-price-axis__dot tsm-price-axis__dot--stop"   style={{ left: '0%' }} />
+              <div className="tsm-price-axis__dot tsm-price-axis__dot--target" style={{ left: `${toPct(targetLow)}%` }} />
+              <div
+                className="tsm-price-axis__label"
+                style={{ left: `${toPct(targetLow)}%`, color: 'var(--down)' }}
+              >
+                ${fmtAxis(targetLow)}
+              </div>
+
+              {currentPrice > 0 && (
+                <>
+                  <span className="tsm-price-axis__dot--current" style={{ left: `${toPct(currentPrice)}%` }}>★</span>
+                  <div  className="tsm-price-axis__label--current" style={{ left: `${Math.min(toPct(currentPrice), 95)}%` }}>
+                    現價<br />${fmtAxis(currentPrice)}
                   </div>
-                </div>
-              );
-            })}
+                </>
+              )}
+            </div>
 
-            {currentPrice > 0 && (
-              <>
-                <span className="tsm-price-axis__dot--current" style={{ left: `${toPct(currentPrice)}%` }}>★</span>
-                <div  className="tsm-price-axis__label--current" style={{ left: `${Math.min(toPct(currentPrice), 95)}%` }}>
-                  現價<br />${fmtAxis(currentPrice)}
-                </div>
-              </>
-            )}
+            <div className="tsm-price-axis__target">
+              目標<br />${fmtAxis(targetHigh)}
+            </div>
           </div>
-
-          <div className="tsm-price-axis__target">
-            目標<br />${fmtAxis(targetHigh)}
-          </div>
-        </div>
+        </Tooltip.Provider>
       )}
 
       {/* ── 3. 狀態摘要 + 進場批次 ── */}

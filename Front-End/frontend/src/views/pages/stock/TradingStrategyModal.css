@@ -76,7 +76,7 @@
 .tsm-price-axis__track-wrap {
   flex: 1;
   position: relative;
-  height: 56px;
+  height: 64px;
   overflow: visible;
 }
 
@@ -85,33 +85,32 @@
   top: 50%;
   left: 0;
   right: 0;
-  height: 6px;
+  height: 10px;
   transform: translateY(-50%);
   background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
+  border-radius: 5px;
 }
 
 .tsm-price-axis__fill {
   position: absolute;
   top: 50%;
   left: 0;
-  height: 6px;
+  height: 10px;
   transform: translateY(-50%);
   background: var(--accent);
   opacity: 0.22;
-  border-radius: 3px;
+  border-radius: 5px;
   pointer-events: none;
 }
 
 .tsm-price-axis__band {
   position: absolute;
   top: 50%;
-  height: 8px;
+  height: 14px;
   transform: translateY(-50%);
   background: var(--accent);
   opacity: 0.5;
-  border-radius: 3px;
-  pointer-events: none;
+  border-radius: 4px;
 }
 
 .tsm-price-axis__dot {
