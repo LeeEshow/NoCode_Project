@@ -1,3 +1,7 @@
+/* ── Modal 寬度覆寫 ──────────────────────────────────────────────────────── */
+
+.ft-modal.tsm-modal { max-width: 600px; }
+
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
 .tsm-header {
@@ -165,13 +169,13 @@
 .tsm-tranches { margin-bottom: 16px; }
 
 .tsm-tranche {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--muted);
   padding: 8px 0 8px 14px;
   margin-bottom: 6px;
 }
 .tsm-tranche:last-child { margin-bottom: 0; }
-.tsm-tranche--triggered { border-left-color: var(--down); }
-.tsm-tranche--skipped   { border-left-color: var(--muted); opacity: 0.5; }
+.tsm-tranche--open    { border-left-color: var(--accent); }
+.tsm-tranche--skipped { opacity: 0.5; }
 
 .tsm-tranche__header {
   display: flex;

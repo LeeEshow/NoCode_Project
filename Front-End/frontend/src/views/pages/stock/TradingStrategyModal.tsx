@@ -104,19 +104,31 @@ function ruleDisplayName(rule: TriggerRule): string {
 
 /* ── TrancheRow ── */
 
-function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule, defaultExpanded = false }: {
+function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule, defaultExpanded = false, storageKey }: {
   tranche:         StrategyTranche;
   tradeType:       string;
   currentPrice:    number;
   sparkline:       number[];
   onConfirmRule?:  (batch: number, ruleType: string, confirmed: boolean) => void;
   defaultExpanded?: boolean;
+  storageKey:      string;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const v = localStorage.getItem(storageKey);
+      if (v !== null) return v === 'true';
+    } catch {}
+    return defaultExpanded;
+  });
+
+  function toggleExpanded() {
+    const next = !expanded;
+    setExpanded(next);
+    try { localStorage.setItem(storageKey, String(next)); } catch {}
+  }
+
   const merged = mergeRealTimePriceStatuses(tranche, currentPrice, sparkline);
-  const mod =
-    tranche.status === 'triggered' ? ' tsm-tranche--triggered' :
-    tranche.status === 'skipped'   ? ' tsm-tranche--skipped'   : '';
+  const mod = tranche.status === 'skipped' ? ' tsm-tranche--skipped' : '';
 
   const statusVar: Record<string, BadgeVariant> = { triggered: 'down', pending: 'muted', waiting: 'muted', skipped: 'muted' };
 
@@ -158,13 +170,13 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
   }
 
   return (
-    <div className={`tsm-tranche${mod}`}>
+    <div className={`tsm-tranche${mod}${expanded ? ' tsm-tranche--open' : ''}`}>
       <div
         className={`tsm-tranche__header${hasRules ? ' tsm-tranche__header--clickable' : ''}`}
-        onClick={() => hasRules && setExpanded(v => !v)}
+        onClick={() => hasRules && toggleExpanded()}
         role={hasRules ? 'button' : undefined}
         tabIndex={hasRules ? 0 : undefined}
-        onKeyDown={hasRules ? e => e.key === 'Enter' && setExpanded(v => !v) : undefined}
+        onKeyDown={hasRules ? e => e.key === 'Enter' && toggleExpanded() : undefined}
       >
         <div className="tsm-tranche__title-group">
           <span className="tsm-tranche__num">第 {tranche.batch} 批</span>
@@ -239,7 +251,7 @@ export default function TradingStrategyModal({
   );
 
   return (
-    <Modal open={open} size="lg" onClose={onClose} footer={footer}>
+    <Modal open={open} size="lg" className="tsm-modal" onClose={onClose} footer={footer}>
 
       {/* ── 1. 策略標頭 ── */}
       <div className="tsm-header">
@@ -366,6 +378,7 @@ export default function TradingStrategyModal({
                     sparkline={sparkline}
                     onConfirmRule={onConfirmRule}
                     defaultExpanded={t.batch === firstPendingBatch}
+                    storageKey={`tsm-exp-${strategy.stockCode}-${t.batch}`}
                   />
                 ));
               })()
