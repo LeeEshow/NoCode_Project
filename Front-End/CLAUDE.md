@@ -66,6 +66,16 @@ src/
 - **ViewModel**：`useState` + `useCallback`，暴露 `loading / saving / error` 及 CRUD 方法。每個頁面自行 instantiate，不跨頁共用。
 - **View**：不直接呼叫 API，所有副作用透過 ViewModel。
 
+### Model 層注意事項
+
+**所有 Model 必須使用 `api/axios.ts` 的單例**，不可直接 `import axios from 'axios'`（繞過 baseURL / timeout / 錯誤攔截器）。
+
+**報價欄位命名陷阱**：`models/quoteModel.ts` 的 `fetchQuotesByCodes` 回傳 `QuoteDTO`，其中 `changePercent` 是後端欄位名稱。對應到 `HoldingDTO` 時必須手動轉換為 `changePct`，兩者名稱不同：
+
+```ts
+changePct: q.changePercent   // ← 必須轉換，直接用 q.changePct 會是 undefined
+```
+
 ### ViewModel 清單
 
 | Hook | 頁面 / 用途 |
@@ -169,6 +179,16 @@ useEffect(() => {
 
 同樣的模式也用於 RiskPanel 的穩定 callback（`rulesVmRef`、`tagVmRef`）與 `useHoldingsViewModel` / `useWatchlistViewModel` 的展開資料讀取（`stateRef`），確保空依賴陣列下仍能存取最新 ViewModel。
 
+**盤中輪詢架構**（`StockOverviewPage` 每 5s）：
+
+| 輪詢呼叫 | Endpoint | 原因 |
+|----------|----------|------|
+| `holdings.refreshPrices()` | `POST /stocks/quotes` | 前端帶 codes，零 Firestore 讀取 |
+| `watchlist.silentReload()` | `GET /watchlist` | 必須保留：後端注入 `judgment`（買進/等待）訊號，改用 `/stocks/quotes` 會導致 signal 不再刷新 |
+| `market.silentReload()` | `GET /market/indices` | 市場指數更新 |
+
+`useHoldingsViewModel.refreshPrices` 從 `stateRef.current.items` 取 codes，而非另外 fetch Firestore，是 Firestore 讀取量優化的核心。`codes.length === 0` 時提前 return，不發請求。
+
 ### Tag 與風險模型
 
 - **HoldingTagDTO** 內嵌於 `HoldingDTO.tags[]`，由 `GET /holdings` 回傳，不需獨立 fetch。`holdingModel.ts` 的 `toHoldingDTO()` 負責映射，確保 `tags: raw.tags ?? []`。
@@ -185,22 +205,11 @@ useEffect(() => {
 
 ### 頁面切換動畫（ECGLoader + Overlay）
 
-路由切換時的過場動畫由兩個層次組成，皆以 `useLocation().pathname` 偵測路由變更：
+路由切換時由兩層組成，皆以 `useLocation().pathname` 偵測：
+- **全屏遮罩**（`MainLayout`，z-index 9998）：立即遮蓋，700ms 後淡出，新頁面在背景靜默 mount + fetch
+- **ECGLoader**（`views/components/ECGLoader/`，z-index 9999）：股價折線 SVG 動畫，首次 mount 不觸發（`isFirstRender` ref guard）
 
-**1. 全屏遮罩（`MainLayout`）**
-- 路由變更時，`var(--bg)` 深色遮罩（z-index 9998）立即蓋住整個頁面
-- 700ms 後以 300ms 淡出，新頁面才顯露
-- 新頁面元件在背景靜默 mount + fetch，遮罩提供視覺緩衝
-
-**2. 股價折線動畫（`views/components/ECGLoader/ECGLoader.tsx`）**
-- 固定定位於頁面正中央（z-index 9999），顯示在遮罩上方
-- xorshift32 偽隨機 + 動量衰減 + 均值回歸，在 module 載入時生成 300 點股價走勢路徑（固定 seed，結果一致）
-- SVG 以 `clip-path: inset(0 100% 0 0)` → `inset(0 0% 0 0)` 左→右展開；路徑下方有半透明漸層填色
-- 紅色發光圓點（`.ecg-loader__dot`）跟隨趨勢從左下往右上移動，模擬行情頭燈
-- 底部有刻度點（每 40 SVG 單位一個），同步隨 clip-path 顯現
-- 總時長：500ms 展開 + 200ms 淡出 = 700ms
-- 首次 mount 不觸發（`isFirstRender` ref guard）
-- **注意**：使用 `useLocation()`，不可改用 `useNavigation()`（需 data router，本專案用 `<BrowserRouter>`）
+**禁止**改用 `useNavigation()`——本專案用 `<BrowserRouter>` 而非 data router。
 
 ---
 
@@ -246,11 +255,20 @@ export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
 
 **字型**：`tokens.css` 與 `theme.ts` 兩邊皆為 `'Open Sans', sans-serif`（sans 與 mono 相同）。Google Fonts 只載入 Open Sans，禁止在 `theme.ts` 引用未載入的字型（如 IBM Plex）。
 
+### 語義色彩用途
+
+| 用途 | Token |
+|------|-------|
+| 買入建議 / WeightRatio 不足 | `--accent` (`#6A8FB5`) |
+| 賣出建議 / WeightRatio 超標 | `--up` (`#B87A7A`) |
+| WeightRatio 正常 | `--down` (`#7CA88D`) |
+
 ### CSS 慣例
 
 - 元件內禁止自定義顏色值，只用 CSS 變數。
 - 全域共用 class 定義於 `styles/global.css`；元件專屬 CSS 放在同目錄。
 - 數值欄加 `className="num-value"`（monospace + `--text-value`）。
+- 持股數量單位全系統統一為「**股**」；再平衡建議格式：`賣 200 股  約 NT$8,000`。
 
 **常用 global class：**
 
@@ -326,17 +344,6 @@ export const chartColors = [ /* 6 色暗礦色板 */ ] as const;
 
 Modal 動畫：`data-state="open/closed"` 搭配 CSS `@keyframes overlay-in/out`、`modal-in/out`，定義於 `Modal.css`。
 
-Radix Slider 用法（`aria-labelledby` 連結 label）：
-```tsx
-<span id="lbl-threshold">偏離門檻</span>
-<Slider.Root aria-labelledby="lbl-threshold" ...>
-  <Slider.Track className="rd-slider__track">
-    <Slider.Range className="rd-slider__range" />
-  </Slider.Track>
-  <Slider.Thumb className="rd-slider__thumb" />
-</Slider.Root>
-```
-
 ---
 
 ## 關鍵共用元件
@@ -361,29 +368,23 @@ Radix Slider 用法（`aria-labelledby` 連結 label）：
 | `TradingStrategyModal` | AI 交易策略詳情（`views/pages/stock/`）；size="sm"；`strategy=null` 時顯示空狀態；「忽略」按鈕呼叫 `onDismiss()` 後立即 `onClose()`（樂觀更新已在 ViewModel 完成） |
 | `SummaryCard` | 數值卡片；props：`label / value / sub / valueClass`；class `sc-card ft-panel` |
 
-**ph-stat 設計規則**（PanelHeader 左側統計項目）：
+**ph-stat 設計規則**（PanelHeader 左側統計項目）：次要數值（hover 顯示）**必須用 Radix Tooltip Portal**（`.ph-stat__sub-tooltip`），不得用 CSS-only absolute（被 overflow 容器裁切）。`Tooltip.Trigger asChild` 時 `<div>` 須加 `tabIndex={0}`。定位：`sideOffset={-8} side="bottom"`；Tooltip 背景固定為 `#232b36`，禁用 `var(--surface)`（對比不足）。
 
-- 每個統計項目用 `<div className="ph-stat">` 包裝，內含 `.ph-stat__label`（標題）與 `.ph-stat__value`（主數值）
-- `.ph-stat` 已設 `flex-shrink: 0`，不會被壓縮，超出寬度由 `panel-header__left` 的 `overflow-x: auto` 負責捲動
-- 次要數值（hover 顯示）**必須用 Radix Tooltip Portal**（`.ph-stat__sub-tooltip` class），不得用 `position: absolute` 的 CSS-only 方式（會被 overflow 容器裁切）
-- `ph-stat` 作為 `Tooltip.Trigger asChild` 的子元素時，需加 `tabIndex={0}`（`<div>` 原生不可聚焦，Radix 無法自動處理鍵盤觸發）
-- `ph-stat::after` 偽元素產生右側垂直分隔線，`ph-stat:last-child::after` 自動隱藏
-- **ph-stat Tooltip 定位**：`.ph-stat` 高度 52px、數值位於約第 38px，必須用 `sideOffset={-8} side="bottom"` 讓 tooltip 緊貼數值底部；若用正值 offset 會造成 tooltip 飄離 header 過遠。`Tooltip.Arrow` 填色統一為 `#232b36`（與 tooltip 背景一致）
-- **Tooltip 背景**：所有 PanelHeader 相關 tooltip（`.ph-stat__sub-tooltip`、`.panel-header__exposure-tooltip`）背景固定為 `#232b36`，禁止使用 `var(--surface)` 或 `var(--panel)`（與深色 header 對比不足）
-
-**PlanParamRow 拖拉規則**（`views/pages/plan/PlanParamRow.tsx`）：
-
-- 設定卡片列 `.plan-param-row` 支援橫向捲動 + 滑鼠拖拉，scrollbar 隱藏
-- `onMouseDown` 先檢查 `e.target.tagName`，遇到 `INPUT`、`BUTTON`、`SELECT`、`TEXTAREA`、`LABEL` 直接 return，確保卡片內互動元素正常運作
+**PlanParamRow 拖拉規則**：`onMouseDown` 遇到 `INPUT / BUTTON / SELECT / TEXTAREA / LABEL` 直接 return，避免干擾卡片內互動元素。
 
 **SettingsModal 佈局**：size="md"，無 tab 結構，三個扁平 section（股票清單 / 每日快照 / 系統診斷），內容用 `.settings-section` / `.settings-row` rows，**不使用 `.ft-panel`**。系統診斷 section 包含報價/持倉/指數測試與 Shioaji 重新初始化（輪詢最多 10 次×2s）。CSS 定義於 `views/layout/SettingsModal.css`。
 
-**ReportPage 圖表**（非共用元件，位於 `pages/report/ReportChart.tsx`，已加 `React.memo`）：Bar（累計投入）+ Line（報酬率）混合 ECharts 圖，雙 Y 軸，支援雙段比較，含 markLine 目標線。
+**ReportPage 圖表**（非共用元件，位於 `pages/report/ReportChart.tsx`，已加 `React.memo`）：Bar（累計投入）+ Line（報酬率）混合 ECharts 圖，雙 Y 軸，支援雙段比較，含 markLine 目標線。`toChartData()` 以**第一筆實際快照日期**為 dayIndex 基準（非 startDate），避免左側空洞。
 
-**ReportPage 佈局**：
-- 上方 Panel：日期範圍控制（段一必填、段二可選）+ ReportChart
-- 下方 Panel：Tab 段一 / 段二，各自獨立快照明細表（30 筆一頁）
-- `toChartData()` 以第一筆實際快照日期為 dayIndex 基準（非 startDate），避免左側空洞
+### Accessibility 必要項
+
+- icon-only 按鈕加 `aria-label`（有文字標籤時 icon 加 `aria-hidden="true"`）
+- 收折/展開面板：`aria-expanded`、`aria-controls`
+- 表單欄位：`<label htmlFor>` 對應；驗證訊息：`aria-live="polite"` 包覆
+- Tab 元件：`role="tablist"` / `role="tab"` / `role="tabpanel"` / `aria-selected`
+- 數值欄：`font-variant-numeric: tabular-nums`
+- 動畫：`@media (prefers-reduced-motion: reduce)` fallback
+- Native select：明確設定 `background-color` 與 `color`
 
 ---
 

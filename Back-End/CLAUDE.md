@@ -84,26 +84,28 @@ Back-End/
 
 ```bash
 cd Back-End/python-backend
-py -3.14 -m venv .venv       # 首次建立
-.venv\Scripts\activate       # Windows 啟動
+python -m venv .venv          # 首次建立（需 Python 3.13+；py -3.13 或 py -3.14 均可）
+.venv\Scripts\activate        # Windows 啟動
 pip install -r requirements.txt
 ```
 
 ### Common Commands
+
+啟動 venv 後直接執行，或用 `.venv\Scripts\python.exe -m <cmd>`（Windows 不啟動 venv 時的備用方式）：
 
 ```bash
 cd Back-End/python-backend
 .venv\Scripts\activate
 
 uvicorn main:app --reload --port 8000   # 本機開發
-pytest tests/ -v                        # 測試套件（全套）
-pytest tests/test_m6_mcp.py -v          # 單一模組測試
-pytest tests/ -v -k "holdings"          # 關鍵字篩選測試
+python -m pytest tests/ -v             # 測試套件（全套）
+python -m pytest tests/test_m6_mcp.py -v   # 單一模組測試
+python -m pytest tests/ -v -k "holdings"   # 關鍵字篩選測試
 ```
 
 ### Testing Patterns
 
-- `pytest.ini`：`asyncio_mode = auto`（所有 async 測試自動偵測，無需 `@pytest.mark.asyncio`）
+- `pytest.ini`：`asyncio_mode = auto`（所有 async 測試自動偵測，無需 `@pytest.mark.asyncio`）；`asyncio_default_fixture_loop_scope = function`（每個測試獨立 event loop，避免 pytest-asyncio 0.24+ deprecation warning）
 - `conftest.py` 提供 `client` fixture：`httpx.AsyncClient(follow_redirects=True)` + `ASGITransport(app=app)`，不啟動外部 server
 - Firestore 使用**真實連線**（需本機 serviceAccountKey.json 或 GOOGLE_APPLICATION_CREDENTIALS_JSON）
 - **驗證原則**：只驗結構（欄位存在、型別正確、camelCase）；不斷言具體數值（報價、金額）
@@ -150,6 +152,30 @@ def reset_cb():
 ```
 
 **quoteSource / quoteStatus 欄位**：整合測試（`test_m2_holdings.py` 等）只驗結構，不斷言具體數值；mock 測試（`test_quote_service.py`）才驗 source/status。
+
+### POST Request Body 驗證模式
+
+POST endpoint 一律用 Pydantic `BaseModel`，**不可用 `body: dict`**（無法自動驗證型別、不生成正確 OpenAPI schema）：
+
+```python
+from pydantic import BaseModel, field_validator
+
+class QuotesRequest(BaseModel):
+    codes: list[str]
+
+    @field_validator("codes")
+    @classmethod
+    def codes_not_empty(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("codes 不可為空陣列")
+        return v
+
+@router.post("/quotes")
+async def batch_quotes(body: QuotesRequest):
+    ...
+```
+
+驗證失敗由 FastAPI 自動回 `422 Unprocessable Entity`（不需手動 `raise HTTPException(400, ...)`）。
 
 ### Architecture
 
@@ -207,7 +233,7 @@ python-backend/
 | `/api/v1/holdings/:stockCode/tags` | 持股 Tag 嵌套操作（POST/PUT/DELETE） |
 | `/api/v1/transactions` | 交易紀錄 |
 | `/api/v1/market` | 指數、匯率、出口指標 |
-| `/api/v1/stocks` | 股票清單、個股報價、K 線、基本面、籌碼 |
+| `/api/v1/stocks` | 股票清單、個股報價、K 線、基本面、籌碼；`POST /quotes` 批次報價（零 Firestore） |
 | `/api/v1/snapshots` | 每日資產快照（GET/POST/PUT；`/record` 後端自算） |
 | `/api/v1/tags` | Tag CRUD；`POST /recalculate-dynamic-risk` |
 | `/api/v1/asset-tags` | 持股 Tag 關聯 CRUD |
@@ -326,16 +352,6 @@ FinMind sync、動態風險重算、批次暖身等任務必須走 `BackgroundTa
 - 未訂閱的股票 → 背景呼叫 `subscribe_stock()`，首次 tick 尚未到達直接 fallback（不阻塞熱路徑）。
 - 批次 fallback 並行，總 deadline `_FALLBACK_DEADLINE = 9.0s`（< 前端 15s axios timeout）。
 
-**受影響端點**（`quote_service.py` 的報價來源）：
-
-| Endpoint | 報價來源 |
-|----------|---------|
-| `GET /api/v1/stocks/{id}/quote` | `quote_service.get_quote()` |
-| `POST /api/v1/stocks/quotes` | `quote_service.get_quotes()`（前端帶 codes，零 Firestore）|
-| `GET /api/v1/holdings` | `quote_service.get_quotes()` |
-| `GET /api/v1/watchlist` | `quote_service.get_quotes()` |
-| `GET /api/v1/market/indices` | `api_switch_call()` 直接（TAIEX + 台指期）|
-
 **大盤指數**（`GET /market/indices`）仍使用 `api_switch_call()`：
 
 ```
@@ -382,17 +398,6 @@ contract = api.Contracts.Futures["TXFF6"]
 
 `_get_nearest_txf()` 使用 offset 0（當月）→ offset 1（下月）依序試，任一成功即返回。
 
-#### Tick 時間戳處理
-
-```python
-_TZ_TAIPEI = timezone(timedelta(hours=8))   # 模組級常數
-
-# callback 內
-_ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
-"updatedAt": int(_ts.timestamp())
-"timestamp": _ts.isoformat()   # → "2026-06-04T11:10:00+08:00"（有時區，_is_fresh() 比較準確）
-```
-
 使用 **WebSocket tick 訂閱 + memory cache**，平時個股報價不走 HTTP：
 
 - 啟動時批次訂閱持股 + 關注清單（`warmup_stocks()`），並呼叫一次 `api.snapshots()` 預填 cache（解決 9:20 開盤延遲問題）。
@@ -436,6 +441,23 @@ _ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
 - 例外：`preferences/default` 的 `chart.*` 欄位在 Firestore 即為 camelCase
 - Singleton 無資料時回傳預設值（不拋錯），除 `settings` 回傳 `null`
 
+### FinMind API 欄位對照
+
+| Dataset | 關鍵欄位 |
+|---------|---------|
+| `TaiwanStockInstitutionalInvestorsBuySell` | `name` 為英文（`Foreign_Investor`、`Investment_Trust`、`Dealer_self` 等）；buy/sell 單位為**股**，÷1000 = 張 |
+| `TaiwanStockDividend` | 現金股利：`CashEarningsDistribution`；除息日：`CashExDividendTradingDate` |
+| `TaiwanStockFinancialStatements` | 淨利：`IncomeAfterTaxes`；無 Equity 欄位（ROE 暫為 null） |
+| `TaiwanStockPER` | `PER`、`PBR`（每日更新） |
+| `TaiwanStockMonthRevenue` | `revenue`、`revenue_month`、`revenue_year` |
+| `TaiwanStockInfo` | `stock_name`、`type`（`twse`/`otc`） |
+
+### 每日排程（`.github/workflows/daily-snapshot.yml`）
+
+UTC 06:00 / 台灣 14:00，依序執行：
+1. `POST /api/v1/snapshots/record`（快照 + 背景風險重算）
+2. `POST /api/v1/finmind/sync`（基本面 + 三大法人，共用 `X-Cron-Token`）
+
 ### MCP Server
 
 三個端點共用 `_handle_rpc()` 邏輯：
@@ -447,32 +469,7 @@ API Key：`?key=<MCP_ACCESS_KEY>`；`MCP_ACCESS_KEY` 未設定時跳過驗證（
 
 支援方法：`initialize`、`tools/list`、`tools/call`、`notifications/*`（204 無回應）
 
-**22 個 Tool**（實作於 `services/mcp_service.py`）：
-
-| Tool | params | 說明 |
-|------|--------|------|
-| `get_holdings` | — | 持股清單，含 `currentPrice`/`currentValue` 即時並行注入 |
-| `get_watchlist` | — | 自選股 |
-| `get_market_indices` | — | 大盤指數 + 台指期 |
-| `get_stock_quote` | `stock_id` | 個股即時報價 |
-| `get_snapshots` | `year?`, `start_date?`, `end_date?`, `limit?` | 每日資產快照（支援日期範圍） |
-| `get_tags` | — | Tag 設定 |
-| `get_rebalance_rules` | — | 再平衡規則 |
-| `get_foreign_assets` | — | 外幣 + 債券資產 |
-| `get_asset_tags` | — | 個股 Tag 配置（多對多，含 weightRatio） |
-| `get_tag_correlation_matrix` | — | Tag 相關性矩陣（ρ 值；無資料時回預設空結構） |
-| `get_transactions` | `stock_id?` | 交易紀錄（依 date 升冪；可篩單一個股） |
-| `get_stock_history` | `stock_id`, `start_date?`, `end_date?`, `interval?` | 歷史 K 線（OHLCV） |
-| `get_stock_chip` | `stock_id`, `limit?` | 三大法人買賣超（Firestore 快取，每日同步，預設 20 筆） |
-| `get_rebalance_snapshots` | `limit?` | 歷次再平衡建議快照（含 params + suggestions） |
-| `get_portfolio_tag_analysis` | — | 投組 Tag 配置分析（actualWeight / deviation / holdings 貢獻度聚合） |
-| `get_stock_fundamental` | `stock_id` | 個股基本面（Firestore 快取，由 FinMind 每日同步） |
-| `query_stock_fundamental` | `stock_id` | **即時**從 FinMind API 查詢任意個股基本面（不限庫存，非快取） |
-| `query_stock_chip` | `stock_id`, `start_date?`, `limit?` | **即時**從 FinMind API 查詢任意個股三大法人（不限庫存，非快取） |
-| `update_tag` | `tag_id`, `base_risk?`, `target_weight?`, `direction?`, `concentration_limit?`, `dry_run?` | **寫入** Tag 設定（dry_run 兩階段；false 後自動重算 dynamicRisk） |
-| `set_asset_tags` | `stock_code`, `tags[]`, `dry_run?` | **寫入** 持股完整 Tag 配置（idempotent PUT，Firestore batch write 原子性） |
-| `save_trading_strategy` | `stock_code`, `stock_name`, `trade_type`, `trigger_price`, `reference_price`, `confidence`, `timeframe`, `summary`, ... | **寫入** AI 交易策略（singleton 覆寫，dismissed 重置為 false） |
-| `get_trading_strategy` | `stock_code` | 取得個股現有交易策略（無資料時回 `{strategy: null}`） |
+**22 個 Tool** 實作於 `services/mcp_service.py`（完整 params 與說明見該檔案 `_TOOLS` 定義，或呼叫 `tools/list` JSON-RPC 取得）。
 
 回傳格式：`{"content": [{"type": "text", "text": "<camelCase JSON string>"}]}`
 
