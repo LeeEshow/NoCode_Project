@@ -102,34 +102,6 @@ async def get_all():
     return {"success": True, "data": result}
 
 
-# ─── GET /holdings/prices ──────────────────────────────────────────────────────
-
-@router.get("/prices")
-async def get_prices():
-    holdings = await asyncio.to_thread(find_all_holdings)
-    active = [h for h in holdings if h["sharesHeld"] > 0]
-    quotes = await get_quotes([h["stockId"] for h in active])
-
-    result = []
-    for h in active:
-        q = quotes.get(h["stockId"], {})
-        price = q.get("price", 0)
-        # price=0 代表報價失敗，unrealizedProfit 設 0；前端需搭配 quoteStatus 判斷
-        unrealized = round(price * h["sharesHeld"] - h["totalCost"]) if price > 0 else 0
-        result.append({
-            "stockCode":        h["stockId"],
-            "currentPrice":     price,
-            "change":           q.get("change", 0),
-            "changePct":        q.get("changePercent", 0),
-            "unrealizedProfit": unrealized,
-            "quoteSource":      q.get("quoteSource", "unknown"),
-            "quoteStatus":      q.get("quoteStatus", "error"),
-            "quoteMessage":     q.get("quoteMessage", ""),
-        })
-
-    return {"success": True, "data": result}
-
-
 # ─── GET /holdings/:stockId ────────────────────────────────────────────────────
 
 @router.get("/{stock_id}")

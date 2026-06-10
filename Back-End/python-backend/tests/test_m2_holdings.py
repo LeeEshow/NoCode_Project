@@ -1,4 +1,4 @@
-"""M2-A/B 驗證：holdings CRUD + /prices 欄位 + tags 嵌套"""
+"""M2-A/B 驗證：holdings CRUD + tags 嵌套"""
 from tests.helpers import assert_success, assert_keys, assert_no_snake
 
 HOLDING_KEYS = ["stockId", "sharesHeld", "avgCost", "totalCost",
@@ -33,28 +33,6 @@ async def test_get_holdings_tags_items_camel(client):
         for tag in item["tags"]:
             assert_keys(tag, ["id", "tagName", "weightRatio"])
             assert_no_snake(tag)
-
-
-async def test_get_prices_returns_success(client):
-    res = await client.get("/api/v1/holdings/prices")
-    data = assert_success(res)
-    assert isinstance(data, list)
-
-
-async def test_get_prices_uses_changePct_not_changePercent(client):
-    res = await client.get("/api/v1/holdings/prices")
-    data = assert_success(res)
-    for item in data:
-        assert "changePct" in item,        "GET /holdings/prices 應有 changePct 欄位"
-        assert "changePercent" not in item, "GET /holdings/prices 不應有 changePercent 欄位"
-
-
-async def test_get_prices_items_have_required_keys(client):
-    res = await client.get("/api/v1/holdings/prices")
-    data = assert_success(res)
-    for item in data:
-        assert_keys(item, ["stockCode", "currentPrice", "change", "changePct", "unrealizedProfit"])
-        assert_no_snake(item)
 
 
 async def test_reorder_validates_order_field(client):

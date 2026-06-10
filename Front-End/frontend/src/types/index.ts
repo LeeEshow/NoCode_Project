@@ -54,6 +54,24 @@ export interface StockSearchResultDTO {
 export type QuoteSource = 'shioaji' | 'twse' | 'yahoo' | 'unknown';
 export type QuoteStatus = 'ok' | 'stale' | 'timeout' | 'error' | 'unavailable';
 
+/* ── 批次報價（POST /stocks/quotes）────────────────────────── */
+
+export interface QuoteDTO {
+  stockId:       string;
+  name:          string;
+  price:         number;       // quoteStatus !== 'ok' 時為 0
+  change:        number;
+  changePercent: number;       // 後端欄位名稱；對應前端 HoldingDTO.changePct
+  high:          number;
+  low:           number;
+  volume:        number;
+  marketStatus:  'TRADING' | 'CLOSED';
+  updatedAt:     number;       // Unix timestamp（秒）
+  quoteSource:   QuoteSource;
+  quoteStatus:   QuoteStatus;
+  quoteMessage:  string;       // 失敗說明；ok 時為空字串
+}
+
 /* ── 即時報價 ───────────────────────────────────────────────── */
 
 export interface StockQuoteDTO {

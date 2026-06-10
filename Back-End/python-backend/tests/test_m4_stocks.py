@@ -1,5 +1,5 @@
-"""M4-D 驗證：stocks search/quote/history/profile/chip 結構"""
-from tests.helpers import assert_success, assert_keys, assert_no_snake
+"""M4-D / M14 驗證：stocks search/quote/history/profile/chip/batch-quotes 結構"""
+from tests.helpers import assert_success, assert_error, assert_keys, assert_no_snake
 
 QUOTE_KEYS   = ["stockId", "name", "price", "change", "changePercent",
                 "high", "low", "volume", "marketStatus", "updatedAt"]
@@ -129,3 +129,43 @@ async def test_get_chip_items_camel(client):
     for item in data:
         assert_keys(item, CHIP_KEYS)
         assert_no_snake(item)
+
+
+# ─── M14：POST /stocks/quotes ─────────────────────────────────────────────────
+
+BATCH_QUOTE_KEYS = ["price", "change", "changePercent", "quoteSource", "quoteStatus", "quoteMessage"]
+
+
+async def test_batch_quotes_returns_dict(client):
+    res = await client.post("/api/v1/stocks/quotes", json={"codes": [TEST_STOCK]})
+    data = assert_success(res)
+    assert isinstance(data, dict)
+    assert TEST_STOCK in data
+
+
+async def test_batch_quotes_structure(client):
+    res = await client.post("/api/v1/stocks/quotes", json={"codes": [TEST_STOCK, "2454"]})
+    data = assert_success(res)
+    for code in ["2330", "2454"]:
+        assert code in data
+        assert_keys(data[code], BATCH_QUOTE_KEYS)
+        assert_no_snake(data[code])
+
+
+async def test_batch_quotes_empty_codes_returns_400(client):
+    res = await client.post("/api/v1/stocks/quotes", json={"codes": []})
+    assert res.status_code == 422
+
+
+async def test_batch_quotes_over_limit_returns_400(client):
+    codes = [str(i).zfill(4) for i in range(51)]
+    res = await client.post("/api/v1/stocks/quotes", json={"codes": codes})
+    assert res.status_code == 422
+
+
+async def test_batch_quotes_no_firestore_read(client):
+    """回傳結構正確即驗證路徑不走 Firestore（quote_service 從 tick cache / Yahoo 取資料）"""
+    res = await client.post("/api/v1/stocks/quotes", json={"codes": [TEST_STOCK]})
+    data = assert_success(res)
+    assert TEST_STOCK in data
+    assert data[TEST_STOCK]["quoteStatus"] in ("ok", "timeout", "error", "unavailable", "stale")

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLatest } from '../utils/useLatest';
-import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData, reorderHoldings, fetchHoldingPrices } from '../models/holdingModel';
+import { fetchHoldings, fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData, reorderHoldings } from '../models/holdingModel';
+import { fetchQuotesByCodes } from '../models/quoteModel';
 import { addHoldingTag as apiAddHoldingTag, updateHoldingTag as apiUpdateHoldingTag, deleteHoldingTag as apiDeleteHoldingTag } from '../models/tagModel';
-import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO, AddHoldingTagPayload, UpdateHoldingTagPayload, QuoteSource, QuoteStatus } from '../types';
+import type { HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO, AddHoldingTagPayload, UpdateHoldingTagPayload } from '../types';
 import { toast } from '../views/components/Toast';
 
 export interface HoldingsSummary {
@@ -184,46 +185,47 @@ export function useHoldingsViewModel() {
 
   /* 靜默更新價格（盤中輪詢用，不觸發 loading，不重載 sparklines） */
   const refreshPrices = useCallback(async () => {
+    const codes = stateRef.current.items
+      .filter(h => h.shares > 0)
+      .map(h => h.stockCode);
+    if (codes.length === 0) return;
     try {
-      const prices = await fetchHoldingPrices();
-      const priceMap = new Map(prices.map(p => [p.stockCode, p]));
+      const quotes = await fetchQuotesByCodes(codes);
       setState(s => {
         const items = s.items.map(h => {
-          const p = priceMap.get(h.stockCode);
-          if (!p) return h;
+          const q = quotes[h.stockCode];
+          const hasValidPrice = q?.quoteStatus === 'ok';
 
-          /* QUOTE-F-04：新報價無效（price <= 0 且非 ok）→ 保留上輪有效價格，只更新 quote 狀態 */
-          const newStatus = p.quoteStatus as QuoteStatus | undefined;
-          const hasValidPrice = p.currentPrice > 0 && (!newStatus || newStatus === 'ok');
-          const newPrice   = hasValidPrice ? p.currentPrice : h.currentPrice;
-          const newChange  = hasValidPrice ? p.change       : h.change;
-          const newChangePct = hasValidPrice ? p.changePct  : h.changePct;
+          const newPrice     = hasValidPrice ? q.price         : h.currentPrice;
+          const newChange    = hasValidPrice ? q.change        : h.change;
+          const newChangePct = hasValidPrice ? q.changePercent : h.changePct;  // 後端 changePercent → 前端 changePct
 
           /* 完全無變化時回傳同一 reference */
           if (
-            newPrice      === h.currentPrice   &&
-            newChange     === h.change         &&
-            newChangePct  === h.changePct      &&
-            p.quoteSource === h.quoteSource    &&
-            p.quoteStatus === h.quoteStatus    &&
-            p.quoteMessage=== h.quoteMessage
+            newPrice      === h.currentPrice  &&
+            newChange     === h.change        &&
+            newChangePct  === h.changePct     &&
+            q?.quoteSource  === h.quoteSource &&
+            q?.quoteStatus  === h.quoteStatus &&
+            q?.quoteMessage === h.quoteMessage
           ) return h;
 
           const currentValue     = newPrice * h.shares;
           const unrealizedProfit = currentValue - h.totalCost;
           const returnPct        = h.costAvg > 0 ? ((newPrice - h.costAvg) / h.costAvg) * 100 : 0;
+
           return {
             ...h,
-            currentPrice:  newPrice,
-            change:        newChange,
-            changePct:     newChangePct,
-            unrealizedProfit,
+            currentPrice:    newPrice,
+            change:          newChange,
+            changePct:       newChangePct,
             currentValue,
+            unrealizedProfit,
             returnPct,
-            isUp:          newChangePct > 0,
-            quoteSource:   p.quoteSource as QuoteSource | undefined,
-            quoteStatus:   newStatus,
-            quoteMessage:  p.quoteMessage,
+            isUp:            newChangePct > 0,
+            quoteSource:     q?.quoteSource  ?? h.quoteSource,
+            quoteStatus:     q?.quoteStatus  ?? h.quoteStatus,
+            quoteMessage:    q?.quoteMessage ?? h.quoteMessage,
           };
         });
         /* 所有 item reference 均未變動時，回傳同一 state 避免整頁 re-render */

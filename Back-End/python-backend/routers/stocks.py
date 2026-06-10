@@ -1,12 +1,27 @@
 import asyncio
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, field_validator
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services.firestore import get_db
 from services.cache import cache_get, cache_set
 from services.yahoo_finance import get_all_stocks, get_full_history, get_history_range
-from services.quote_service import get_quote
+from services.quote_service import get_quote, get_quotes
 
 router = APIRouter()
+
+
+class QuotesRequest(BaseModel):
+    codes: list[str]
+
+    @field_validator("codes")
+    @classmethod
+    def codes_not_empty(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("codes 不可為空陣列")
+        if len(v) > 50:
+            raise ValueError("單次最多查詢 50 支股票")
+        return v
+
 
 _INDEX_ENTRIES = [
     {"stockId": "^TWII", "name": "加權指數", "market": "INDEX"},
@@ -76,6 +91,14 @@ def list_refresh():
     if not os.getenv("SHIOAJI_API_URL"):
         raise HTTPException(status_code=400, detail="未設定 SHIOAJI_API_URL，此端點需要 Shioaji 服務")
     raise HTTPException(status_code=501, detail="Shioaji 整合尚未啟用")
+
+
+# ─── POST /stocks/quotes ─────────────────────────────────────────────────────
+
+@router.post("/quotes")
+async def batch_quotes(body: QuotesRequest):
+    data = await get_quotes(body.codes)
+    return {"success": True, "data": data}
 
 
 # ─── GET /stocks/{id}/quote ───────────────────────────────────────────────────

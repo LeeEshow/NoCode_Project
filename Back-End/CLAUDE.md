@@ -160,7 +160,7 @@ python-backend/
 │   ├── settings.py         # pydantic_settings.BaseSettings + @lru_cache get_settings()
 │   └── executors.py        # 共用 ThreadPoolExecutor(16) + yahoo/twse/ndc Semaphore
 ├── routers/                # 路由層
-│   ├── holdings.py         # 持股 CRUD + prices + tags 嵌套
+│   ├── holdings.py         # 持股 CRUD + tags 嵌套
 │   ├── watchlist.py        # 自選股
 │   ├── transactions.py     # 交易紀錄
 │   ├── assets.py           # 外幣 + 債券資產
@@ -203,7 +203,7 @@ python-backend/
 
 | 前綴 | 功能 |
 |------|------|
-| `/api/v1/holdings` | 持股 CRUD、即時報價、排序、重算 |
+| `/api/v1/holdings` | 持股 CRUD、排序、重算（報價已移至 `POST /stocks/quotes`）|
 | `/api/v1/holdings/:stockCode/tags` | 持股 Tag 嵌套操作（POST/PUT/DELETE） |
 | `/api/v1/transactions` | 交易紀錄 |
 | `/api/v1/market` | 指數、匯率、出口指標 |
@@ -331,8 +331,8 @@ FinMind sync、動態風險重算、批次暖身等任務必須走 `BackgroundTa
 | Endpoint | 報價來源 |
 |----------|---------|
 | `GET /api/v1/stocks/{id}/quote` | `quote_service.get_quote()` |
+| `POST /api/v1/stocks/quotes` | `quote_service.get_quotes()`（前端帶 codes，零 Firestore）|
 | `GET /api/v1/holdings` | `quote_service.get_quotes()` |
-| `GET /api/v1/holdings/prices` | `quote_service.get_quotes()` |
 | `GET /api/v1/watchlist` | `quote_service.get_quotes()` |
 | `GET /api/v1/market/indices` | `api_switch_call()` 直接（TAIEX + 台指期）|
 
