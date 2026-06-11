@@ -13,6 +13,8 @@ import { CSS } from '@dnd-kit/utilities';
 import SparkLine from '../../components/Charts/SparkLine';
 import StockExpandPanel from '../../components/StockExpandPanel';
 import Icon from '../../components/Icon';
+import StatusBadge from '../../components/StatusBadge';
+import type { BadgeVariant } from '../../components/StatusBadge';
 import { resolveStrategyStatus } from '../../../utils/tradingStrategy';
 import type {
   HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO,
@@ -53,69 +55,54 @@ function ValTooltip({ label, value, color, children }: {
   );
 }
 
-const EFFICIENCY_COLOR: Record<string, string> = {
-  '建議交易': 'var(--down)',
-  '可觀察':   'var(--accent)',
-  '效益不足': 'var(--dim)',
-};
+function StrategyBadge({ strategy, currentPrice, stockName, onClick }: {
+  strategy?:    TradingStrategyDTO;
+  currentPrice: number;
+  stockName:    string;
+  onClick:      (e: React.MouseEvent) => void;
+}) {
+  let label: string;
+  let variant: BadgeVariant;
 
-function SuggestionCell({ s }: { s: RebalanceSuggestion | undefined }) {
-  if (!s || s.action === 'hold' || s.shares === 0) {
-    return <span style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)' }}>—</span>;
+  if (!strategy) {
+    label = '無策略'; variant = 'muted';
+  } else {
+    const status           = resolveStrategyStatus(strategy, currentPrice);
+    const isStopLossHit    = strategy.stopLossPrice != null
+      && currentPrice > 0
+      && currentPrice <= strategy.stopLossPrice;
+
+    if      (status === 'dismissed')                      { label = '忽略';      variant = 'muted';  }
+    else if (status === 'expired')                        { label = 'AI 已過期'; variant = 'muted';  }
+    else if (isStopLossHit)                               { label = '觸發停損'; variant = 'up';    }
+    else if (status === 'triggered')                      { label = 'AI 已觸發'; variant = 'down';   }
+    else                                                  { label = 'AI 觀察中'; variant = 'accent'; }
   }
-  const label = s.action === 'sell' ? '賣' : '買';
+
   return (
-    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.6 }}>
-      <span>
-        {label} {fmt(s.shares)} 股
-        {s.isLiquidityLimited && (
-          <span title="流動性不足，已調降交易量" style={{ cursor: 'help', marginLeft: 4, display: 'inline-flex' }}>
-              <Icon name="warning" size={24} />
-            </span>
-        )}
-      </span>
-      <span>約 ${fmt(Math.round(s.estimatedAmount))}</span>
-      {s.efficiencyLabel && (
-        <span style={{
-          color: EFFICIENCY_COLOR[s.efficiencyLabel] ?? 'var(--dim)',
-          fontSize: '10px',
-          border: `1px solid ${EFFICIENCY_COLOR[s.efficiencyLabel] ?? 'var(--border)'}`,
-          borderRadius: 3,
-          padding: '0 4px',
-          marginTop: 1,
-        }}>
-          {s.efficiencyLabel}
-        </span>
-      )}
-      {s.estimatedCost != null && s.estimatedCost > 0 && (
-        <span style={{ color: 'var(--dim)', fontSize: '10px' }}>
-          成本 ${fmt(Math.round(s.estimatedCost))}
-        </span>
-      )}
-    </span>
+    <button
+      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', lineHeight: 0 }}
+      onClick={onClick}
+      aria-label={`${stockName} 交易策略：${label}`}
+    >
+      <StatusBadge variant={variant}>{label}</StatusBadge>
+    </button>
   );
 }
 
 /* ── 主列（可拖拉）── */
 const HoldingRow = memo(function HoldingRow({
-  h, sparkline, isExpanded, onToggle, suggestion, strategy, onOpenStrategy,
+  h, sparkline, isExpanded, onToggle, strategy, onOpenStrategy,
 }: {
   h:               HoldingDTO;
   sparkline:       number[];
   isExpanded:      boolean;
   onToggle:        (code: string) => void;
-  suggestion?:     RebalanceSuggestion;
   strategy?:       TradingStrategyDTO;
   onOpenStrategy?: (stockCode: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: h.stockCode });
-
-  const showStrategy = strategy != null && !strategy.dismissed;
-  const stratStatus  = showStrategy ? resolveStrategyStatus(strategy, h.currentPrice) : null;
-  const stratColor   =
-    stratStatus === 'triggered' ? 'var(--down)' :
-    stratStatus === 'active'    ? 'var(--accent)' : 'var(--muted)';
 
   const cls   = h.changePct === 0 ? 'txt-flat' : (h.isUp ? 'txt-up' : 'txt-down');
   const arrow = h.changePct === 0 ? '—' : (h.isUp ? '▲' : '▼');
@@ -209,19 +196,12 @@ const HoldingRow = memo(function HoldingRow({
         }
       </td>
       <td className="center">
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
-          <SuggestionCell s={suggestion} />
-          {showStrategy && (
-            <button
-              className="btn-icon"
-              aria-label={`查看 ${h.stockName} AI 交易策略`}
-              onClick={e => { e.stopPropagation(); onOpenStrategy?.(h.stockCode); }}
-              style={{ color: stratColor }}
-            >
-              <Icon name="tips_and_updates" size={20} />
-            </button>
-          )}
-        </div>
+        <StrategyBadge
+          strategy={strategy}
+          currentPrice={h.currentPrice}
+          stockName={h.stockName}
+          onClick={e => { e.stopPropagation(); onOpenStrategy?.(h.stockCode); }}
+        />
       </td>
     </tr>
   );
@@ -292,7 +272,7 @@ export default function HoldingsTable({
               <th className="right">成本均價</th>
               <th className="right">持有（股）</th>
               <th className="right">損益 %</th>
-              <th className="center" style={{ minWidth: 130 }}>再平衡建議</th>
+              <th className="center" style={{ minWidth: 100 }}>交易策略</th>
             </tr>
           </thead>
           <tbody>
@@ -309,7 +289,6 @@ export default function HoldingsTable({
                     sparkline={sparklines[h.stockCode] ?? []}
                     isExpanded={isExpanded}
                     onToggle={onToggle}
-                    suggestion={rebalanceSuggestions?.[h.stockCode]}
                     strategy={strategies?.[h.stockCode]}
                     onOpenStrategy={onOpenStrategy}
                   />
@@ -331,6 +310,7 @@ export default function HoldingsTable({
                       onRemoveHoldingTag={onRemoveHoldingTag}
                       overlappingGroups={overlappingGroups}
                       concentrationLimit={concentrationLimit}
+                      suggestion={rebalanceSuggestions?.[h.stockCode]}
                     />
                   )}
                 </Fragment>

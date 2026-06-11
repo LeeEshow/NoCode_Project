@@ -259,6 +259,43 @@
 .tsm-tranche__rule-status--fail { color: var(--up); }
 .tsm-tranche__rule-status--wait { color: var(--muted); }
 
+/* ── Rebalance ────────────────────────────────────────────────────────────── */
+
+.tsm-rebalance {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+  font-size: 0.82rem;
+}
+
+.tsm-rebalance__label {
+  color: var(--label);
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+.tsm-rebalance__action {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tsm-rebalance__amount {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tsm-rebalance__efficiency {
+  font-size: 10px;
+  color: var(--dim);
+  border: 1px solid var(--border-hi);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
 /* ── Summary ──────────────────────────────────────────────────────────────── */
 
 .tsm-summary {

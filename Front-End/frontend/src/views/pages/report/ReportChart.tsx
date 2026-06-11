@@ -67,10 +67,13 @@ function fmtAxisWan(v: number): string {
 export default memo(function ReportChart({ portfolioSeries, stockSeries, targetRate, height = 320 }: Props) {
   const hasStocks = stockSeries.length > 0;
 
-  // 有個股時以個股交易日為主軸（跳過非交易日），否則用快照日期
-  const allDates = hasStocks
-    ? [...new Set(stockSeries.flatMap(s => s.data.map(d => d.date)))].sort()
-    : [...new Set(portfolioSeries.flatMap(s => s.data.map(d => d.date)))].sort();
+  // 快照日期為主軸；有個股時取聯集，避免個股資料延遲導致快照點消失
+  const allDates = [
+    ...new Set([
+      ...portfolioSeries.flatMap(s => s.data.map(d => d.date)),
+      ...(hasStocks ? stockSeries.flatMap(s => s.data.map(d => d.date)) : []),
+    ]),
+  ].sort();
 
   if (allDates.length === 0) {
     return (

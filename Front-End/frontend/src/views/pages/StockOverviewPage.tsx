@@ -623,8 +623,7 @@ export default function StockOverviewPage() {
 
       {/* F01：AI 交易策略 */}
       {(() => {
-        const activeStrategy = strategyVm.strategies[strategyModal.stockCode];
-        if (!activeStrategy) return null;
+        const activeStrategy = strategyVm.strategies[strategyModal.stockCode] ?? null;
         const matchHolding  = holdings.items.find(h => h.stockCode === strategyModal.stockCode);
         const matchWatchlist = watchlist.items.find(i => i.stockCode === strategyModal.stockCode);
         return (
@@ -634,6 +633,7 @@ export default function StockOverviewPage() {
             currentPrice={matchHolding?.currentPrice ?? matchWatchlist?.currentPrice ?? 0}
             sparkline={holdings.sparklines?.[strategyModal.stockCode] ?? []}
             positionShares={matchHolding?.shares}
+            suggestion={rebalanceSuggestions[strategyModal.stockCode]}
             onDismiss={() => strategyVm.dismiss(strategyModal.stockCode)}
             onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
             onConfirmRule={(batch, ruleType, confirmed) =>

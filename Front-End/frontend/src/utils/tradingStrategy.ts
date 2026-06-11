@@ -7,10 +7,11 @@ export function computeStrategyStatus(
   if (s.dismissed) return 'dismissed';
   if (s.expiresAt && new Date() > new Date(s.expiresAt)) return 'expired';
   const t = s.tradeType;
-  const buyTypes  = ['entry', 'add'] as TradeType[];
-  const sellTypes = ['reduce', 'exit', 'stop_loss', 'take_profit'] as TradeType[];
-  if (buyTypes.includes(t)  && s.triggerPrice != null && currentPrice <= s.triggerPrice) return 'triggered';
-  if (sellTypes.includes(t) && s.triggerPrice != null && currentPrice >= s.triggerPrice) return 'triggered';
+  const buyTypes       = ['entry', 'add'] as TradeType[];
+  const sellAboveTypes = ['reduce', 'exit', 'take_profit'] as TradeType[];
+  if (buyTypes.includes(t)       && s.triggerPrice != null && currentPrice <= s.triggerPrice) return 'triggered';
+  if (t === 'stop_loss'          && s.triggerPrice != null && currentPrice <= s.triggerPrice) return 'triggered';
+  if (sellAboveTypes.includes(t) && s.triggerPrice != null && currentPrice >= s.triggerPrice) return 'triggered';
   return 'active';
 }
 

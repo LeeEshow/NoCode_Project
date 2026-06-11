@@ -665,8 +665,8 @@ export type TradeType =
   | 'entry' | 'add' | 'reduce' | 'exit'
   | 'stop_loss' | 'take_profit' | 'watch';
 
-export type StrategyConfidence = 'high' | 'medium' | 'low';
-export type StrategyTimeframe  = 'short' | 'medium' | 'long';
+export type StrategyConfidence = 'high' | 'medium' | 'low' | (string & {});
+export type StrategyTimeframe  = 'short' | 'medium' | 'long' | (string & {});
 
 /**
  * 策略生命週期狀態。

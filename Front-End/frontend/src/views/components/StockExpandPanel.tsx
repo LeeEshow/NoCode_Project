@@ -13,7 +13,7 @@ import { chartColors, colors as themeColors } from '../../styles';
 import type {
   KLineDTO, StockProfileDTO, ChipDTO, ExpandTab,
   HoldingTagDTO, TagDTO, AddHoldingTagPayload, UpdateHoldingTagPayload,
-  OverlappingTagGroup,
+  OverlappingTagGroup, RebalanceSuggestion,
 } from '../../types';
 
 echarts.use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
@@ -556,6 +556,59 @@ function StockTagSection({
   );
 }
 
+const EFFICIENCY_COLOR: Record<string, string> = {
+  '建議交易': 'var(--down)',
+  '可觀察':   'var(--accent)',
+  '效益不足': 'var(--dim)',
+};
+
+function RebalanceSuggestionBar({ s }: { s: RebalanceSuggestion }) {
+  const rowStyle: React.CSSProperties = {
+    borderBottom: '1px solid var(--border)',
+    padding: '6px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    fontSize: 'var(--text-sm)',
+  };
+  const labelEl = <span style={{ color: 'var(--label)', fontSize: 'var(--text-xs)', flexShrink: 0 }}>再平衡建議</span>;
+
+  if (s.action === 'hold' || s.shares === 0) {
+    return (
+      <div style={rowStyle}>
+        {labelEl}
+        <span style={{ color: 'var(--dim)' }}>持平</span>
+      </div>
+    );
+  }
+
+  const label    = s.action === 'sell' ? '賣' : '買';
+  const color    = s.action === 'sell' ? 'var(--up)' : 'var(--accent)';
+  const effColor = s.efficiencyLabel ? (EFFICIENCY_COLOR[s.efficiencyLabel] ?? 'var(--dim)') : 'var(--dim)';
+  return (
+    <div style={rowStyle}>
+      {labelEl}
+      <span style={{ color, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+        {label} {s.shares.toLocaleString('zh-TW')} 股
+      </span>
+      <span style={{ color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>
+        約 NT${Math.round(s.estimatedAmount).toLocaleString('zh-TW')}
+      </span>
+      {s.efficiencyLabel && (
+        <span style={{
+          color: effColor,
+          fontSize: 10,
+          border: `1px solid ${effColor}`,
+          borderRadius: 3,
+          padding: '0 4px',
+        }}>
+          {s.efficiencyLabel}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function EmptyMsg({ text }: { text: string }) {
   return (
     <div style={{ padding: '16px', fontSize: 'var(--text-sm)', color: 'var(--dim)', textAlign: 'center' }}>
@@ -585,12 +638,13 @@ export interface StockExpandPanelProps {
   overlappingGroups?:  OverlappingTagGroup[];
   concentrationLimit?: number; /* 同質集中度上限（小數），用於定量顯示 */
   showTxTab?:          boolean; /* false → 隱藏「交易紀錄」Tab（關注清單使用）*/
+  suggestion?:         RebalanceSuggestion; /* 再平衡建議（HoldingsTable 傳入）*/
 }
 
 export default function StockExpandPanel({
   colSpan, code, name, kline, profile, chips, loadingExpand, onAddTx, onChanged,
   holdingTags, allTags, onAddHoldingTag, onUpdateHoldingTag, onRemoveHoldingTag,
-  overlappingGroups, concentrationLimit, showTxTab = true,
+  overlappingGroups, concentrationLimit, showTxTab = true, suggestion,
 }: StockExpandPanelProps) {
   const [activeTab, setActiveTab] = useState<ExpandTab>('kline');
   const hasData = kline || profile || chips;
@@ -607,6 +661,9 @@ export default function StockExpandPanel({
   return (
     <tr style={{ background: 'rgba(0,0,0,0.22)' }}>
       <td colSpan={colSpan} style={{ padding: 0, borderBottom: '1px solid var(--border)' }}>
+        {suggestion && (
+          <RebalanceSuggestionBar s={suggestion} />
+        )}
         {loadingExpand
           ? <div style={{ padding: 16 }}><LoadingPanel loading type="spinner" /></div>
           : hasData

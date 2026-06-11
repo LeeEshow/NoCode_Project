@@ -5,18 +5,19 @@ import StatusBadge from '../../components/StatusBadge';
 import type { BadgeVariant } from '../../components/StatusBadge';
 import Icon from '../../components/Icon';
 import { resolveStrategyStatus, ruleKey, mergeRealTimePriceStatuses } from '../../../utils/tradingStrategy';
-import type { TradingStrategyDTO, StrategyTranche, TriggerRule } from '../../../types';
+import type { TradingStrategyDTO, StrategyTranche, TriggerRule, RebalanceSuggestion } from '../../../types';
 import './TradingStrategyModal.css';
 
 export interface TradingStrategyModalProps {
   open:            boolean;
-  strategy:        TradingStrategyDTO;
+  strategy:        TradingStrategyDTO | null;
   currentPrice:    number;
   sparkline?:      number[];
   positionShares?: number;
-  onDismiss:       () => void;
+  onDismiss?:      () => void;
   onClose:         () => void;
   onConfirmRule?:  (batch: number, ruleType: string, confirmed: boolean) => void;
+  suggestion?:     RebalanceSuggestion;
 }
 
 /* ── helpers ── */
@@ -102,6 +103,42 @@ function ruleDisplayName(rule: TriggerRule): string {
   }
 }
 
+/* ── RuleStatus ── */
+
+interface RuleStatusProps {
+  rule:           TriggerRule;
+  merged:         Record<string, boolean | null>;
+  tranche:        StrategyTranche;
+  onConfirmRule?: (batch: number, ruleType: string, confirmed: boolean) => void;
+}
+
+function RuleStatus({ rule, merged, tranche, onConfirmRule }: RuleStatusProps) {
+  const k   = ruleKey(rule);
+  const val = k in merged ? merged[k] : undefined;
+  if (val === true)  return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--pass"><Icon name="check_circle" size={14} aria-hidden="true" /> 達成</span>;
+  if (val === false) return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--fail"><Icon name="cancel" size={14} aria-hidden="true" /> 未達成</span>;
+  if (rule.type === 'manual') return (
+    <span className="tsm-tranche__rule-status">
+      {onConfirmRule
+        ? <>
+            <button
+              className="btn-ghost"
+              style={{ fontSize: '0.78rem', padding: '2px 8px' }}
+              onClick={e => { e.stopPropagation(); onConfirmRule(tranche.batch, 'manual', true); }}
+            ><Icon name="check" size={14} aria-hidden="true" /> 確認達成</button>
+            <button
+              className="btn-ghost"
+              style={{ fontSize: '0.78rem', padding: '2px 8px' }}
+              onClick={e => { e.stopPropagation(); onConfirmRule(tranche.batch, 'manual', false); }}
+            ><Icon name="close" size={14} aria-hidden="true" /> 未達成</button>
+          </>
+        : <span className="tsm-tranche__rule-status--wait"><Icon name="schedule" size={14} aria-hidden="true" /> 評估中</span>
+      }
+    </span>
+  );
+  return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--wait"><Icon name="schedule" size={14} aria-hidden="true" /> 評估中</span>;
+}
+
 /* ── TrancheRow ── */
 
 function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule, defaultExpanded = false, storageKey }: {
@@ -142,33 +179,6 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
     return hasRules ? `等待中 ${passed}/${rules.length}` : '等待中';
   }
 
-  function RuleStatus({ rule }: { rule: TriggerRule }) {
-    const k   = ruleKey(rule);
-    const val = k in merged ? merged[k] : undefined;
-    if (val === true)  return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--pass">✅ 達成</span>;
-    if (val === false) return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--fail">❌ 未達成</span>;
-    if (rule.type === 'manual') return (
-      <span className="tsm-tranche__rule-status">
-        {onConfirmRule
-          ? <>
-              <button
-                className="btn-ghost"
-                style={{ fontSize: '0.78rem', padding: '2px 8px' }}
-                onClick={e => { e.stopPropagation(); onConfirmRule(tranche.batch, 'manual', true); }}
-              >✓ 確認達成</button>
-              <button
-                className="btn-ghost"
-                style={{ fontSize: '0.78rem', padding: '2px 8px' }}
-                onClick={e => { e.stopPropagation(); onConfirmRule(tranche.batch, 'manual', false); }}
-              >✗ 未達成</button>
-            </>
-          : <span className="tsm-tranche__rule-status--wait">⏳ 評估中</span>
-        }
-      </span>
-    );
-    return <span className="tsm-tranche__rule-status tsm-tranche__rule-status--wait">⏳ 評估中</span>;
-  }
-
   return (
     <div className={`tsm-tranche${mod}${expanded ? ' tsm-tranche--open' : ''}`}>
       <div
@@ -207,7 +217,7 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
           {tranche.triggerRules!.map((rule, i) => (
             <div key={i} className="tsm-tranche__rule">
               <span className="tsm-tranche__rule-name">{ruleDisplayName(rule)}</span>
-              <RuleStatus rule={rule} />
+              <RuleStatus rule={rule} merged={merged} tranche={tranche} onConfirmRule={onConfirmRule} />
             </div>
           ))}
         </div>
@@ -219,8 +229,25 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
 /* ── Main ── */
 
 export default function TradingStrategyModal({
-  open, strategy, currentPrice, sparkline = [], onDismiss, onClose, onConfirmRule,
+  open, strategy, currentPrice, sparkline = [], onDismiss, onClose, onConfirmRule, suggestion,
 }: TradingStrategyModalProps) {
+  if (!strategy) {
+    return (
+      <Modal open={open} size="lg" className="tsm-modal" onClose={onClose}
+        footer={
+          <div className="tsm-footer">
+            <button className="btn-ghost btn-ghost--accent" onClick={onClose}>關閉</button>
+          </div>
+        }
+      >
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--dim)' }}>
+          <Icon name="tips_and_updates" size={40} aria-hidden="true" />
+          <div style={{ marginTop: 12, fontSize: 'var(--text-sm)' }}>目前尚無 AI 交易策略</div>
+        </div>
+      </Modal>
+    );
+  }
+
   const status      = resolveStrategyStatus(strategy, currentPrice);
   const tranches    = strategy.tranches ?? [];
   const hasTranches = tranches.length > 0;
@@ -395,7 +422,28 @@ export default function TradingStrategyModal({
         </div>
       )}
 
-      {/* ── 4. AI 綜合建議 ── */}
+      {/* ── 4. 再平衡建議 ── */}
+      {suggestion && suggestion.action !== 'hold' && suggestion.shares > 0 && (
+        <div className="tsm-rebalance">
+          <span className="tsm-rebalance__label">再平衡建議</span>
+          <span className="tsm-rebalance__action" style={{
+            color: suggestion.action === 'sell' ? 'var(--up)' : 'var(--accent)',
+          }}>
+            {suggestion.action === 'sell' ? '減碼' : '加碼'}&nbsp;
+            {suggestion.shares.toLocaleString('zh-TW')} 股
+          </span>
+          <span className="tsm-rebalance__amount">
+            約 NT${Math.round(suggestion.estimatedAmount).toLocaleString('zh-TW')}
+          </span>
+          {suggestion.efficiencyLabel && (
+            <span className="tsm-rebalance__efficiency">
+              {suggestion.efficiencyLabel}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── 5. AI 綜合建議 ── */}
       {strategy.summary && (
         <div className="tsm-summary">
           <span className="tsm-summary__label">AI建議：</span>

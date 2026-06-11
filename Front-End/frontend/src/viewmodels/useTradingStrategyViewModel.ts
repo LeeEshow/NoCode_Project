@@ -1,10 +1,12 @@
 import { useState, useCallback } from 'react';
 import { getAll, dismiss as dismissApi, remove as removeApi, updateRuleStatus as updateRuleStatusApi } from '../models/tradingStrategyModel';
 import { resolveStrategyStatus } from '../utils/tradingStrategy';
+import { useLatest } from '../utils/useLatest';
 import type { TradingStrategyDTO, StrategyStatus } from '../types';
 
 export function useTradingStrategyViewModel() {
   const [strategies, setStrategies] = useState<Record<string, TradingStrategyDTO>>({});
+  const strategiesRef = useLatest(strategies);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -20,6 +22,7 @@ export function useTradingStrategyViewModel() {
   }, []);
 
   const dismiss = useCallback(async (stockCode: string) => {
+    const original = strategiesRef.current[stockCode];
     setStrategies(prev => {
       const existing = prev[stockCode];
       if (!existing) return prev;
@@ -28,11 +31,9 @@ export function useTradingStrategyViewModel() {
     try {
       await dismissApi(stockCode);
     } catch {
-      setStrategies(prev => {
-        const existing = prev[stockCode];
-        if (!existing) return prev;
-        return { ...prev, [stockCode]: { ...existing, dismissed: false } };
-      });
+      if (original) {
+        setStrategies(prev => ({ ...prev, [stockCode]: original }));
+      }
     }
   }, []);
 
