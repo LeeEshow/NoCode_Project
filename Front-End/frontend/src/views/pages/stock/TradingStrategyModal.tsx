@@ -269,7 +269,7 @@ export default function TradingStrategyModal({
       <button
         className="btn-ghost"
         disabled={!canDismiss}
-        onClick={() => { onDismiss(); onClose(); }}
+        onClick={() => { onDismiss?.(); onClose(); }}
       >
         {strategy.dismissed ? '已忽略' : '忽略此策略'}
       </button>
