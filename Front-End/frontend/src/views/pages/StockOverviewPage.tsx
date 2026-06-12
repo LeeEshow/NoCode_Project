@@ -598,66 +598,9 @@ export default function StockOverviewPage() {
         </div>
 
         {/* ── 關注清單（P2-23）── */}
-        {wlViewMode === 'card' ? (
-          /* card 模式：header 保留 panel 外框，卡片直接掛在 page 背景上 */
-          <>
-            <div className="ft-panel">
-              <div className="ft-section-header">
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-                  <span className="ft-section-title">關注清單</span>
-                  {watchlistQuoteSummary && (
-                    <Tooltip.Provider delayDuration={300}>
-                      <QuoteSummaryBadge summary={watchlistQuoteSummary} />
-                    </Tooltip.Provider>
-                  )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <button
-                    className="btn-icon"
-                    aria-label="表格視圖"
-                    title="表格視圖"
-                    style={{ color: wlViewMode === 'table' ? 'var(--accent)' : undefined }}
-                    onClick={() => handleWlViewMode('table')}
-                  >
-                    <Icon name="table_rows" size={20} />
-                  </button>
-                  <button
-                    className="btn-icon"
-                    aria-label="小卡視圖"
-                    title="小卡視圖"
-                    style={{ color: wlViewMode === 'card' ? 'var(--accent)' : undefined }}
-                    onClick={() => handleWlViewMode('card')}
-                  >
-                    <Icon name="grid_view" size={20} />
-                  </button>
-                  <button
-                    className="btn-ghost"
-                    onClick={() => { setWlEditItem(null); setWlModalOpen(true); }}
-                  >
-                    <Icon name="add" size={20} aria-hidden="true" /> 新增
-                  </button>
-                </div>
-              </div>
-            </div>
-            {watchlist.loading
-              ? <LoadingPanel loading rows={2} />
-              : (
-                <>
-                  {watchlist.error && (
-                    <ErrorBanner message={`關注清單載入失敗：${watchlist.error}`} onRetry={watchlist.load} />
-                  )}
-                  <WatchlistCardGrid
-                    items={watchlist.items}
-                    groupOrder={watchlist.groupOrder}
-                    collapsedGroups={collapsedGroups}
-                  />
-                </>
-              )
-            }
-          </>
-        ) : (
-          /* table 模式：整個 panel 包住 header + table */
-          <div className="ft-panel">
+        {(() => {
+          /* Header 提取到三元分岐之外，避免 wlViewMode 在 narrowed scope 內比較觸發 TS2367 */
+          const wlHeader = (
             <div className="ft-section-header">
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
                 <span className="ft-section-title">關注清單</span>
@@ -694,39 +637,67 @@ export default function StockOverviewPage() {
                 </button>
               </div>
             </div>
-            {watchlist.loading
-              ? <LoadingPanel loading rows={2} />
-              : (
-                <>
-                  {watchlist.error && (
-                    <ErrorBanner message={`關注清單載入失敗：${watchlist.error}`} onRetry={watchlist.load} />
-                  )}
-                  <WatchlistTable
-                    items={watchlist.items}
-                    sparklines={watchlist.sparklines}
-                    klines={watchlist.klines}
-                    profiles={watchlist.profiles}
-                    chips={watchlist.chips}
-                    expandedCode={watchlist.expandedCode}
-                    onToggle={watchlist.toggleExpand}
-                    onExpandLoad={watchlist.ensureExpandData}
-                    onEdit={handleWlEdit}
-                    onDelete={handleWlDelete}
-                    onReorder={watchlist.reorder}
-                    onReorderWithGroup={watchlist.reorderWithGroup}
-                    collapsedGroups={collapsedGroups}
-                    onToggleGroup={handleToggleGroup}
-                    onRenameGroup={handleRenameGroup}
-                    onDeleteGroup={handleDeleteGroup}
-                    deleting={watchlist.saving}
-                    strategies={strategyVm.strategies}
-                    onOpenStrategy={handleOpenStrategy}
-                  />
-                </>
-              )
-            }
-          </div>
-        )}
+          );
+
+          const wlContent = watchlist.loading
+            ? <LoadingPanel loading rows={2} />
+            : (
+              <>
+                {watchlist.error && (
+                  <ErrorBanner message={`關注清單載入失敗：${watchlist.error}`} onRetry={watchlist.load} />
+                )}
+                {wlViewMode === 'card'
+                  ? (
+                    <WatchlistCardGrid
+                      items={watchlist.items}
+                      groupOrder={watchlist.groupOrder}
+                      collapsedGroups={collapsedGroups}
+                    />
+                  )
+                  : (
+                    <WatchlistTable
+                      items={watchlist.items}
+                      sparklines={watchlist.sparklines}
+                      klines={watchlist.klines}
+                      profiles={watchlist.profiles}
+                      chips={watchlist.chips}
+                      expandedCode={watchlist.expandedCode}
+                      onToggle={watchlist.toggleExpand}
+                      onExpandLoad={watchlist.ensureExpandData}
+                      onEdit={handleWlEdit}
+                      onDelete={handleWlDelete}
+                      onReorder={watchlist.reorder}
+                      onReorderWithGroup={watchlist.reorderWithGroup}
+                      collapsedGroups={collapsedGroups}
+                      onToggleGroup={handleToggleGroup}
+                      onRenameGroup={handleRenameGroup}
+                      onDeleteGroup={handleDeleteGroup}
+                      deleting={watchlist.saving}
+                      strategies={strategyVm.strategies}
+                      onOpenStrategy={handleOpenStrategy}
+                    />
+                  )
+                }
+              </>
+            );
+
+          /* card 模式：header 獨立 panel，內容掛在 page 背景上 */
+          if (wlViewMode === 'card') {
+            return (
+              <>
+                <div className="ft-panel">{wlHeader}</div>
+                {wlContent}
+              </>
+            );
+          }
+          /* table 模式：header + table 同一 panel */
+          return (
+            <div className="ft-panel">
+              {wlHeader}
+              {wlContent}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Modals ── */}
