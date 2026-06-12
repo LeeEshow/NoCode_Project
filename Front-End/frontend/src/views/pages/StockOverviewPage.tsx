@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useRef, useCallback, useMemo, ViewTransition, startTransition } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { isTradingHours } from '../../utils/tradingHours';
 import { useLatest } from '../../utils/useLatest';
@@ -236,7 +236,7 @@ export default function StockOverviewPage() {
   }, [watchlist]);
 
   const handleWlViewMode = useCallback((mode: 'table' | 'card') => {
-    setWlViewMode(mode);
+    startTransition(() => setWlViewMode(mode));
     try { localStorage.setItem('wl-view-mode', mode); } catch {}
   }, []);
 
@@ -648,36 +648,40 @@ export default function StockOverviewPage() {
                 )}
                 {wlViewMode === 'card'
                   ? (
-                    <WatchlistCardGrid
-                      items={watchlist.items}
-                      groupOrder={watchlist.groupOrder}
-                      collapsedGroups={collapsedGroups}
-                      strategies={strategyVm.strategies}
-                      onOpenStrategy={handleOpenStrategy}
-                    />
+                    <ViewTransition key="wl-card" enter="fade-in" default="none">
+                      <WatchlistCardGrid
+                        items={watchlist.items}
+                        groupOrder={watchlist.groupOrder}
+                        collapsedGroups={collapsedGroups}
+                        strategies={strategyVm.strategies}
+                        onOpenStrategy={handleOpenStrategy}
+                      />
+                    </ViewTransition>
                   )
                   : (
-                    <WatchlistTable
-                      items={watchlist.items}
-                      sparklines={watchlist.sparklines}
-                      klines={watchlist.klines}
-                      profiles={watchlist.profiles}
-                      chips={watchlist.chips}
-                      expandedCode={watchlist.expandedCode}
-                      onToggle={watchlist.toggleExpand}
-                      onExpandLoad={watchlist.ensureExpandData}
-                      onEdit={handleWlEdit}
-                      onDelete={handleWlDelete}
-                      onReorder={watchlist.reorder}
-                      onReorderWithGroup={watchlist.reorderWithGroup}
-                      collapsedGroups={collapsedGroups}
-                      onToggleGroup={handleToggleGroup}
-                      onRenameGroup={handleRenameGroup}
-                      onDeleteGroup={handleDeleteGroup}
-                      deleting={watchlist.saving}
-                      strategies={strategyVm.strategies}
-                      onOpenStrategy={handleOpenStrategy}
-                    />
+                    <ViewTransition key="wl-table" enter="fade-in" default="none">
+                      <WatchlistTable
+                        items={watchlist.items}
+                        sparklines={watchlist.sparklines}
+                        klines={watchlist.klines}
+                        profiles={watchlist.profiles}
+                        chips={watchlist.chips}
+                        expandedCode={watchlist.expandedCode}
+                        onToggle={watchlist.toggleExpand}
+                        onExpandLoad={watchlist.ensureExpandData}
+                        onEdit={handleWlEdit}
+                        onDelete={handleWlDelete}
+                        onReorder={watchlist.reorder}
+                        onReorderWithGroup={watchlist.reorderWithGroup}
+                        collapsedGroups={collapsedGroups}
+                        onToggleGroup={handleToggleGroup}
+                        onRenameGroup={handleRenameGroup}
+                        onDeleteGroup={handleDeleteGroup}
+                        deleting={watchlist.saving}
+                        strategies={strategyVm.strategies}
+                        onOpenStrategy={handleOpenStrategy}
+                      />
+                    </ViewTransition>
                   )
                 }
               </>

@@ -1,4 +1,4 @@
-import { useState, Fragment, useEffect, useMemo, memo } from 'react';
+import { useState, Fragment, useEffect, useMemo, memo, ViewTransition, startTransition } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -70,7 +70,7 @@ const WatchlistRow = memo(function WatchlistRow({
   return (
     <tr
       ref={setNodeRef}
-      onClick={() => onToggle(item.stockCode)}
+      onClick={() => startTransition(() => onToggle(item.stockCode))}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -337,16 +337,18 @@ export default function WatchlistTable({
                                   onOpenStrategy={onOpenStrategy}
                                 />
                                 {isExpanded && (
-                                  <StockExpandPanel
-                                    colSpan={COL_COUNT}
-                                    code={item.stockCode}
-                                    name={item.stockName}
-                                    kline={klines[item.stockCode]}
-                                    profile={profiles[item.stockCode]}
-                                    chips={chips[item.stockCode]}
-                                    loadingExpand={loadingExpand}
-                                    showTxTab={false}
-                                  />
+                                  <ViewTransition enter="slide-up" default="none">
+                                    <StockExpandPanel
+                                      colSpan={COL_COUNT}
+                                      code={item.stockCode}
+                                      name={item.stockName}
+                                      kline={klines[item.stockCode]}
+                                      profile={profiles[item.stockCode]}
+                                      chips={chips[item.stockCode]}
+                                      loadingExpand={loadingExpand}
+                                      showTxTab={false}
+                                    />
+                                  </ViewTransition>
                                 )}
                               </Fragment>
                             );
@@ -373,16 +375,18 @@ export default function WatchlistTable({
                             onOpenStrategy={onOpenStrategy}
                           />
                           {isExpanded && (
-                            <StockExpandPanel
-                              colSpan={COL_COUNT}
-                              code={item.stockCode}
-                              name={item.stockName}
-                              kline={klines[item.stockCode]}
-                              profile={profiles[item.stockCode]}
-                              chips={chips[item.stockCode]}
-                              loadingExpand={loadingExpand}
-                              showTxTab={false}
-                            />
+                            <ViewTransition enter="slide-up" default="none">
+                              <StockExpandPanel
+                                colSpan={COL_COUNT}
+                                code={item.stockCode}
+                                name={item.stockName}
+                                kline={klines[item.stockCode]}
+                                profile={profiles[item.stockCode]}
+                                chips={chips[item.stockCode]}
+                                loadingExpand={loadingExpand}
+                                showTxTab={false}
+                              />
+                            </ViewTransition>
                           )}
                         </Fragment>
                       );

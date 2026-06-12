@@ -1,4 +1,4 @@
-﻿import { useEffect, useCallback, Fragment, memo } from 'react';
+﻿import { useEffect, useCallback, Fragment, memo, ViewTransition, startTransition } from 'react';
 import type { ReactNode } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
@@ -114,7 +114,7 @@ const HoldingRow = memo(function HoldingRow({
   return (
     <tr
       ref={setNodeRef}
-      onClick={() => onToggle(h.stockCode)}
+      onClick={() => startTransition(() => onToggle(h.stockCode))}
       style={{
         background: isExpanded ? 'rgba(255,255,255,0.02)' : undefined,
         transform: CSS.Transform.toString(transform),
@@ -293,25 +293,27 @@ export default function HoldingsTable({
                     onOpenStrategy={onOpenStrategy}
                   />
                   {isExpanded && (
-                    <StockExpandPanel
-                      colSpan={COL_COUNT}
-                      code={h.stockCode}
-                      name={h.stockName}
-                      kline={klines[h.stockCode]}
-                      profile={profiles[h.stockCode]}
-                      chips={chips[h.stockCode]}
-                      loadingExpand={loadingExpand}
-                      onAddTx={onAddTx}
-                      onChanged={onChanged}
-                      holdingTags={h.tags}
-                      allTags={allTags}
-                      onAddHoldingTag={onAddHoldingTag}
-                      onUpdateHoldingTag={onUpdateHoldingTag}
-                      onRemoveHoldingTag={onRemoveHoldingTag}
-                      overlappingGroups={overlappingGroups}
-                      concentrationLimit={concentrationLimit}
-                      suggestion={rebalanceSuggestions?.[h.stockCode]}
-                    />
+                    <ViewTransition enter="slide-up" default="none">
+                      <StockExpandPanel
+                        colSpan={COL_COUNT}
+                        code={h.stockCode}
+                        name={h.stockName}
+                        kline={klines[h.stockCode]}
+                        profile={profiles[h.stockCode]}
+                        chips={chips[h.stockCode]}
+                        loadingExpand={loadingExpand}
+                        onAddTx={onAddTx}
+                        onChanged={onChanged}
+                        holdingTags={h.tags}
+                        allTags={allTags}
+                        onAddHoldingTag={onAddHoldingTag}
+                        onUpdateHoldingTag={onUpdateHoldingTag}
+                        onRemoveHoldingTag={onRemoveHoldingTag}
+                        overlappingGroups={overlappingGroups}
+                        concentrationLimit={concentrationLimit}
+                        suggestion={rebalanceSuggestions?.[h.stockCode]}
+                      />
+                    </ViewTransition>
                   )}
                 </Fragment>
               );
