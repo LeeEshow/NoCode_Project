@@ -12,7 +12,8 @@ DEFAULTS = {
         "showMA60":   True,
         "showVolume": True,
         "zoomLock":   False,
-    }
+    },
+    "wlCollapsedGroups": [],
 }
 
 
@@ -27,7 +28,8 @@ def _from_firestore(d: dict) -> dict:
             "showMA60":   bool(chart_raw.get("showMA60",   DEFAULTS["chart"]["showMA60"])),
             "showVolume": bool(chart_raw.get("showVolume", DEFAULTS["chart"]["showVolume"])),
             "zoomLock":   bool(chart_raw.get("zoomLock",  DEFAULTS["chart"]["zoomLock"])),
-        }
+        },
+        "wlCollapsedGroups": list(d.get("wlCollapsedGroups", [])),
     }
 
 
@@ -54,11 +56,16 @@ async def update_preferences(body: dict):
     input_chart = body.get("chart", {})
     merged_chart = {**current["chart"], **input_chart}
 
-    updated = {"chart": merged_chart}
+    # Direct replace for wlCollapsedGroups
+    if "wlCollapsedGroups" in body:
+        wl_groups = [str(g) for g in body["wlCollapsedGroups"]]
+    else:
+        wl_groups = current.get("wlCollapsedGroups", [])
 
     db.collection("preferences").document("default").set({
-        "chart":      merged_chart,
-        "updated_at": fs.SERVER_TIMESTAMP,
+        "chart":             merged_chart,
+        "wlCollapsedGroups": wl_groups,
+        "updated_at":        fs.SERVER_TIMESTAMP,
     }, merge=True)
 
-    return {"success": True, "data": _from_firestore({"chart": merged_chart})}
+    return {"success": True, "data": _from_firestore({"chart": merged_chart, "wlCollapsedGroups": wl_groups})}

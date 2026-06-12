@@ -2,7 +2,7 @@
 .mir-row {
   display: flex;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 10px;
   overflow-x: auto;
   margin-bottom: 16px;
   scrollbar-width: none;

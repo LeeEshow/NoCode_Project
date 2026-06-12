@@ -8,7 +8,7 @@ import {
   reorderWatchlist,
 } from '../models/watchlistModel';
 import { fetchSparklineData, fetchKLine, fetchStockProfile, fetchChipData } from '../models/holdingModel';
-import type { WatchlistItemDTO, CreateWatchlistPayload, KLineDTO, StockProfileDTO, ChipDTO } from '../types';
+import type { WatchlistItemDTO, CreateWatchlistPayload, UpdateWatchlistPayload, KLineDTO, StockProfileDTO, ChipDTO } from '../types';
 
 interface State {
   items:        WatchlistItemDTO[];
@@ -44,9 +44,7 @@ export function useWatchlistViewModel() {
     setState(s => ({ ...s, loading: true, error: null }));
     try {
       const items = await fetchWatchlist();
-      // 清單資料到手立即顯示，不等 sparkline
       setState(s => ({ ...s, items, loading: false }));
-      // sparkline 在背景載入
       const sparklines = await loadSparklines(items);
       setState(s => ({ ...s, sparklines }));
     } catch (err) {
@@ -97,7 +95,7 @@ export function useWatchlistViewModel() {
 
   const updateItem = useCallback(async (
     id: string,
-    payload: Partial<CreateWatchlistPayload>,
+    payload: UpdateWatchlistPayload,
     onSuccess?: () => void,
   ) => {
     setState(s => ({ ...s, saving: true, error: null }));
@@ -136,8 +134,56 @@ export function useWatchlistViewModel() {
   const reorder = useCallback((newItems: WatchlistItemDTO[]) => {
     const newOrder = newItems.map(i => i.id);
     setOrder(newOrder);
-    reorderWatchlist(newOrder).catch(() => { /* 靜默，排序已在本地生效 */ });
+    reorderWatchlist(newOrder).catch(() => {});
   }, []);
+
+  /* 跨組拖拉：更新排序 + 更新被移動 item 的 group */
+  const reorderWithGroup = useCallback((
+    newItems: WatchlistItemDTO[],
+    movedId: string,
+    newGroup: string | undefined,
+  ) => {
+    const newOrder = newItems.map(i => i.id);
+    setOrder(newOrder);
+    setState(s => ({
+      ...s,
+      items: s.items.map(i => i.id === movedId ? { ...i, group: newGroup } : i),
+    }));
+    reorderWatchlist(newOrder).catch(() => {});
+    updateWatchlistItem(movedId, { group: newGroup ?? null }).catch(() => {});
+  }, []);
+
+  /* 批次更新同組所有 item 的 group 欄位（樂觀更新，API 失敗靜默） */
+  const renameGroup = useCallback(async (oldName: string, newName: string) => {
+    const toUpdate = stateRef.current.items.filter(i => i.group === oldName);
+    setState(s => ({
+      ...s,
+      items: s.items.map(i => i.group === oldName ? { ...i, group: newName } : i),
+    }));
+    await Promise.all(toUpdate.map(i => updateWatchlistItem(i.id, { group: newName }).catch(() => {})));
+  }, [stateRef]);
+
+  /* 批次將同組 item group 設為 undefined（移至未分組） */
+  const deleteGroup = useCallback(async (groupName: string) => {
+    const toUpdate = stateRef.current.items.filter(i => i.group === groupName);
+    setState(s => ({
+      ...s,
+      items: s.items.map(i => i.group === groupName ? { ...i, group: undefined } : i),
+    }));
+    await Promise.all(toUpdate.map(i => updateWatchlistItem(i.id, { group: null }).catch(() => {})));
+  }, [stateRef]);
+
+  /* 依 sortedItems 順序推導分組順序，未分組永遠排最後 */
+  const groupOrder = useMemo(() => {
+    const seen = new Set<string>();
+    const named: string[] = [];
+    let hasUngrouped = false;
+    for (const item of sortedItems) {
+      if (!item.group) { hasUngrouped = true; continue; }
+      if (!seen.has(item.group)) { seen.add(item.group); named.push(item.group); }
+    }
+    return hasUngrouped ? [...named, '未分組'] : named;
+  }, [sortedItems]);
 
   /* 盤中輪詢用，靜默重新取得含即時報價的清單，不觸發 loading */
   const silentReload = useCallback(async () => {
@@ -147,5 +193,13 @@ export function useWatchlistViewModel() {
     } catch { /* 輪詢失敗靜默 */ }
   }, []);
 
-  return { ...state, items: sortedItems, load, toggleExpand, ensureExpandData, addItem, updateItem, removeItem, reorder, silentReload };
+  return {
+    ...state, items: sortedItems,
+    groupOrder,
+    load, toggleExpand, ensureExpandData,
+    addItem, updateItem, removeItem,
+    reorder, reorderWithGroup,
+    renameGroup, deleteGroup,
+    silentReload,
+  };
 }

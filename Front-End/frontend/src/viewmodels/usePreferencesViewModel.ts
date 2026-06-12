@@ -67,5 +67,17 @@ export function usePreferencesViewModel() {
     });
   }, []);
 
-  return { prefs, loaded, setChartPref, setExpandTab };
+  const setWlCollapsedGroups = useCallback((groups: string[]) => {
+    setPrefs(prev => {
+      const next: UserPreferences = { ...prev, wlCollapsedGroups: groups };
+      saveToStorage(next);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        updatePreferences(next).catch(() => {});
+      }, 500);
+      return next;
+    });
+  }, []);
+
+  return { prefs, loaded, setChartPref, setExpandTab, setWlCollapsedGroups };
 }

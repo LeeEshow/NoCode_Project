@@ -1,5 +1,5 @@
 import api from '../api/axios';
-import type { ApiResponse, WatchlistItemDTO, CreateWatchlistPayload, QuoteSource, QuoteStatus } from '../types';
+import type { ApiResponse, WatchlistItemDTO, CreateWatchlistPayload, UpdateWatchlistPayload, QuoteSource, QuoteStatus } from '../types';
 
 /* 後端 Watchlist 回傳（含即時報價注入） */
 interface RawWatchlistItem {
@@ -7,6 +7,7 @@ interface RawWatchlistItem {
   stockName?:     string | null;
   targetPrice:    number;
   note:           string;
+  group?:         string | null;
   createdAt:      string | Date;
   updatedAt:      string | Date;
   livePrice?:     number | null;
@@ -33,6 +34,7 @@ function toWatchlistItemDTO(raw: RawWatchlistItem): WatchlistItemDTO {
     isUp:   changePct > 0,
     signal: raw.judgment === '買進' ? 'buy' : 'wait',
     note:   raw.note || undefined,
+    group:  raw.group ?? undefined,
     quoteSource:  raw.quoteSource  as QuoteSource | undefined,
     quoteStatus:  raw.quoteStatus  as QuoteStatus | undefined,
     quoteMessage: raw.quoteMessage,
@@ -50,18 +52,19 @@ export async function createWatchlistItem(payload: CreateWatchlistPayload): Prom
     stockName:   payload.stockName,
     targetPrice: payload.targetPrice,
     note:        payload.note,
+    ...(payload.group !== undefined && { group: payload.group }),
   });
   return toWatchlistItemDTO(res.data.data);
 }
 
 export async function updateWatchlistItem(
   id: string,
-  payload: Partial<CreateWatchlistPayload>,
+  payload: UpdateWatchlistPayload,
 ): Promise<WatchlistItemDTO> {
   const res = await api.put<ApiResponse<RawWatchlistItem>>(`/watchlist/${id}`, {
-    ...(payload.stockName !== undefined && { stockName: payload.stockName }),
-    targetPrice: payload.targetPrice,
-    note:        payload.note,
+    ...(payload.targetPrice !== undefined && { targetPrice: payload.targetPrice }),
+    ...(payload.note        !== undefined && { note:        payload.note }),
+    ...(payload.group       !== undefined && { group:       payload.group }),
   });
   return toWatchlistItemDTO(res.data.data);
 }

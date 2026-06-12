@@ -1,11 +1,11 @@
 # 個人理財雲端系統 — 後端開發任務清單
 
-> 版本：9.2（2026-06-10）
+> 版本：9.3（2026-06-12）
 > 參考文件：Back-End\CLAUDE.md
 
 ---
 
-## 現況（2026-06-10）
+## 現況（2026-06-12）
 
 - **M1–M8 全部完成**：Python FastAPI 後端穩定運作於 GCE e2-micro（asia-east1-b）
 - **MCP 全部完成**：22 個 Tool + SSE/Streamable HTTP 雙傳輸層
@@ -28,10 +28,14 @@
 - **景氣燈號移除（2026-06-05）**：`GET /api/v1/market/export-indicator` 及 NDC 爬蟲完全移除。GCE IP 被 `index.ndc.gov.tw` 封擋（403），FinMind 需付費方案，無替代免費來源。同時移除 `ndc_cb`、`ndc_sem`。
 - **shioaji Code Review 待修清單完成（2026-06-05）**：shioaji 1.5.0 遷移後的整體 Code Review 8 項問題全數修正（H-1/H-2/M-1/M-2/M-3/L-1/L-2/L-3）。詳見 CLAUDE.md shioaji 1.5.0 章節。
 - **M13 交易策略 DTO 改版 + 觸發條件自動評估完成（2026-06-09）**：`TradingStrategyDTO` 從單一 `triggerPrice` 升級為多批次 `tranches[]`；新增 `StrategyTranche`（含 `shares` 欄位）、`TriggerRule`、`ruleStatuses` 結構；REST `PATCH /rule-status` 端點（M-2 manual 確認）；`evaluate_trigger_rules()` 在 `POST /finmind/sync` 結尾批次評估 `chip_*` 類規則並寫回 `rule_statuses` + `rule_evaluated_at`；`riskRewardRatio` 後端自動計算（M-1 除以零防護）；`PATCH /dismiss` 同步更新 `status='dismissed'`（M-3）；向後相容舊 `trigger_price` 自動轉換為單批次結構（M-4）；`expires_at` lazy eval（L-1）；`tradeType=watch` 跳過 sizeRatio 驗證（L-3）；MCP `save_trading_strategy` 接受新 schema，22 個 Tool 維持不變。Code Review H-1 ～ L-3 全數處理完畢。
+- **M15-BE-2 preferences `wlCollapsedGroups` 完成（2026-06-12）**：`DEFAULTS` 加 `wlCollapsedGroups: []`；`_from_firestore` 讀取並回傳；`PUT /preferences` 直接取代（非 deep merge）；Firestore `.set()` 寫入；GET 無欄位時預設 `[]`。9 個 pytest 全過。
+- **M15-BE 關注清單 `group` 欄位完成（2026-06-12）**：`watchlist/{stockId}` Firestore document 新增 `group: str | None`；`GET /watchlist` response 帶出 `group` 欄位（無欄位時回 `null`）；`PUT /watchlist/{id}` 接受 `group` 更新（`null` 清空分組）；400 校驗改為三個可選欄位均未提供才報錯。9 個 pytest 全過。
 - **M14 Firestore 讀取優化完成（2026-06-10）**：新增 `POST /api/v1/stocks/quotes`（`routers/stocks.py`）；前端帶 `{ codes: string[] }` 直接查報價，後端呼叫 `get_quotes()` 零 Firestore 讀取；Pydantic `QuotesRequest` model 驗證（空陣列 / 超過 50 支回 422）；`GET /holdings/prices` 保留不動（deprecated）；`test_m4_stocks.py` 補 5 個 M14 測試案例，全套 pytest 通過。
 
 ---
 
 ## 代辦事項
 
-（目前無待辦項目）
+---
+
+*(代辦清單目前為空)*

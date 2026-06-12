@@ -1,35 +1,42 @@
 import { useState, useEffect, useRef } from 'react';
 import Modal from '../../components/Modal';
-import { FormField, TextInput, NumberInput } from '../../components/FormInputs';
+import { FormField, TextInput, NumberInput, SelectInput } from '../../components/FormInputs';
 import { searchStocks } from '../../../models/holdingModel';
 import type { WatchlistItemDTO, CreateWatchlistPayload, StockSearchResultDTO } from '../../../types';
+
+const NEW_GROUP_SENTINEL = '__new__';
 
 interface FormState {
   stockCode:   string;
   stockName:   string;
   targetPrice: string;
   note:        string;
+  group:       string;
+  newGroupName: string;
 }
 
 function defaultForm(item?: WatchlistItemDTO): FormState {
   return {
-    stockCode:   item?.stockCode   ?? '',
-    stockName:   item?.stockName   ?? '',
-    targetPrice: item?.targetPrice != null ? String(item.targetPrice) : '',
-    note:        item?.note        ?? '',
+    stockCode:    item?.stockCode   ?? '',
+    stockName:    item?.stockName   ?? '',
+    targetPrice:  item?.targetPrice != null ? String(item.targetPrice) : '',
+    note:         item?.note        ?? '',
+    group:        item?.group       ?? '',
+    newGroupName: '',
   };
 }
 
 export interface WatchlistModalProps {
-  open:      boolean;
-  editItem:  WatchlistItemDTO | null;
-  saving:    boolean;
-  onClose:   () => void;
-  onSubmit:  (payload: CreateWatchlistPayload, id?: string) => void;
+  open:         boolean;
+  editItem:     WatchlistItemDTO | null;
+  existingGroups: string[];
+  saving:       boolean;
+  onClose:      () => void;
+  onSubmit:     (payload: CreateWatchlistPayload, id?: string) => void;
 }
 
 export default function WatchlistModal({
-  open, editItem, saving, onClose, onSubmit,
+  open, editItem, existingGroups, saving, onClose, onSubmit,
 }: WatchlistModalProps) {
   const isEdit = !!editItem;
   const [form, setForm] = useState<FormState>(() => defaultForm(editItem ?? undefined));
@@ -43,6 +50,14 @@ export default function WatchlistModal({
     setSearchResult([]);
     setShowDrop(false);
   }, [open, editItem]);
+
+  const isNewGroupMode = form.group === NEW_GROUP_SENTINEL;
+
+  const groupOptions = [
+    { value: '', label: '未分組' },
+    ...existingGroups.map(g => ({ value: g, label: g })),
+    { value: NEW_GROUP_SENTINEL, label: '＋ 新增分組…' },
+  ];
 
   function field<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm(f => ({ ...f, [k]: v }));
@@ -74,6 +89,8 @@ export default function WatchlistModal({
     (isEdit || !!form.stockName.trim()) &&
     Number(form.targetPrice) > 0;
 
+  const resolvedGroup = isNewGroupMode ? form.newGroupName.trim() : form.group;
+
   const handleSubmit = () => {
     if (!valid) return;
     const payload: CreateWatchlistPayload = {
@@ -81,6 +98,7 @@ export default function WatchlistModal({
       stockName:   form.stockName.trim() || form.stockCode.trim(),
       targetPrice: Number(form.targetPrice),
       note:        form.note.trim() || undefined,
+      group:       resolvedGroup || undefined,
     };
     onSubmit(payload, editItem?.id);
   };
@@ -163,6 +181,33 @@ export default function WatchlistModal({
             onChange={e => field('note', e.target.value)}
             placeholder="選填"
           />
+        </FormField>
+
+        <FormField label="分組">
+          {isNewGroupMode ? (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <TextInput
+                autoFocus
+                value={form.newGroupName}
+                onChange={e => field('newGroupName', e.target.value)}
+                placeholder="輸入新分組名稱"
+              />
+              <button
+                className="btn-ghost"
+                onClick={() => { field('group', ''); field('newGroupName', ''); }}
+                style={{ flexShrink: 0 }}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          ) : (
+            <SelectInput
+              value={form.group}
+              onChange={v => { field('group', v); if (v !== NEW_GROUP_SENTINEL) field('newGroupName', ''); }}
+              options={groupOptions}
+            />
+          )}
         </FormField>
       </div>
     </Modal>

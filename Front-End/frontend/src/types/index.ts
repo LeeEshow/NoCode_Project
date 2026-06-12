@@ -232,6 +232,7 @@ export interface WatchlistItemDTO {
   isUp:         boolean;
   signal:       'buy' | 'wait';
   note?:        string;
+  group?:       string;
   quoteSource?:  QuoteSource;
   quoteStatus?:  QuoteStatus;
   quoteMessage?: string;
@@ -242,6 +243,13 @@ export interface CreateWatchlistPayload {
   stockName:   string;
   targetPrice: number;
   note?:       string;
+  group?:      string;
+}
+
+export interface UpdateWatchlistPayload {
+  targetPrice?: number;
+  note?:        string;
+  group?:       string | null;
 }
 
 /* ── 外幣資產（統一） ───────────────────────────────────────── */
@@ -545,13 +553,15 @@ export interface ChartPreferences {
 }
 
 export interface UserPreferences {
-  chart:     ChartPreferences;
-  expandTab: ExpandTab;
+  chart:              ChartPreferences;
+  expandTab:          ExpandTab;
+  wlCollapsedGroups?: string[];
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-  chart:     { showK: true, showMA5: true, showMA20: true, showMA60: true, showVolume: true, zoomLock: false },
-  expandTab: 'kline' as ExpandTab,
+  chart:             { showK: true, showMA5: true, showMA20: true, showMA60: true, showVolume: true, zoomLock: false },
+  expandTab:         'kline' as ExpandTab,
+  wlCollapsedGroups: [],
 };
 
 /* ── 再平衡規則（Phase 3）───────────────────────────────────── */

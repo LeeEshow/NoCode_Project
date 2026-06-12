@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { isTradingHours } from '../../utils/tradingHours';
 import { useLatest } from '../../utils/useLatest';
@@ -19,16 +19,18 @@ import { useRebalanceSnapshotViewModel } from '../../viewmodels/useRebalanceSnap
 import { useDownsideRiskViewModel } from '../../viewmodels/useDownsideRiskViewModel';
 import { useScenarioViewModel }    from '../../viewmodels/useScenarioViewModel';
 import { useTradingStrategyViewModel } from '../../viewmodels/useTradingStrategyViewModel';
+import { usePreferencesViewModel }     from '../../viewmodels/usePreferencesViewModel';
 import HoldingsTable        from './stock/HoldingsTable';
 import AddTransactionModal  from './stock/AddTransactionModal';
 import AddHoldingModal      from './stock/AddHoldingModal';
 import WatchlistTable       from './stock/WatchlistTable';
+import WatchlistCardGrid    from './stock/WatchlistCardGrid';
 import WatchlistModal       from './stock/WatchlistModal';
 import TradingStrategyModal from './stock/TradingStrategyModal';
 import RiskPanel from './stock/RiskPanel';
 import { toast } from '../components/Toast/toastStore';
 import Icon from '../components/Icon';
-import type { WatchlistItemDTO, CreateWatchlistPayload, RebalanceSuggestion, QuoteSource, QuoteStatus } from '../../types';
+import type { WatchlistItemDTO, CreateWatchlistPayload, UpdateWatchlistPayload, RebalanceSuggestion, QuoteSource, QuoteStatus } from '../../types';
 
 /* ── QUOTE-F-05：報價來源摘要 ── */
 
@@ -149,6 +151,7 @@ export default function StockOverviewPage() {
   const market     = useMarketViewModel();
   const holdings   = useHoldingsViewModel();
   const watchlist  = useWatchlistViewModel();
+  const prefsVm    = usePreferencesViewModel();
   const tagVm      = useTagViewModel();
   const rulesVm    = useRebalanceRulesViewModel();
   const snapshotVm    = useRebalanceSnapshotViewModel();
@@ -193,6 +196,19 @@ export default function StockOverviewPage() {
   const [addHoldingOpen, setAddHoldingOpen] = useState(false);
   const [wlModalOpen,   setWlModalOpen]   = useState(false);
   const [wlEditItem,    setWlEditItem]    = useState<WatchlistItemDTO | null>(null);
+  const [wlViewMode,    setWlViewMode]    = useState<'table' | 'card'>(() => {
+    try { return (localStorage.getItem('wl-view-mode') as 'table' | 'card') || 'table'; } catch { return 'table'; }
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(prefsVm.prefs.wlCollapsedGroups ?? [])
+  );
+  /* 後端回應後 one-time sync（localStorage 已提供無閃爍的初始值） */
+  const collapseSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!prefsVm.loaded || collapseSyncedRef.current) return;
+    collapseSyncedRef.current = true;
+    setCollapsedGroups(new Set(prefsVm.prefs.wlCollapsedGroups ?? []));
+  }, [prefsVm.loaded, prefsVm.prefs.wlCollapsedGroups]);
   const [strategyModal, setStrategyModal] = useState<{
     open: boolean; stockCode: string; stockName: string;
   }>({ open: false, stockCode: '', stockName: '' });
@@ -200,7 +216,12 @@ export default function StockOverviewPage() {
   /* 關注清單 CRUD */
   const handleWlSubmit = useCallback(async (payload: CreateWatchlistPayload, id?: string) => {
     if (id) {
-      await watchlist.updateItem(id, payload, () => {
+      const updatePayload: UpdateWatchlistPayload = {
+        targetPrice: payload.targetPrice,
+        note:        payload.note,
+        group:       payload.group !== undefined ? (payload.group || null) : undefined,
+      };
+      await watchlist.updateItem(id, updatePayload, () => {
         toast.success('關注清單已更新');
         setWlModalOpen(false);
         setWlEditItem(null);
@@ -213,6 +234,40 @@ export default function StockOverviewPage() {
     }
     if (watchlist.error) toast.error(watchlist.error);
   }, [watchlist]);
+
+  const handleWlViewMode = useCallback((mode: 'table' | 'card') => {
+    setWlViewMode(mode);
+    try { localStorage.setItem('wl-view-mode', mode); } catch {}
+  }, []);
+
+  const handleToggleGroup = useCallback((groupName: string) => {
+    const next = new Set(collapsedGroups);
+    if (next.has(groupName)) next.delete(groupName);
+    else next.add(groupName);
+    setCollapsedGroups(next);
+    prefsVm.setWlCollapsedGroups([...next]);
+  }, [collapsedGroups, prefsVm]);
+
+  const handleRenameGroup = useCallback(async (oldName: string, newName: string) => {
+    await watchlist.renameGroup(oldName, newName);
+    if (collapsedGroups.has(oldName)) {
+      const next = new Set(collapsedGroups);
+      next.delete(oldName);
+      next.add(newName);
+      setCollapsedGroups(next);
+      prefsVm.setWlCollapsedGroups([...next]);
+    }
+  }, [watchlist, collapsedGroups, prefsVm]);
+
+  const handleDeleteGroup = useCallback(async (groupName: string) => {
+    await watchlist.deleteGroup(groupName);
+    if (collapsedGroups.has(groupName)) {
+      const next = new Set(collapsedGroups);
+      next.delete(groupName);
+      setCollapsedGroups(next);
+      prefsVm.setWlCollapsedGroups([...next]);
+    }
+  }, [watchlist, collapsedGroups, prefsVm]);
 
   const handleWlDelete = useCallback(async (id: string) => {
     await watchlist.removeItem(id, () => toast.success('已從關注清單移除'));
@@ -542,54 +597,136 @@ export default function StockOverviewPage() {
           }
         </div>
 
-        {/* ── 關注清單 Panel（P2-23）── */}
-        <div className="ft-panel">
-          <div className="ft-section-header">
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-              <span className="ft-section-title">關注清單</span>
-              {watchlistQuoteSummary && (
-                <Tooltip.Provider delayDuration={300}>
-                  <QuoteSummaryBadge summary={watchlistQuoteSummary} />
-                </Tooltip.Provider>
-              )}
+        {/* ── 關注清單（P2-23）── */}
+        {wlViewMode === 'card' ? (
+          /* card 模式：header 保留 panel 外框，卡片直接掛在 page 背景上 */
+          <>
+            <div className="ft-panel">
+              <div className="ft-section-header">
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+                  <span className="ft-section-title">關注清單</span>
+                  {watchlistQuoteSummary && (
+                    <Tooltip.Provider delayDuration={300}>
+                      <QuoteSummaryBadge summary={watchlistQuoteSummary} />
+                    </Tooltip.Provider>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    className="btn-icon"
+                    aria-label="表格視圖"
+                    title="表格視圖"
+                    style={{ color: wlViewMode === 'table' ? 'var(--accent)' : undefined }}
+                    onClick={() => handleWlViewMode('table')}
+                  >
+                    <Icon name="table_rows" size={20} />
+                  </button>
+                  <button
+                    className="btn-icon"
+                    aria-label="小卡視圖"
+                    title="小卡視圖"
+                    style={{ color: wlViewMode === 'card' ? 'var(--accent)' : undefined }}
+                    onClick={() => handleWlViewMode('card')}
+                  >
+                    <Icon name="grid_view" size={20} />
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => { setWlEditItem(null); setWlModalOpen(true); }}
+                  >
+                    <Icon name="add" size={20} aria-hidden="true" /> 新增
+                  </button>
+                </div>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                className="btn-ghost"
-                onClick={() => { setWlEditItem(null); setWlModalOpen(true); }}
-              >
-                <Icon name="add" size={20} /> 新增
-              </button>
-            </div>
-          </div>
-
-          {watchlist.loading
-            ? <LoadingPanel loading rows={2} />
-            : (
-              <>
-                {watchlist.error && (
-                  <ErrorBanner message={`關注清單載入失敗：${watchlist.error}`} onRetry={watchlist.load} />
+            {watchlist.loading
+              ? <LoadingPanel loading rows={2} />
+              : (
+                <>
+                  {watchlist.error && (
+                    <ErrorBanner message={`關注清單載入失敗：${watchlist.error}`} onRetry={watchlist.load} />
+                  )}
+                  <WatchlistCardGrid
+                    items={watchlist.items}
+                    groupOrder={watchlist.groupOrder}
+                    collapsedGroups={collapsedGroups}
+                  />
+                </>
+              )
+            }
+          </>
+        ) : (
+          /* table 模式：整個 panel 包住 header + table */
+          <div className="ft-panel">
+            <div className="ft-section-header">
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+                <span className="ft-section-title">關注清單</span>
+                {watchlistQuoteSummary && (
+                  <Tooltip.Provider delayDuration={300}>
+                    <QuoteSummaryBadge summary={watchlistQuoteSummary} />
+                  </Tooltip.Provider>
                 )}
-                <WatchlistTable
-                  items={watchlist.items}
-                  sparklines={watchlist.sparklines}
-                  klines={watchlist.klines}
-                  profiles={watchlist.profiles}
-                  chips={watchlist.chips}
-                  expandedCode={watchlist.expandedCode}
-                  onToggle={watchlist.toggleExpand}
-                  onExpandLoad={watchlist.ensureExpandData}
-                  onEdit={handleWlEdit}
-                  onDelete={handleWlDelete}
-                  onReorder={watchlist.reorder}
-                  deleting={watchlist.saving}
-                  strategies={strategyVm.strategies}
-                  onOpenStrategy={handleOpenStrategy}
-                />
-              </>
-            )
-          }
-        </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  className="btn-icon"
+                  aria-label="表格視圖"
+                  title="表格視圖"
+                  style={{ color: wlViewMode === 'table' ? 'var(--accent)' : undefined }}
+                  onClick={() => handleWlViewMode('table')}
+                >
+                  <Icon name="table_rows" size={20} />
+                </button>
+                <button
+                  className="btn-icon"
+                  aria-label="小卡視圖"
+                  title="小卡視圖"
+                  style={{ color: wlViewMode === 'card' ? 'var(--accent)' : undefined }}
+                  onClick={() => handleWlViewMode('card')}
+                >
+                  <Icon name="grid_view" size={20} />
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => { setWlEditItem(null); setWlModalOpen(true); }}
+                >
+                  <Icon name="add" size={20} aria-hidden="true" /> 新增
+                </button>
+              </div>
+            </div>
+            {watchlist.loading
+              ? <LoadingPanel loading rows={2} />
+              : (
+                <>
+                  {watchlist.error && (
+                    <ErrorBanner message={`關注清單載入失敗：${watchlist.error}`} onRetry={watchlist.load} />
+                  )}
+                  <WatchlistTable
+                    items={watchlist.items}
+                    sparklines={watchlist.sparklines}
+                    klines={watchlist.klines}
+                    profiles={watchlist.profiles}
+                    chips={watchlist.chips}
+                    expandedCode={watchlist.expandedCode}
+                    onToggle={watchlist.toggleExpand}
+                    onExpandLoad={watchlist.ensureExpandData}
+                    onEdit={handleWlEdit}
+                    onDelete={handleWlDelete}
+                    onReorder={watchlist.reorder}
+                    onReorderWithGroup={watchlist.reorderWithGroup}
+                    collapsedGroups={collapsedGroups}
+                    onToggleGroup={handleToggleGroup}
+                    onRenameGroup={handleRenameGroup}
+                    onDeleteGroup={handleDeleteGroup}
+                    deleting={watchlist.saving}
+                    strategies={strategyVm.strategies}
+                    onOpenStrategy={handleOpenStrategy}
+                  />
+                </>
+              )
+            }
+          </div>
+        )}
       </div>
 
       {/* ── Modals ── */}
@@ -616,6 +753,7 @@ export default function StockOverviewPage() {
       <WatchlistModal
         open={wlModalOpen}
         editItem={wlEditItem}
+        existingGroups={watchlist.groupOrder.filter(g => g !== '未分組')}
         saving={watchlist.saving}
         onClose={() => { setWlModalOpen(false); setWlEditItem(null); }}
         onSubmit={handleWlSubmit}

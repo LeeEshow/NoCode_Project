@@ -1,4 +1,4 @@
-﻿import { useState, Fragment, useEffect, memo } from 'react';
+import { useState, Fragment, useEffect, useMemo, memo } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -31,6 +31,11 @@ export interface WatchlistTableProps {
   onEdit:       (item: WatchlistItemDTO) => void;
   onDelete:     (id: string) => void;
   onReorder:    (newItems: WatchlistItemDTO[]) => void;
+  onReorderWithGroup: (newItems: WatchlistItemDTO[], movedId: string, newGroup: string | undefined) => void;
+  onToggleGroup: (groupName: string) => void;
+  onRenameGroup: (oldName: string, newName: string) => void;
+  onDeleteGroup: (groupName: string) => void;
+  collapsedGroups: Set<string>;
   deleting:     boolean;
   /* F01 */
   strategies?:     Record<string, TradingStrategyDTO>;
@@ -60,7 +65,6 @@ const WatchlistRow = memo(function WatchlistRow({
   const arrow = item.changePct === 0 ? '—' : (item.isUp ? '▲' : '▼');
   const sign  = item.changePct > 0 ? '+' : '';
 
-  /* QUOTE-F-04：無效報價時顯示 — */
   const hasBadQuote = item.currentPrice === 0 && item.quoteStatus != null && item.quoteStatus !== 'ok';
 
   return (
@@ -162,22 +166,61 @@ const WatchlistRow = memo(function WatchlistRow({
 export default function WatchlistTable({
   items, sparklines, klines, profiles, chips,
   expandedCode, onToggle, onExpandLoad,
-  onEdit, onDelete, onReorder, deleting: _,
+  onEdit, onDelete, onReorder, onReorderWithGroup,
+  onToggleGroup, onRenameGroup, onDeleteGroup, collapsedGroups,
+  deleting: _,
   strategies, onOpenStrategy,
 }: WatchlistTableProps) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
     if (expandedCode) onExpandLoad(expandedCode);
   }, [expandedCode, onExpandLoad]);
 
+  /* 是否啟用分組模式 */
+  const hasGroups = useMemo(() => items.some(i => i.group), [items]);
+
+  /* 依分組分段，未分組排最後 */
+  const grouped = useMemo(() => {
+    if (!hasGroups) return null;
+    const map = new Map<string, WatchlistItemDTO[]>();
+    for (const item of items) {
+      const g = item.group ?? '未分組';
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(item);
+    }
+    const result: Array<{ group: string; items: WatchlistItemDTO[] }> = [];
+    for (const [g, its] of map) {
+      if (g !== '未分組') result.push({ group: g, items: its });
+    }
+    if (map.has('未分組')) result.push({ group: '未分組', items: map.get('未分組')! });
+    return result;
+  }, [items, hasGroups]);
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+    const activeItem = items.find(i => i.id === active.id);
+    const overItem   = items.find(i => i.id === over.id);
+    if (!activeItem || !overItem) return;
     const oldIndex = items.findIndex(i => i.id === active.id);
     const newIndex = items.findIndex(i => i.id === over.id);
-    onReorder(arrayMove(items, oldIndex, newIndex));
+    const newItems = arrayMove(items, oldIndex, newIndex);
+    if (activeItem.group !== overItem.group) {
+      onReorderWithGroup(newItems, String(active.id), overItem.group);
+    } else {
+      onReorder(newItems);
+    }
+  }
+
+  function commitRename() {
+    if (!renamingGroup) return;
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== renamingGroup) onRenameGroup(renamingGroup, trimmed);
+    setRenamingGroup(null);
   }
 
   const COL_COUNT = 7;
@@ -200,39 +243,151 @@ export default function WatchlistTable({
                 </tr>
               </thead>
               <tbody>
-                {items.map(item => {
-                  const isExpanded = expandedCode === item.stockCode;
-                  const loadingExpand = isExpanded
-                    && !klines[item.stockCode]
-                    && !profiles[item.stockCode]
-                    && !chips[item.stockCode];
-                  return (
-                    <Fragment key={item.id}>
-                      <WatchlistRow
-                        item={item}
-                        sparkline={sparklines[item.stockCode] ?? []}
-                        isExpanded={isExpanded}
-                        onToggle={onToggle}
-                        onEdit={onEdit}
-                        onConfirm={setConfirmId}
-                        strategy={strategies?.[item.stockCode]}
-                        onOpenStrategy={onOpenStrategy}
-                      />
-                      {isExpanded && (
-                        <StockExpandPanel
-                          colSpan={COL_COUNT}
-                          code={item.stockCode}
-                          name={item.stockName}
-                          kline={klines[item.stockCode]}
-                          profile={profiles[item.stockCode]}
-                          chips={chips[item.stockCode]}
-                          loadingExpand={loadingExpand}
-                          showTxTab={false}
-                        />
-                      )}
-                    </Fragment>
-                  );
-                })}
+                {grouped
+                  ? grouped.map(({ group: groupName, items: groupItems }) => {
+                      const isCollapsed = collapsedGroups.has(groupName);
+                      const isUngrouped = groupName === '未分組';
+                      return (
+                        <Fragment key={groupName}>
+                          {/* 分組 header row */}
+                          <tr style={{ background: 'var(--surface)', userSelect: 'none' }}>
+                            <td colSpan={COL_COUNT} style={{ padding: '4px 8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {renamingGroup === groupName ? (
+                                    <input
+                                      autoFocus
+                                      value={renameValue}
+                                      onChange={e => setRenameValue(e.target.value)}
+                                      onBlur={commitRename}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') commitRename();
+                                        if (e.key === 'Escape') setRenamingGroup(null);
+                                      }}
+                                      onClick={e => e.stopPropagation()}
+                                      style={{
+                                        background: 'var(--panel)', border: '1px solid var(--accent-bd)',
+                                        borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+                                        padding: '2px 6px', fontSize: 'var(--text-sm)', width: 120,
+                                      }}
+                                    />
+                                  ) : (
+                                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--muted)' }}>
+                                      {groupName}
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>
+                                    {groupItems.length}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  {!isUngrouped && (
+                                    <>
+                                      <button
+                                        className="btn-icon"
+                                        aria-label={`重新命名分組 ${groupName}`}
+                                        title="重新命名"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          setRenamingGroup(groupName);
+                                          setRenameValue(groupName);
+                                        }}
+                                      >
+                                        <Icon name="edit" size={16} />
+                                      </button>
+                                      <button
+                                        className="btn-icon"
+                                        aria-label={`刪除分組 ${groupName}`}
+                                        title="刪除組別（移至未分組）"
+                                        onClick={e => { e.stopPropagation(); onDeleteGroup(groupName); }}
+                                      >
+                                        <Icon name="delete" size={16} />
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    className="btn-icon"
+                                    aria-label={isCollapsed ? `展開 ${groupName}` : `收折 ${groupName}`}
+                                    aria-expanded={!isCollapsed}
+                                    onClick={e => { e.stopPropagation(); onToggleGroup(groupName); }}
+                                  >
+                                    <Icon name={isCollapsed ? 'expand_more' : 'expand_less'} size={20} />
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                          {/* 分組 item rows */}
+                          {!isCollapsed && groupItems.map(item => {
+                            const isExpanded = expandedCode === item.stockCode;
+                            const loadingExpand = isExpanded
+                              && !klines[item.stockCode]
+                              && !profiles[item.stockCode]
+                              && !chips[item.stockCode];
+                            return (
+                              <Fragment key={item.id}>
+                                <WatchlistRow
+                                  item={item}
+                                  sparkline={sparklines[item.stockCode] ?? []}
+                                  isExpanded={isExpanded}
+                                  onToggle={onToggle}
+                                  onEdit={onEdit}
+                                  onConfirm={setConfirmId}
+                                  strategy={strategies?.[item.stockCode]}
+                                  onOpenStrategy={onOpenStrategy}
+                                />
+                                {isExpanded && (
+                                  <StockExpandPanel
+                                    colSpan={COL_COUNT}
+                                    code={item.stockCode}
+                                    name={item.stockName}
+                                    kline={klines[item.stockCode]}
+                                    profile={profiles[item.stockCode]}
+                                    chips={chips[item.stockCode]}
+                                    loadingExpand={loadingExpand}
+                                    showTxTab={false}
+                                  />
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                        </Fragment>
+                      );
+                    })
+                  : items.map(item => {
+                      const isExpanded = expandedCode === item.stockCode;
+                      const loadingExpand = isExpanded
+                        && !klines[item.stockCode]
+                        && !profiles[item.stockCode]
+                        && !chips[item.stockCode];
+                      return (
+                        <Fragment key={item.id}>
+                          <WatchlistRow
+                            item={item}
+                            sparkline={sparklines[item.stockCode] ?? []}
+                            isExpanded={isExpanded}
+                            onToggle={onToggle}
+                            onEdit={onEdit}
+                            onConfirm={setConfirmId}
+                            strategy={strategies?.[item.stockCode]}
+                            onOpenStrategy={onOpenStrategy}
+                          />
+                          {isExpanded && (
+                            <StockExpandPanel
+                              colSpan={COL_COUNT}
+                              code={item.stockCode}
+                              name={item.stockName}
+                              kline={klines[item.stockCode]}
+                              profile={profiles[item.stockCode]}
+                              chips={chips[item.stockCode]}
+                              loadingExpand={loadingExpand}
+                              showTxTab={false}
+                            />
+                          )}
+                        </Fragment>
+                      );
+                    })
+                }
                 {items.length === 0 && (
                   <tr>
                     <td colSpan={COL_COUNT} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--dim)' }}>
