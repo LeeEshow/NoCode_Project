@@ -202,6 +202,8 @@ python-backend/
 │   ├── settings.py         # 應用設定
 │   ├── preferences.py      # 使用者偏好
 │   ├── system.py           # 系統狀態（apiSwitch + Shioaji 狀態）
+│   ├── trading_strategies.py  # AI 交易策略 CRUD（singleton-per-stock，tranches[] 多批次結構）
+│   ├── finmind_sync.py     # POST /finmind/sync（FinMind 每日同步 + evaluate_trigger_rules）
 │   └── mcp.py              # MCP Server（SSE + Streamable HTTP + JSON-RPC 2.0）
 ├── services/
 │   ├── firestore.py        # Firestore 單例（讀 core/settings）
@@ -215,7 +217,7 @@ python-backend/
 │   ├── rate_helper.py      # 即時匯率 Map
 │   ├── snapshot_service.py # 快照自動記錄（VIX + marketStateAuto；不含風險重算）
 │   ├── tag_risk_service.py # 動態風險重算（volRatio + presets；使用共用 executor）
-│   └── mcp_service.py      # MCP 18 個 Tool 實作 + _convert_keys() camelCase 轉換
+│   └── mcp_service.py      # MCP 22 個 Tool 實作 + _convert_keys() camelCase 轉換
 ├── utils/
 │   └── market_hours.py     # is_market_open()（週一–五 09:00–13:30 UTC+8）
 └── tests/                  # pytest 測試套件（全數通過）
@@ -248,7 +250,7 @@ python-backend/
 | `/api/v1/preferences` | 使用者偏好 |
 | `/api/v1/system` | 系統狀態（apiSwitch + Shioaji）；`POST /shioaji/reinitialize`（202，非同步重連） |
 | `/api/v1/finmind` | FinMind 每日同步（`POST /sync`，收盤後批次寫入基本面 + 三大法人至 Firestore） |
-| `/api/v1/trading-strategies` | AI 交易策略（GET/GET_one/PATCH_dismiss/DELETE；singleton-per-stock） |
+| `/api/v1/trading-strategies` | AI 交易策略（GET/GET_one/PATCH_dismiss/PATCH_rule-status/DELETE；singleton-per-stock，tranches[] 多批次） |
 | `/api/v1/mcp/sse` | MCP SSE 長連線（GET，bypass EasyAuth） |
 | `/api/v1/mcp` | MCP Streamable HTTP（POST，bypass EasyAuth，MCP 2025-03-26 推薦） |
 | `/api/v1/mcp/message` | MCP JSON-RPC 2.0 via SSE（POST，bypass EasyAuth，向下相容） |
@@ -283,8 +285,9 @@ CORS（最外層）
 _io_executor = ThreadPoolExecutor(max_workers=16, thread_name_prefix="io-worker")
 yahoo_sem = threading.Semaphore(8)   # Yahoo Finance 並行限制
 twse_sem  = threading.Semaphore(5)   # TWSE 並行限制
-ndc_sem   = threading.Semaphore(2)   # NDC 並行限制
 ```
+
+> `ndc_sem` 已於 2026-06-05 隨景氣燈號功能一併移除。
 
 所有 IO 操作（報價、K線、籌碼、快照、風險重算）統一使用 `get_executor()` 取得共用 executor。
 
@@ -438,7 +441,7 @@ contract = api.Contracts.Futures["TXFF6"]
 | **單一 Map 文件** | stock_list | `data` |
 
 - Firestore 欄位：**snake_case**；API 回傳：**camelCase**
-- 例外：`preferences/default` 的 `chart.*` 欄位在 Firestore 即為 camelCase
+- 例外：`preferences/default` 的 `chart.*` 與 `wlCollapsedGroups` 欄位在 Firestore 即為 camelCase（`_from_firestore` 直讀，不做 snake_case 轉換）
 - Singleton 無資料時回傳預設值（不拋錯），除 `settings` 回傳 `null`
 
 ### FinMind API 欄位對照

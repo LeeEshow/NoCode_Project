@@ -11,7 +11,8 @@
 - 即時股價輪詢（盤中 5 秒更新）
 - 交易紀錄（買進 / 賣出，自動計算均價與成本）
 - K 線圖、法人籌碼、基本面資料
-- 關注清單（拖拉排序）
+- **AI 交易策略**：多批次分批進場設計（tranches）、價格 / 籌碼觸發規則自動評估、停利設定與風險回報比自動計算
+- 關注清單（拖拉排序、**自訂分組**、**小卡 / 表格視圖切換**）
 - 市場指數橫列（加權指數、台指期、費半、NASDAQ 等）
 
 ### ⚖️ 風險再平衡模組
@@ -83,6 +84,7 @@ GitHub Actions
 | Radix UI | - | Headless UI 元件（Dialog / Slider / Select / Tooltip） |
 | dnd-kit | - | 拖拉排序 |
 | Axios | - | HTTP 客戶端 |
+| View Transitions API | - | 頁面切換動畫（ECGLoader + Overlay） |
 
 架構採 **MVVM**（Model / ViewModel / View），所有商務計算於前端 ViewModel（Custom Hook）執行，後端為純資料存取層。
 
@@ -94,7 +96,7 @@ GitHub Actions
 | FastAPI | - | Web 框架 |
 | Uvicorn | - | ASGI 伺服器 |
 | Firebase Admin SDK | - | Firestore 存取 |
-| 永豐金 Shioaji | 1.3.x | 台股即時報價 SDK（選用） |
+| 永豐金 Shioaji | 1.5.0 | 台股即時報價 SDK（選用） |
 
 報價來源切換策略：盤中優先走 Shioaji WebSocket，盤外 fallback Yahoo Finance；Circuit Breaker 自動偵測異常（失敗 3 次 → 冷卻 60 秒）。**未設定 `SJ_API_KEY` 時全程使用 Yahoo Finance（Yahoo-only 模式），無需 Shioaji 帳號。**
 
@@ -168,7 +170,7 @@ npm run dev        # 開發伺服器（port 5173）
 # 前端
 npm run build      # 型別檢查 + Vite 打包
 npm run lint       # ESLint
-npx tsc --noEmit   # 僅型別檢查
+npx tsc -p tsconfig.app.json --noEmit   # 僅型別檢查
 
 # 後端
 py -3.14 -m pytest tests/ -v                  # 全部測試

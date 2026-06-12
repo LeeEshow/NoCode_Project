@@ -41,7 +41,7 @@ Remove-Item -Recurse -Force node_modules/.vite
 npm run dev
 ```
 
-後端在 `../Back-End/backend/`，前端 API baseURL 預設指向 `http://localhost:3001/api/v1`，可透過 `.env` 的 `VITE_API_BASE_URL` 覆寫。
+後端在 `../Back-End/python-backend/`，前端 API baseURL 預設指向 `http://localhost:8000/api/v1`，可透過 `.env` 的 `VITE_API_BASE_URL` 覆寫。
 
 後端開發需求（API 異動 / 新 API / 資料異常）記錄於 `../Back-End/Task_Backend.md` 最後段。
 
@@ -84,7 +84,7 @@ changePct: q.changePercent   // ← 必須轉換，直接用 q.changePct 會是 
 | Hook | 頁面 / 用途 |
 |------|------------|
 | `useHoldingsViewModel` | 持股 CRUD、樂觀排序、即時報價輪詢 |
-| `useWatchlistViewModel` | 關注清單 CRUD、樂觀排序 |
+| `useWatchlistViewModel` | 關注清單 CRUD、樂觀排序、分組（`renameGroup` / `deleteGroup` / `reorderWithGroup`）；`groupOrder` 維護展示順序 |
 | `useTagViewModel` | Tag CRUD、AssetTag、MarketState、相關性矩陣、批次重算動態風險 |
 | `useRebalanceRulesViewModel` | 再平衡規則 CRUD |
 | `useRebalanceSnapshotViewModel` | 再平衡快照（建立 / 列表 / 選取） |
@@ -147,7 +147,7 @@ function toggle() {
 ### 使用者偏好（`usePreferencesViewModel`）
 
 **雙層持久化**：localStorage 立即讀寫（確保無閃爍）→ 500ms debounce 後同步後端（`PUT /preferences`）。  
-`prefs.chart`：K 線圖顯示元素。`prefs.expandTab`：已廢棄，展開列每次開啟重設為 `'kline'`。
+`prefs.chart`：K 線圖顯示元素。`prefs.expandTab`：已廢棄，展開列每次開啟重設為 `'kline'`。`prefs.wlCollapsedGroups`：關注清單已折疊群組的 Set，由 `setWlCollapsedGroups` 更新。
 
 ### 路由（App.tsx）
 
@@ -204,7 +204,7 @@ useEffect(() => {
 - **FX 曝險**：`utils/fxExposure.ts` 的 `computeFxExposure(items, liveStockValue, cashBalance) → FxExposureResult` 計算各幣別曝險金額、占總資產比重（%）與 ±1% 匯率衝擊（NT$）；`AssetsPage` 在 `useMemo` 內呼叫。
 - **債券存續期間**：`utils/bondDuration.ts` 的 `computeBondSensitivity(items)` 計算加權存續期間（年）與升/降息 1% 估算損益；`AssetsPage` 使用，僅含 `assetType === 'bond'` 的項目。
 - **情境分析**：`utils/portfolioBeta.ts` 的 `computePortfolioBeta(snapshots, kbars)` 計算投資組合 β（以加權指數日K為市場基準）；`utils/stressTest.ts` 的 `computeStressScenarios(tagStats, totalAssetValue)` 計算 Tag 集中度壓力情境。兩者由 `useScenarioViewModel` 封裝，`StockOverviewPage` 透過 `onScenarioTabOpen` prop 觸發 fetch。
-- **AI 交易策略狀態**：`utils/tradingStrategy.ts` 的 `computeStrategyStatus(s, currentPrice) → StrategyStatus` 純函式，依 `dismissed`、`expiresAt`、`tradeType` 與現價判斷 `active / triggered / expired / dismissed`；`HoldingsTable`、`WatchlistTable`、`useTradingStrategyViewModel` 共同引用。
+- **AI 交易策略狀態**：`utils/tradingStrategy.ts` 的 `resolveStrategyStatus(s, currentPrice) → StrategyStatus` 純函式，依 `dismissed`、`expiresAt`、`tradeType` 與現價判斷 `active / triggered / expired / dismissed`；`HoldingsTable`、`WatchlistTable`、`WatchlistCardGrid`、`useTradingStrategyViewModel` 共同引用。
 
 ### 頁面切換動畫（ECGLoader + Overlay）
 
@@ -213,6 +213,37 @@ useEffect(() => {
 - **ECGLoader**（`views/components/ECGLoader/`，z-index 9999）：股價折線 SVG 動畫，首次 mount 不觸發（`isFirstRender` ref guard）
 
 **禁止**改用 `useNavigation()`——本專案用 `<BrowserRouter>` 而非 data router。
+
+### React View Transitions（頁內狀態動畫）
+
+**用途**：僅用於頁面內部狀態切換（展開列、視圖切換），**不**用於路由跳頁（交由 ECGLoader + Overlay 處理）。
+
+**觸發條件**：`<ViewTransition>` 只在 `startTransition`、`useDeferredValue`、或 `Suspense` 觸發的更新中啟動，一般 `setState` 不會觸發動畫。
+
+**目前使用位置**：
+
+| 位置 | 動畫 | 觸發方式 |
+|------|------|---------|
+| `HoldingsTable` 展開列 | `enter="slide-up" default="none"` | `startTransition(() => onToggle(code))` |
+| `WatchlistTable` 展開列 | `enter="slide-up" default="none"` | `startTransition(() => onToggle(code))` |
+| `StockOverviewPage` 視圖切換（關注清單表格 ↔ 小卡） | `enter="fade-in" default="none"` | `startTransition(() => setWlViewMode(mode))` |
+
+**`default="none"` 必須加**：不加的話，路由跳頁時 startTransition 也會觸發所有 VT 的 cross-fade，與 ECGLoader 視覺打架。`default="none"` 讓每個 VT 只響應明確宣告的觸發（`enter` / `exit`）。
+
+**CSS 變數與 keyframes**（定義於 `styles/global.css` 末段）：
+
+```css
+--vt-duration-exit:  150ms;
+--vt-duration-enter: 210ms;
+--vt-duration-move:  650ms;   /* slide-up 展開動畫持續時間 */
+```
+
+**SideNav 隔離**：`views/layout/SideNav.tsx` 的根元素設有 `style={{ viewTransitionName: 'site-nav' }}`，搭配 `global.css` 的 `::view-transition-group(site-nav) { animation: none }` 確保 SideNav 在任何 VT 期間保持靜止。SideNav 的 `navigate()` 呼叫須包在 `startTransition` 內，否則不觸發 VT：
+```ts
+startTransition(() => navigate(to));
+```
+
+**root 壓制**：`global.css` 包含 `::view-transition-old(root), ::view-transition-new(root) { animation: none }` 防止瀏覽器預設的全頁 cross-fade 覆蓋 ECGLoader。
 
 ---
 
@@ -368,6 +399,7 @@ Modal 動畫：`data-state="open/closed"` 搭配 CSS `@keyframes overlay-in/out`
 | `RiskPanel` | 風險再平衡模組（可收折），使用 Radix Slider / Select，設定區採 2 欄 CSS Grid |
 | `DataTable` | 通用排序 / 搜尋表格（`views/components/DataTable/`）；props：`columns / data / rowKey / onRowClick / searchKeys / headerActions`；中文排序以 `'zh-TW'` locale |
 | `StatusBadge` | 狀態徽章；`variant: 'up' \| 'down' \| 'flat' \| 'accent' \| 'muted'`；class `ft-badge ft-badge--{variant}` |
+| `WatchlistCardGrid` | 關注清單小卡模式（`views/pages/stock/`）；支援 `strategies` / `onOpenStrategy` props；小卡右上角紅點（`triggered`）或藍點（`active`）由 `resolveStrategyStatus` 判斷；點擊小卡觸發 `TradingStrategyModal` |
 | `TradingStrategyModal` | AI 交易策略詳情（`views/pages/stock/`）；size="sm"；`strategy=null` 時顯示空狀態；「忽略」按鈕呼叫 `onDismiss()` 後立即 `onClose()`（樂觀更新已在 ViewModel 完成） |
 | `SummaryCard` | 數值卡片；props：`label / value / sub / valueClass`；class `sc-card ft-panel` |
 
@@ -427,5 +459,5 @@ const ps = all.filter(p =>
 - DTO 型別（後端回傳）與 Payload 型別（前端送出）都定義在 `types/index.ts`（唯一真實來源）。
 - `verbatimModuleSyntax: true`，type-only import 須用 `import type { … }`。
 - `erasableSyntaxOnly: true`，禁止使用需要 emit 的語法（`enum`、`namespace`、帶初始值的建構子參數屬性、experimentalDecorators）。
-- `skipLibCheck: true`，`.d.ts` 不做型別檢查；`"react/canary"` 在 `types` 陣列中啟用 ViewTransition 型別（保留以備未來使用）。
+- `skipLibCheck: true`，`.d.ts` 不做型別檢查；`"react/canary"` 在 `types` 陣列中啟用 `ViewTransition` 型別（已正式用於展開列與視圖切換動畫）。
 - ECharts option 物件內的 series 若需動態 push 不同型別，用 `any[]` 並以 `// eslint-disable-next-line @typescript-eslint/no-explicit-any` 抑制警告。
