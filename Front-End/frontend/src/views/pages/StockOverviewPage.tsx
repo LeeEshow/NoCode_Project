@@ -652,6 +652,8 @@ export default function StockOverviewPage() {
                       items={watchlist.items}
                       groupOrder={watchlist.groupOrder}
                       collapsedGroups={collapsedGroups}
+                      strategies={strategyVm.strategies}
+                      onOpenStrategy={handleOpenStrategy}
                     />
                   )
                   : (

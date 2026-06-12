@@ -14,14 +14,17 @@ npm run build      # tsc -b && vite build
 npm run lint       # ESLint
 npm run format     # Prettier（src/**/*.{ts,tsx}）
 npm run preview    # 預覽 build 產出（需先 build）
-npx tsc --noEmit   # 型別檢查（不產生輸出檔，用於驗證變更）
+npx tsc -p tsconfig.app.json --noEmit   # 型別檢查（與 CI 一致，不產生輸出檔）
 ```
 
 > **⚠️ 每次程式碼異動後、提交前必跑**：
 > ```bash
-> npx tsc --noEmit
+> npx tsc -p tsconfig.app.json --noEmit
 > ```
-> CI/CD（`npm run build`）執行的是 `tsc -b && vite build`，本地跑 `tsc --noEmit` 可提前攔截所有編譯錯誤，避免 push 後才在 GitHub Actions 失敗。
+> CI/CD（`npm run build`）執行的是 `tsc -b && vite build`。`tsc -b` 會追 project references 進入 `tsconfig.app.json`（`"include": ["src"]`）做完整檢查。
+>
+> **⚠️ 絕對不要用 `npx tsc --noEmit`（不加 `-p`）**：根目錄 `tsconfig.json` 有 `"files": []`，plain `tsc --noEmit` 不追 references，實際上**一個 src 檔案都不會檢查**，永遠 pass，無法攔截任何錯誤。
+>
 > 常見破壞 CI 的原因：
 > - 宣告但未使用的變數 / 函式 / 型別（`noUnusedLocals`）
 > - 宣告但未使用的函式參數（`noUnusedParameters`）

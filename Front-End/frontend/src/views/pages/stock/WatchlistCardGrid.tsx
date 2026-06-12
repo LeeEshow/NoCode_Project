@@ -1,24 +1,34 @@
 import './WatchlistCardGrid.css';
-import type { WatchlistItemDTO } from '../../../types';
+import { resolveStrategyStatus } from '../../../utils/tradingStrategy';
+import type { WatchlistItemDTO, TradingStrategyDTO } from '../../../types';
 
 function fmt(n: number) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 interface WatchlistCardGridProps {
-  items:           WatchlistItemDTO[];
-  groupOrder:      string[];
-  collapsedGroups: Set<string>;
+  items:            WatchlistItemDTO[];
+  groupOrder:       string[];
+  collapsedGroups:  Set<string>;
+  strategies?:      Record<string, TradingStrategyDTO>;
+  onOpenStrategy?:  (stockCode: string) => void;
 }
 
-export default function WatchlistCardGrid({ items, groupOrder, collapsedGroups }: WatchlistCardGridProps) {
+export default function WatchlistCardGrid({ items, groupOrder, collapsedGroups, strategies, onOpenStrategy }: WatchlistCardGridProps) {
   const hasGroups = items.some(i => i.group);
 
   if (!hasGroups) {
     return (
       <div className="wl-card-area">
         <div className="wl-card-grid">
-          {items.map(item => <WatchlistCard key={item.id} item={item} />)}
+          {items.map(item => (
+            <WatchlistCard
+              key={item.id}
+              item={item}
+              strategy={strategies?.[item.stockCode]}
+              onOpenStrategy={onOpenStrategy}
+            />
+          ))}
         </div>
       </div>
     );
@@ -45,7 +55,14 @@ export default function WatchlistCardGrid({ items, groupOrder, collapsedGroups }
               <div className="wl-card-group-label">{groupName}</div>
             )}
             <div className="wl-card-grid">
-              {groupItems.map(item => <WatchlistCard key={item.id} item={item} />)}
+              {groupItems.map(item => (
+                <WatchlistCard
+                  key={item.id}
+                  item={item}
+                  strategy={strategies?.[item.stockCode]}
+                  onOpenStrategy={onOpenStrategy}
+                />
+              ))}
             </div>
           </div>
         );
@@ -54,14 +71,40 @@ export default function WatchlistCardGrid({ items, groupOrder, collapsedGroups }
   );
 }
 
-function WatchlistCard({ item }: { item: WatchlistItemDTO }) {
+function WatchlistCard({
+  item, strategy, onOpenStrategy,
+}: {
+  item:            WatchlistItemDTO;
+  strategy?:       TradingStrategyDTO;
+  onOpenStrategy?: (stockCode: string) => void;
+}) {
   const cls   = item.changePct === 0 ? 'txt-flat' : (item.isUp ? 'txt-up' : 'txt-down');
   const arrow = item.changePct === 0 ? '—' : (item.isUp ? '▲' : '▼');
   const sign  = item.changePct > 0 ? '+' : '';
   const hasBadQuote = item.currentPrice === 0 && item.quoteStatus != null && item.quoteStatus !== 'ok';
 
+  const hasStrategy = strategy != null && !strategy.dismissed;
+  const stratStatus = hasStrategy ? resolveStrategyStatus(strategy, item.currentPrice) : null;
+  const showDot     = hasStrategy && stratStatus !== 'expired';
+  const dotColor    = stratStatus === 'triggered' ? 'var(--up)' : 'var(--accent)';
+
+  function handleClick() {
+    if (hasStrategy) onOpenStrategy?.(item.stockCode);
+  }
+
   return (
-    <div className="wl-card">
+    <div
+      className="wl-card"
+      onClick={handleClick}
+      style={{ cursor: hasStrategy ? 'pointer' : 'default' }}
+    >
+      {showDot && (
+        <span
+          className="wl-card-dot"
+          style={{ background: dotColor }}
+          aria-label="有 AI 交易策略"
+        />
+      )}
       <div className="wl-card-header">
         <span className="wl-card-code">{item.stockCode}</span>
         <span className="wl-card-name">{item.stockName}</span>
