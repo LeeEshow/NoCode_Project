@@ -2,9 +2,12 @@
 GET/GET_one/PATCH(dismiss)/PATCH(rule-status)/DELETE /api/v1/trading-strategies
 trading_strategies/{stockCode}  ← singleton-per-stock，AI 覆寫，無堆疊
 """
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, field_validator
 from services.firestore import get_db
+
+TZ_TAIPEI = timezone(timedelta(hours=8))
 
 router = APIRouter()
 
@@ -38,6 +41,15 @@ def _tranche_to_dto(t: dict) -> dict:
         "ruleStatuses":     statuses,
         "ruleEvaluatedAt":  t.get("rule_evaluated_at"),
         "status":           t.get("status", "pending"),
+        "executions": [
+            {
+                "transactionId":  e.get("transaction_id", ""),
+                "executedAt":     e.get("executed_at"),
+                "executedShares": e.get("executed_shares"),
+                "executedPrice":  e.get("executed_price"),
+            }
+            for e in t.get("executions", [])
+        ],
     }
 
 
@@ -72,7 +84,11 @@ def _compute_strategy_status(d: dict, tranches: list[dict]) -> str:
     current    = d.get("status", "active")
     if expires_at and str(expires_at)[:10] < date.today().isoformat() and current in ("active", "triggered"):
         return "expired"
-    if current == "active" and any(t.get("status") == "triggered" for t in tranches):
+    if tranches and all(
+        t.get("status") in ("executed", "skipped") for t in tranches
+    ):
+        return "completed"
+    if current in ("active", "triggered") and any(t.get("status") == "triggered" for t in tranches):
         return "triggered"
     return current
 
@@ -96,6 +112,7 @@ def _to_dto(doc_id: str, d: dict) -> dict:
                 "ruleStatuses":     {},
                 "ruleEvaluatedAt":  None,
                 "status":           "pending",
+                "executions":       [],
             }]
         else:
             tranches = []
@@ -207,6 +224,64 @@ def update_rule_status(stock_code: str, body: dict):
     rule_statuses        = dict(tranche.get("rule_statuses") or {})
     rule_statuses["manual"] = confirmed
     tranches[idx]        = _evaluate_tranche_status({**tranche, "rule_statuses": rule_statuses})
+
+    new_status = _compute_strategy_status(d, tranches)
+    ref.update({"tranches": tranches, "status": new_status})
+
+    return {"success": True, "data": _to_dto(stock_code, {**d, "tranches": tranches, "status": new_status})}
+
+
+# ─── POST /trading-strategies/{stock_code}/tranches/{batch}/executions ────────
+
+class AddExecutionBody(BaseModel):
+    executedPrice:  float
+    executedShares: int
+    transactionId:  str | None = None
+    executedAt:     str | None = None
+
+    @field_validator("executedPrice")
+    @classmethod
+    def price_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("executedPrice 必須大於 0")
+        return v
+
+    @field_validator("executedShares")
+    @classmethod
+    def shares_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("executedShares 必須大於 0")
+        return v
+
+
+@router.post("/{stock_code}/tranches/{batch}/executions")
+def add_execution(stock_code: str, batch: int, body: AddExecutionBody):
+    db  = get_db()
+    ref = db.collection("trading_strategies").document(stock_code)
+    doc = ref.get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="策略不存在")
+
+    d        = doc.to_dict()
+    tranches = list(d.get("tranches") or [])
+
+    idx = next((i for i, t in enumerate(tranches) if t.get("batch") == batch), None)
+    if idx is None:
+        raise HTTPException(status_code=400, detail=f"找不到 batch={batch} 的批次")
+
+    execution = {
+        "transaction_id":  body.transactionId or "",
+        "executed_at":     body.executedAt or datetime.now(TZ_TAIPEI).isoformat(),
+        "executed_price":  body.executedPrice,
+        "executed_shares": body.executedShares,
+    }
+
+    tranche = dict(tranches[idx])
+    existing_execs = list(tranche.get("executions") or [])
+    existing_execs.append(execution)
+    tranche["executions"] = existing_execs
+    tranche["status"]     = "executed"
+    tranches[idx]         = tranche
 
     new_status = _compute_strategy_status(d, tranches)
     ref.update({"tranches": tranches, "status": new_status})

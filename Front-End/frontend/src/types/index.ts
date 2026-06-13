@@ -686,7 +686,7 @@ export type StrategyTimeframe  = 'short' | 'medium' | 'long' | (string & {});
  * - 舊資料（只有 triggerPrice）：後端僅能回傳 'active'/'expired'/'dismissed'，
  *   'triggered' 由前端 resolveStrategyStatus() 補算。
  */
-export type StrategyStatus = 'active' | 'triggered' | 'expired' | 'dismissed';
+export type StrategyStatus = 'active' | 'triggered' | 'completed' | 'expired' | 'dismissed';
 
 // ── 觸發規則 ──────────────────────────────────────────────────
 
@@ -708,7 +708,15 @@ export interface TriggerRule {
 
 // ── 批次腳本 ──────────────────────────────────────────────────
 
-export type TrancheStatus = 'pending' | 'triggered' | 'skipped' | 'waiting';
+export type TrancheStatus = 'pending' | 'triggered' | 'skipped' | 'waiting' | 'executed';
+
+/** 批次內單筆執行紀錄，對應一筆交易紀錄的摘要快照 */
+export interface TrancheExecution {
+  transactionId:  string;   // 指向 /transactions 的 ID；空字串表示手動標記
+  executedAt:     string;   // 成交時間 ISO string
+  executedShares: number;
+  executedPrice:  number;
+}
 
 export interface StrategyTranche {
   batch:            number;
@@ -721,6 +729,7 @@ export interface StrategyTranche {
   /** 後端每日評估結果，key 格式由 ruleKey() 決定；只含 chip_* 類，price 類由前端即時計算 */
   ruleStatuses?:    Record<string, boolean | null>;
   status:           TrancheStatus;
+  executions:       TrancheExecution[];
 }
 
 // ── 主 DTO ────────────────────────────────────────────────────

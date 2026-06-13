@@ -1,6 +1,26 @@
 import api from '../api/axios';
 import type { ApiResponse, TradingStrategyDTO } from '../types';
 
+export async function addTrancheExecution(
+  stockCode:      string,
+  batch:          number,
+  executedPrice:  number,
+  executedShares: number,
+  transactionId?: string,
+  executedAt?:    string,
+): Promise<TradingStrategyDTO> {
+  const res = await api.post<ApiResponse<TradingStrategyDTO>>(
+    `/trading-strategies/${stockCode}/tranches/${batch}/executions`,
+    {
+      executedPrice,
+      executedShares,
+      ...(transactionId != null ? { transactionId } : {}),
+      ...(executedAt    != null ? { executedAt }    : {}),
+    },
+  );
+  return res.data.data;
+}
+
 export async function getAll(): Promise<TradingStrategyDTO[]> {
   const res = await api.get<ApiResponse<TradingStrategyDTO[]>>('/trading-strategies');
   return res.data.data;

@@ -63,27 +63,29 @@ export function useTransactionsViewModel(stockCode: string | null) {
   const addTx = useCallback(async (
     payload: CreateTransactionPayload,
     onSuccess?: () => void,
-  ) => {
+  ): Promise<TransactionDTO | null> => {
     setState(s => ({ ...s, saving: true, error: null }));
     try {
-      await createTransaction(payload);
+      const created = await createTransaction(payload);
       const items = await fetchTransactions(payload.stockCode);
       const calc = calcCostFromTransactions(items);
-      await recalculateHoldings([{ stockCode: payload.stockCode, ...calc }]);
 
-      /* 連動流動資金：買入扣款，賣出入帳 */
+      /* recalculateHoldings 與 cashBalance 更新互相獨立，並行執行 */
       const snap = useSnapshotStore.getState();
-      if (snap.loaded) {
-        const cashDelta = payload.type === 'buy'
-          ? -(payload.shares * payload.price + payload.fee)
-          :   payload.shares * payload.price - payload.fee;
-        await snap.update(snap.cashBalance + cashDelta);
-      }
+      const cashDelta = payload.type === 'buy'
+        ? -(payload.shares * payload.price + payload.fee)
+        :   payload.shares * payload.price - payload.fee;
+      await Promise.all([
+        recalculateHoldings([{ stockCode: payload.stockCode, ...calc }]),
+        snap.loaded ? snap.update(snap.cashBalance + cashDelta) : Promise.resolve(),
+      ]);
 
       setState(s => ({ ...s, items, saving: false }));
       onSuccess?.();
+      return created;
     } catch (err) {
       setState(s => ({ ...s, saving: false, error: (err as Error).message }));
+      return null;
     }
   }, []);
 

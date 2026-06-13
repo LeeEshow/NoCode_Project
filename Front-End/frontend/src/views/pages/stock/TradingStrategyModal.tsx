@@ -4,20 +4,22 @@ import Modal from '../../components/Modal';
 import StatusBadge from '../../components/StatusBadge';
 import type { BadgeVariant } from '../../components/StatusBadge';
 import Icon from '../../components/Icon';
-import { resolveStrategyStatus, ruleKey, mergeRealTimePriceStatuses, analyzeDirectionConflict } from '../../../utils/tradingStrategy';
-import type { TradingStrategyDTO, StrategyTranche, TriggerRule, RebalanceSuggestion } from '../../../types';
+import { resolveStrategyStatus, ruleKey, mergeRealTimePriceStatuses, analyzeDirectionConflict, resolveStrategyDirection } from '../../../utils/tradingStrategy';
+import type { TradingStrategyDTO, StrategyTranche, TriggerRule, RebalanceSuggestion, MarketState } from '../../../types';
 import './TradingStrategyModal.css';
 
 export interface TradingStrategyModalProps {
-  open:            boolean;
-  strategy:        TradingStrategyDTO | null;
-  currentPrice:    number;
-  sparkline?:      number[];
-  positionShares?: number;
-  onDismiss?:      () => void;
-  onClose:         () => void;
-  onConfirmRule?:  (batch: number, ruleType: string, confirmed: boolean) => void;
-  suggestion?:     RebalanceSuggestion;
+  open:              boolean;
+  strategy:          TradingStrategyDTO | null;
+  currentPrice:      number;
+  sparkline?:        number[];
+  positionShares?:   number;
+  onDismiss?:        () => void;
+  onClose:           () => void;
+  onConfirmRule?:    (batch: number, ruleType: string, confirmed: boolean) => void;
+  onAddExecution?:   (batch: number, executedPrice: number, executedShares: number) => void;
+  suggestion?:       RebalanceSuggestion;
+  marketStateAuto?:  MarketState | null;
 }
 
 /* ── helpers ── */
@@ -81,6 +83,11 @@ function confVar(c: string): BadgeVariant {
   return 'muted';
 }
 
+function fmtExecDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function fmtAxis(n: number | null | undefined): string {
   if (n == null) return '–';
   return n.toLocaleString('zh-TW', {
@@ -141,14 +148,15 @@ function RuleStatus({ rule, merged, tranche, onConfirmRule }: RuleStatusProps) {
 
 /* ── TrancheRow ── */
 
-function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule, defaultExpanded = false, storageKey }: {
-  tranche:         StrategyTranche;
-  tradeType:       string;
-  currentPrice:    number;
-  sparkline:       number[];
-  onConfirmRule?:  (batch: number, ruleType: string, confirmed: boolean) => void;
+function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule, onAddExecution, defaultExpanded = false, storageKey }: {
+  tranche:          StrategyTranche;
+  tradeType:        string;
+  currentPrice:     number;
+  sparkline:        number[];
+  onConfirmRule?:   (batch: number, ruleType: string, confirmed: boolean) => void;
+  onAddExecution?:  (batch: number, executedPrice: number, executedShares: number) => void;
   defaultExpanded?: boolean;
-  storageKey:      string;
+  storageKey:       string;
 }) {
   const [expanded, setExpanded] = useState(() => {
     try {
@@ -157,6 +165,9 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
     } catch {}
     return defaultExpanded;
   });
+  const [showExecForm, setShowExecForm] = useState(false);
+  const [execPrice, setExecPrice]       = useState(0);
+  const [execShares, setExecShares]     = useState(0);
 
   function toggleExpanded() {
     const next = !expanded;
@@ -164,29 +175,56 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
     try { localStorage.setItem(storageKey, String(next)); } catch {}
   }
 
-  const merged = mergeRealTimePriceStatuses(tranche, currentPrice, sparkline);
-  const mod = tranche.status === 'skipped' ? ' tsm-tranche--skipped' : '';
+  function openExecForm() {
+    setExecPrice(currentPrice > 0 ? currentPrice : tranche.priceHigh);
+    setExecShares(tranche.shares);
+    setShowExecForm(true);
+  }
 
-  const statusVar: Record<string, BadgeVariant> = { triggered: 'down', pending: 'muted', waiting: 'muted', skipped: 'muted' };
+  function handleSubmitExecution() {
+    if (execPrice <= 0 || execShares <= 0) return;
+    onAddExecution!(tranche.batch, execPrice, execShares);
+    setShowExecForm(false);
+  }
 
-  const rules   = tranche.triggerRules ?? [];
+  const merged   = mergeRealTimePriceStatuses(tranche, currentPrice, sparkline);
+  const isSkipped  = tranche.status === 'skipped';
+  const isExecuted = tranche.status === 'executed';
+  const mod = isSkipped ? ' tsm-tranche--skipped' : isExecuted ? ' tsm-tranche--executed' : '';
+
+  const statusVar: Record<string, BadgeVariant> = {
+    triggered: 'down', pending: 'muted', waiting: 'muted', skipped: 'muted', executed: 'flat',
+  };
+
+  const rules    = tranche.triggerRules ?? [];
   const hasRules = rules.length > 0;
-  const passed  = rules.filter(r => merged[ruleKey(r)] === true).length;
+  const passed   = rules.filter(r => merged[ruleKey(r)] === true).length;
 
   function statusLabel(): string {
     if (tranche.status === 'triggered') return '已觸及';
     if (tranche.status === 'skipped')   return '已略過';
+    if (tranche.status === 'executed')  return '已執行';
     return hasRules ? `等待中 ${passed}/${rules.length}` : '等待中';
   }
+
+  // 累計計算（runtime，不存 Firestore）
+  const executions  = tranche.executions ?? [];
+  const totalShares = executions.reduce((s, e) => s + e.executedShares, 0);
+  const avgPrice    = totalShares > 0
+    ? executions.reduce((s, e) => s + e.executedPrice * e.executedShares, 0) / totalShares
+    : 0;
+  const pctDone = tranche.shares > 0 ? (totalShares / tranche.shares) * 100 : 0;
+
+  const headerClickable = hasRules;
 
   return (
     <div className={`tsm-tranche${mod}${expanded ? ' tsm-tranche--open' : ''}`}>
       <div
-        className={`tsm-tranche__header${hasRules ? ' tsm-tranche__header--clickable' : ''}`}
-        onClick={() => hasRules && toggleExpanded()}
-        role={hasRules ? 'button' : undefined}
-        tabIndex={hasRules ? 0 : undefined}
-        onKeyDown={hasRules ? e => e.key === 'Enter' && toggleExpanded() : undefined}
+        className={`tsm-tranche__header${headerClickable ? ' tsm-tranche__header--clickable' : ''}`}
+        onClick={() => headerClickable && toggleExpanded()}
+        role={headerClickable ? 'button' : undefined}
+        tabIndex={headerClickable ? 0 : undefined}
+        onKeyDown={headerClickable ? e => e.key === 'Enter' && toggleExpanded() : undefined}
       >
         <div className="tsm-tranche__title-group">
           <span className="tsm-tranche__num">第 {tranche.batch} 批</span>
@@ -202,6 +240,16 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
           <StatusBadge variant={statusVar[tranche.status] ?? 'muted'}>
             {statusLabel()}
           </StatusBadge>
+          {!['pending', 'waiting', 'skipped'].includes(tranche.status) && onAddExecution && !showExecForm && (
+            <button
+              className="btn-ghost tsm-tranche__exec-btn"
+              onClick={e => { e.stopPropagation(); openExecForm(); }}
+              aria-label={isExecuted ? '新增執行紀錄' : '手動標記執行'}
+            >
+              <Icon name="play_arrow" size={14} aria-hidden="true" />
+              {isExecuted ? '新增執行' : '手動標記執行'}
+            </button>
+          )}
           {hasRules && (
             <Icon
               name={expanded ? 'expand_less' : 'expand_more'}
@@ -212,6 +260,7 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
         </div>
       </div>
 
+      {/* 觸發規則 */}
       {expanded && hasRules && (
         <div className="tsm-tranche__rules">
           {tranche.triggerRules!.map((rule, i) => (
@@ -222,6 +271,74 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
           ))}
         </div>
       )}
+
+      {/* 手動標記執行表單 */}
+      {showExecForm && (
+        <div className="tsm-tranche__exec-form">
+          <div className="tsm-tranche__exec-form-row">
+            <label className="tsm-tranche__exec-form-label">成交均價</label>
+            <input
+              type="number"
+              className="tsm-tranche__exec-form-input"
+              value={execPrice}
+              min={0.01}
+              step={0.01}
+              onChange={e => setExecPrice(parseFloat(e.target.value) || 0)}
+            />
+            <label className="tsm-tranche__exec-form-label">股數</label>
+            <input
+              type="number"
+              className="tsm-tranche__exec-form-input"
+              value={execShares}
+              min={1}
+              step={1}
+              onChange={e => setExecShares(parseInt(e.target.value, 10) || 0)}
+            />
+          </div>
+          <div className="tsm-tranche__exec-form-actions">
+            <button
+              className="btn-ghost btn-ghost--accent"
+              disabled={execPrice <= 0 || execShares <= 0}
+              onClick={handleSubmitExecution}
+            >
+              <Icon name="check" size={14} aria-hidden="true" /> 確認執行
+            </button>
+            <button className="btn-ghost" onClick={() => setShowExecForm(false)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {/* 已執行列表 */}
+      {isExecuted && executions.length > 0 && (
+        <div className="tsm-tranche__exec-list">
+          {executions.map((e, i) => (
+            <div key={i} className="tsm-tranche__exec-item">
+              <span className="tsm-tranche__exec-item-date">{fmtExecDate(e.executedAt)}</span>
+              <span className="tsm-tranche__exec-item-shares">{e.executedShares.toLocaleString('zh-TW')} 股</span>
+              <span className="tsm-tranche__exec-item-price">@ {fmtPrice(e.executedPrice)}</span>
+              {e.transactionId && (
+                <span className="tsm-tranche__exec-item-txn">→ #{e.transactionId}</span>
+              )}
+            </div>
+          ))}
+          <div className="tsm-tranche__exec-summary">
+            <span className="tsm-tranche__exec-summary-item">
+              <span className="tsm-tranche__exec-summary-label">累計</span>
+              <span className="num-value">{totalShares.toLocaleString('zh-TW')} 股</span>
+            </span>
+            <span className="tsm-tranche__exec-summary-item">
+              <span className="tsm-tranche__exec-summary-label">均價</span>
+              <span className="num-value">{fmtPrice(avgPrice)}</span>
+            </span>
+            {tranche.shares > 0 && (
+              <span className="tsm-tranche__exec-summary-item">
+                <span className="tsm-tranche__exec-summary-label">目標達成</span>
+                <span className="num-value">{pctDone.toFixed(0)}%</span>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -229,7 +346,7 @@ function TrancheRow({ tranche, tradeType, currentPrice, sparkline, onConfirmRule
 /* ── Main ── */
 
 export default function TradingStrategyModal({
-  open, strategy, currentPrice, sparkline = [], onDismiss, onClose, onConfirmRule, suggestion,
+  open, strategy, currentPrice, sparkline = [], onDismiss, onClose, onConfirmRule, onAddExecution, suggestion, marketStateAuto,
 }: TradingStrategyModalProps) {
   if (!strategy) {
     return (
@@ -252,6 +369,13 @@ export default function TradingStrategyModal({
   const tranches    = strategy.tranches ?? [];
   const hasTranches = tranches.length > 0;
   const conflict    = analyzeDirectionConflict(strategy, suggestion);
+
+  const shouldWarnMacro =
+    marketStateAuto === 'risk-off' &&
+    resolveStrategyDirection(strategy.tradeType) === 'buy' &&
+    status !== 'completed' &&
+    status !== 'dismissed' &&
+    status !== 'expired';
 
   /* Price axis geometry：右端 = 停利下限，若現價超出則以現價為右端 */
   const hasPriceData = strategy.stopLossPrice != null
@@ -307,12 +431,14 @@ export default function TradingStrategyModal({
           </StatusBadge>
           <span style={{ marginLeft: 8 }}>
             <StatusBadge variant={
-              status === 'triggered' ? 'down'   :
-              status === 'active'    ? 'accent' : 'muted'
+              status === 'triggered'  ? 'down'   :
+              status === 'completed'  ? 'flat'   :
+              status === 'active'     ? 'accent' : 'muted'
             }>
-              {status === 'triggered' ? '已觸發' :
-               status === 'active'    ? '觀察中' :
-               status === 'expired'   ? '已過期' : '已忽略'}
+              {status === 'triggered'  ? '已觸發' :
+               status === 'completed'  ? '已完成' :
+               status === 'active'     ? '觀察中' :
+               status === 'expired'    ? '已過期' : '已忽略'}
             </StatusBadge>
           </span>
           {conflict.hasConflict && (
@@ -323,6 +449,19 @@ export default function TradingStrategyModal({
           )}
         </div>
       </div>
+
+      {/* ── 1.5 Risk-Off 環境警示 ── */}
+      {shouldWarnMacro && (
+        <div className="tsm-macro-warn">
+          <span className="tsm-macro-warn__icon"><Icon name="warning" size={16} aria-hidden="true" /></span>
+          <div>
+            <div className="tsm-macro-warn__title">當前市場狀態為 Risk-Off</div>
+            <div className="tsm-macro-warn__desc">
+              買入型策略在高波動環境下建議縮小批次、延後執行，或等待 VIX / 市場狀態回到中性。
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 2. 價格座標軸 ── */}
       {hasPriceData && (
@@ -411,6 +550,7 @@ export default function TradingStrategyModal({
                     currentPrice={currentPrice}
                     sparkline={sparkline}
                     onConfirmRule={onConfirmRule}
+                    onAddExecution={onAddExecution}
                     defaultExpanded={t.batch === firstPendingBatch}
                     storageKey={`tsm-exp-${strategy.stockCode}-${t.batch}`}
                   />

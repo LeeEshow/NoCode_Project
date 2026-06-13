@@ -370,6 +370,7 @@ export default function StockOverviewPage() {
   const liveStockInStore = usePlanStore(s => s.liveStockValue);
   const updateStockValue = usePlanStore(s => s.updateStockValue);
   const cashBalance      = useSnapshotStore(s => s.cashBalance);
+  const marketStateAuto  = useSnapshotStore(s => s.marketStateAuto);
   const totalAssetValue  = liveStockInStore + planForexValue + cashBalance;
   const scenario = useScenarioViewModel(risk.tagStats, totalAssetValue);
 
@@ -722,6 +723,10 @@ export default function StockOverviewPage() {
           stockName={addTxTarget.name}
           onClose={() => setAddTxTarget(null)}
           onSuccess={holdings.refreshAfterTx}
+          strategies={strategyVm.strategies}
+          onAddExecution={(batch, executedPrice, executedShares, transactionId, executedAt) =>
+            strategyVm.addExecution(addTxTarget.code, batch, executedPrice, executedShares, transactionId, executedAt)
+          }
         />
       )}
 
@@ -759,6 +764,9 @@ export default function StockOverviewPage() {
             onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
             onConfirmRule={(batch, ruleType, confirmed) =>
               strategyVm.confirmManualRule(strategyModal.stockCode, batch, ruleType, confirmed)}
+            onAddExecution={(batch, executedPrice, executedShares) =>
+              strategyVm.addExecution(strategyModal.stockCode, batch, executedPrice, executedShares)}
+            marketStateAuto={marketStateAuto}
           />
         );
       })()}

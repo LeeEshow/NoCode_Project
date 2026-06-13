@@ -71,8 +71,13 @@ function StrategyBadge({ strategy, currentPrice, stockName, onClick }: {
     const isStopLossHit = strategy.stopLossPrice != null
       && currentPrice > 0
       && currentPrice <= strategy.stopLossPrice;
+    const isCompleted   = status === 'completed' || (
+      strategy.tranches.length > 0 &&
+      strategy.tranches.every(t => t.executions.length > 0 || t.status === 'skipped')
+    );
 
-    if      (status === 'dismissed') { label = '忽略';      variant = 'muted';  }
+    if      (isCompleted)            { label = 'AI 已完成'; variant = 'flat';   }
+    else if (status === 'dismissed') { label = '忽略';      variant = 'muted';  }
     else if (status === 'expired')   { label = 'AI 已過期'; variant = 'muted';  }
     else if (isStopLossHit)          { label = '觸發停損';  variant = 'up';     }
     else if (status === 'triggered') { label = 'AI 已觸發'; variant = 'down';   }

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { getAll, dismiss as dismissApi, remove as removeApi, updateRuleStatus as updateRuleStatusApi } from '../models/tradingStrategyModel';
+import { getAll, dismiss as dismissApi, remove as removeApi, updateRuleStatus as updateRuleStatusApi, addTrancheExecution as addTrancheExecutionApi } from '../models/tradingStrategyModel';
 import { resolveStrategyStatus } from '../utils/tradingStrategy';
 import { useLatest } from '../utils/useLatest';
 import type { TradingStrategyDTO, StrategyStatus } from '../types';
@@ -90,5 +90,51 @@ export function useTradingStrategyViewModel() {
     }
   }, []);
 
-  return { strategies, loading, load, dismiss, remove, getStatus, confirmManualRule };
+  const addExecution = useCallback(async (
+    stockCode:      string,
+    batch:          number,
+    executedPrice:  number,
+    executedShares: number,
+    transactionId?: string,
+    executedAt?:    string,
+  ) => {
+    const original = strategiesRef.current[stockCode];
+    const now = executedAt ?? new Date().toISOString();
+
+    // 樂觀更新：立即 append 至本地 executions
+    setStrategies(prev => {
+      const s = prev[stockCode];
+      if (!s) return prev;
+      const tranches = s.tranches.map(t => {
+        if (t.batch !== batch) return t;
+        const newExecutions = [
+          ...t.executions,
+          { transactionId: transactionId ?? '', executedAt: now, executedPrice, executedShares },
+        ];
+        const allDone = s.tranches.every(tr =>
+          tr.batch === batch
+            ? true
+            : tr.executions.length > 0 || tr.status === 'skipped',
+        );
+        return { ...t, status: 'executed' as const, executions: newExecutions,
+          ...(allDone ? {} : {}) };
+      });
+      const allDone = tranches.every(t => t.executions.length > 0 || t.status === 'skipped');
+      return {
+        ...prev,
+        [stockCode]: { ...s, tranches, status: allDone ? 'completed' as const : s.status },
+      };
+    });
+
+    try {
+      const updated = await addTrancheExecutionApi(stockCode, batch, executedPrice, executedShares, transactionId, executedAt);
+      setStrategies(prev => ({ ...prev, [stockCode]: updated }));
+    } catch {
+      if (original) {
+        setStrategies(prev => ({ ...prev, [stockCode]: original }));
+      }
+    }
+  }, []);
+
+  return { strategies, loading, load, dismiss, remove, getStatus, confirmManualRule, addExecution };
 }

@@ -459,6 +459,114 @@ async def test_set_asset_tags_duplicate_tag_name(client):
     assert "error" in result
 
 
+# ─── Phase A：批次執行追蹤 ────────────────────────────────────────────────────
+
+_SINGLE_TRANCHE_PAYLOAD = {
+    **{k: v for k, v in _VALID_PAYLOAD.items() if k != "tranches"},
+    "tranches": [
+        {
+            "batch":             1,
+            "price_low":         103.0,
+            "price_high":        106.0,
+            "size_ratio":        1.0,
+            "shares":            1000,
+            "trigger_condition": "現價可進場",
+            "trigger_rules":     [{"type": "price_in_range"}],
+            "status":            "pending",
+        }
+    ],
+}
+
+_EXEC_URL = f"{BASE}/{_TEST_CODE}/tranches/1/executions"
+
+_EXEC_BODY = {
+    "executedPrice":  188.0,
+    "executedShares": 1000,
+}
+
+
+async def test_add_execution_success(client, cleanup):
+    """POST execution 後 tranche.executions 長度為 1，且欄位正確"""
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    data = assert_success(await client.post(_EXEC_URL, json=_EXEC_BODY))
+    tranche = data["tranches"][0]
+    assert len(tranche["executions"]) == 1
+    exe = tranche["executions"][0]
+    assert exe["executedPrice"]  == 188.0
+    assert exe["executedShares"] == 1000
+    assert exe["executedAt"] is not None
+    assert tranche["status"] == "executed"
+
+
+async def test_add_execution_appends_to_list(client, cleanup):
+    """連續 POST 兩次 execution，executions 長度應累積為 2"""
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    await client.post(_EXEC_URL, json=_EXEC_BODY)
+    data = assert_success(await client.post(_EXEC_URL, json={**_EXEC_BODY, "executedShares": 500}))
+    assert len(data["tranches"][0]["executions"]) == 2
+
+
+async def test_add_execution_with_transaction_id(client, cleanup):
+    """transactionId 有傳入時，後端應存入 transactionId 欄位"""
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    data = assert_success(await client.post(_EXEC_URL, json={**_EXEC_BODY, "transactionId": "txn_abc123"}))
+    assert data["tranches"][0]["executions"][0]["transactionId"] == "txn_abc123"
+
+
+async def test_add_execution_without_transaction_id(client, cleanup):
+    """transactionId 省略時，後端應存入空字串"""
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    data = assert_success(await client.post(_EXEC_URL, json=_EXEC_BODY))
+    assert data["tranches"][0]["executions"][0]["transactionId"] == ""
+
+
+async def test_add_execution_custom_executed_at(client, cleanup):
+    """傳入自訂 executedAt，後端應使用傳入值"""
+    custom_at = "2026-06-10T10:00:00+08:00"
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    data = assert_success(await client.post(_EXEC_URL, json={**_EXEC_BODY, "executedAt": custom_at}))
+    assert data["tranches"][0]["executions"][0]["executedAt"] == custom_at
+
+
+async def test_add_execution_nonexistent_strategy_404(client):
+    res = await client.post(f"{BASE}/NONEXISTENT_99/tranches/1/executions", json=_EXEC_BODY)
+    assert_error(res, 404)
+
+
+async def test_add_execution_wrong_batch_400(client, cleanup):
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    res = await client.post(f"{BASE}/{_TEST_CODE}/tranches/99/executions", json=_EXEC_BODY)
+    assert_error(res, 400)
+
+
+async def test_add_execution_invalid_price_422(client, cleanup):
+    """executedPrice <= 0 應回 422（Pydantic validation）"""
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    res = await client.post(_EXEC_URL, json={**_EXEC_BODY, "executedPrice": 0})
+    assert res.status_code == 422
+
+
+async def test_add_execution_invalid_shares_422(client, cleanup):
+    """executedShares <= 0 應回 422（Pydantic validation）"""
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    res = await client.post(_EXEC_URL, json={**_EXEC_BODY, "executedShares": 0})
+    assert res.status_code == 422
+
+
+async def test_add_execution_all_done_sets_completed(client, cleanup):
+    """單一批次執行後 strategy.status 應為 completed"""
+    await _mcp_call(client, "save_trading_strategy", _SINGLE_TRANCHE_PAYLOAD)
+    data = assert_success(await client.post(_EXEC_URL, json=_EXEC_BODY))
+    assert data["status"] == "completed"
+
+
+async def test_add_execution_partial_not_completed(client, cleanup):
+    """多批次中只執行一批，strategy.status 應不為 completed"""
+    await _mcp_call(client, "save_trading_strategy", _VALID_PAYLOAD)
+    data = assert_success(await client.post(_EXEC_URL, json=_EXEC_BODY))
+    assert data["status"] != "completed"
+
+
 # ─── tools/list 計數 ──────────────────────────────────────────────────────────
 
 async def test_tools_list_count_22(client):

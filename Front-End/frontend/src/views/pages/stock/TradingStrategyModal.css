@@ -80,6 +80,37 @@
   align-items: center;
 }
 
+/* ── Macro warn (Phase C) ─────────────────────────────────────────────────── */
+
+.tsm-macro-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 13px;
+  margin-bottom: 16px;
+  background: var(--up-bg);
+  border: 1px solid var(--up-bd);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.tsm-macro-warn__icon {
+  flex-shrink: 0;
+  color: var(--up);
+  margin-top: 2px;
+}
+
+.tsm-macro-warn__title {
+  font-weight: 600;
+  color: var(--up);
+  margin-bottom: 2px;
+}
+
+.tsm-macro-warn__desc {
+  color: var(--muted);
+}
+
 /* ── Price Axis ───────────────────────────────────────────────────────────── */
 
 .tsm-price-axis {
@@ -238,6 +269,8 @@
 
 .tsm-tranche--open::before { background: var(--accent); }
 .tsm-tranche--skipped { opacity: 0.52; }
+
+.tsm-tranche--executed::before { background: var(--down); }
 
 .tsm-tranche__header {
   display: flex;
@@ -462,6 +495,122 @@
   justify-content: flex-end;
   gap: 8px;
   width: 100%;
+}
+
+/* ── Execution tracking (Phase A) ────────────────────────────────────────── */
+
+.tsm-tranche__exec-btn {
+  height: auto;
+  padding: 2px 8px;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.tsm-tranche__exec-form {
+  margin: 0 12px 12px 16px;
+  padding: 12px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.tsm-tranche__exec-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.tsm-tranche__exec-form-label {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tsm-tranche__exec-form-input {
+  width: 96px;
+  padding: 4px 8px;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  outline: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.tsm-tranche__exec-form-input::-webkit-inner-spin-button,
+.tsm-tranche__exec-form-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.tsm-tranche__exec-form-input:focus {
+  border-color: var(--accent-bd);
+  box-shadow: 0 0 0 1px var(--accent-bd);
+}
+
+.tsm-tranche__exec-form-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.tsm-tranche__exec-list {
+  margin: 0 12px 12px 16px;
+  padding: 10px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.tsm-tranche__exec-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 4px 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.tsm-tranche__exec-item-date {
+  color: var(--dim);
+  min-width: 76px;
+}
+
+.tsm-tranche__exec-item-shares {
+  min-width: 64px;
+  text-align: right;
+  color: var(--text-value);
+}
+
+.tsm-tranche__exec-item-price {
+  color: var(--text-value);
+}
+
+.tsm-tranche__exec-item-txn {
+  color: var(--dim);
+  font-size: var(--text-xs);
+}
+
+.tsm-tranche__exec-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 0 0;
+  margin-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.tsm-tranche__exec-summary-item {
+  display: flex;
+  gap: 4px;
+}
+
+.tsm-tranche__exec-summary-label {
+  color: var(--dim);
 }
 
 @media (max-width: 640px) {
