@@ -127,7 +127,8 @@ export function useWatchlistViewModel() {
     if (order.length === 0) return state.items;
     const map = new Map(state.items.map(i => [i.id, i]));
     const ordered = order.map(id => map.get(id)).filter(Boolean) as WatchlistItemDTO[];
-    const rest = state.items.filter(i => !order.includes(i.id));
+    const orderSet = new Set(order);
+    const rest = state.items.filter(i => !orderSet.has(i.id));
     return [...ordered, ...rest];
   }, [state.items, order]);
 

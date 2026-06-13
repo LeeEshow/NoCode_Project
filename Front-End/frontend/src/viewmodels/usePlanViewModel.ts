@@ -138,10 +138,7 @@ export function usePlanViewModel() {
     });
   }, []);
 
-  const rNominal = useMemo(() => {
-    if (!state.config) return 0;
-    return state.config.rBase * state.config.kRisk;
-  }, [state.config]);
+  const rNominal = state.config ? state.config.rBase * state.config.kRisk : 0;
 
   const goalResult = useMemo<PlanGoalResult | null>(() => {
     if (!state.config || rows.length === 0) return null;

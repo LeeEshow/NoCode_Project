@@ -242,9 +242,9 @@ export default function ReportPage() {
   const [addStart,   setAddStart]   = useState(vm.comparisonStart);
   const [addEnd,     setAddEnd]     = useState(vm.comparisonEnd);
 
-  const [tableCollapsed, setTableCollapsed] = useState(
-    () => localStorage.getItem(TABLE_COLLAPSED_KEY) !== 'false',
-  );
+  const [tableCollapsed, setTableCollapsed] = useState(() => {
+    try { return localStorage.getItem(TABLE_COLLAPSED_KEY) !== 'false'; } catch { return true; }
+  });
 
   function toggleTable() {
     const next = !tableCollapsed;

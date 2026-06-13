@@ -24,7 +24,9 @@ function loadFromStorage(): UserPreferences {
 }
 
 function saveToStorage(prefs: UserPreferences) {
-  localStorage.setItem(LS_KEY, JSON.stringify(prefs));
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(prefs));
+  } catch {}
 }
 
 export function usePreferencesViewModel() {
@@ -44,51 +46,55 @@ export function usePreferencesViewModel() {
   }, []);
 
   const setChartPref = useCallback((patch: Partial<ChartPreferences>) => {
+    let next!: UserPreferences;
     setPrefs(prev => {
-      const next: UserPreferences = { ...prev, chart: { ...prev.chart, ...patch } };
-      saveToStorage(next);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        updatePreferences(next).catch(() => {});
-      }, 500);
+      next = { ...prev, chart: { ...prev.chart, ...patch } };
       return next;
     });
+    saveToStorage(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      updatePreferences(next).catch(() => {});
+    }, 500);
   }, []);
 
   const setExpandTab = useCallback((tab: ExpandTab) => {
+    let next!: UserPreferences;
     setPrefs(prev => {
-      const next: UserPreferences = { ...prev, expandTab: tab };
-      saveToStorage(next);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        updatePreferences(next).catch(() => {});
-      }, 500);
+      next = { ...prev, expandTab: tab };
       return next;
     });
+    saveToStorage(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      updatePreferences(next).catch(() => {});
+    }, 500);
   }, []);
 
   const setWlCollapsedGroups = useCallback((groups: string[]) => {
+    let next!: UserPreferences;
     setPrefs(prev => {
-      const next: UserPreferences = { ...prev, wlCollapsedGroups: groups };
-      saveToStorage(next);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        updatePreferences(next).catch(() => {});
-      }, 500);
+      next = { ...prev, wlCollapsedGroups: groups };
       return next;
     });
+    saveToStorage(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      updatePreferences(next).catch(() => {});
+    }, 500);
   }, []);
 
   const setWlViewMode = useCallback((mode: 'table' | 'card') => {
+    let next!: UserPreferences;
     setPrefs(prev => {
-      const next: UserPreferences = { ...prev, wlViewMode: mode };
-      saveToStorage(next);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        updatePreferences(next).catch(() => {});
-      }, 500);
+      next = { ...prev, wlViewMode: mode };
       return next;
     });
+    saveToStorage(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      updatePreferences(next).catch(() => {});
+    }, 500);
   }, []);
 
   return { prefs, loaded, setChartPref, setExpandTab, setWlCollapsedGroups, setWlViewMode };

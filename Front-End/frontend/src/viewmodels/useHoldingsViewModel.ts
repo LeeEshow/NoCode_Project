@@ -94,7 +94,8 @@ export function useHoldingsViewModel() {
     if (order.length === 0) return state.items;
     const map = new Map(state.items.map(h => [h.stockCode, h]));
     const ordered = order.map(code => map.get(code)).filter(Boolean) as HoldingDTO[];
-    const rest = state.items.filter(h => !order.includes(h.stockCode));
+    const orderSet = new Set(order);
+    const rest = state.items.filter(h => !orderSet.has(h.stockCode));
     return [...ordered, ...rest];
   }, [state.items, order]);
 

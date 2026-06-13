@@ -26,8 +26,10 @@ export default function AssetsPage() {
     () => computeFxExposure(vm.items, liveStockValue, cashBalance),
     [vm.items, liveStockValue, cashBalance],
   );
-  const fxEntries = Object.entries(fxExposure.byCode)
-    .sort(([, a], [, b]) => b.weight - a.weight);
+  const fxEntries = useMemo(
+    () => Object.entries(fxExposure.byCode).sort(([, a], [, b]) => b.weight - a.weight),
+    [fxExposure],
+  );
 
   const bondSensitivity = useMemo(
     () => computeBondSensitivity(vm.items),

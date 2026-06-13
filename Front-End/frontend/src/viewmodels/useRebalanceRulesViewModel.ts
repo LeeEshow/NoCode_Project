@@ -21,14 +21,15 @@ export function useRebalanceRulesViewModel() {
   }, []);
 
   const updateRules = useCallback((patch: Partial<RebalanceRulesDTO>) => {
+    let next!: RebalanceRulesDTO;
     setRules(prev => {
-      const next = { ...prev, ...patch };
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        saveRebalanceRules(next).catch(() => { /* silent */ });
-      }, 500);
+      next = { ...prev, ...patch };
       return next;
     });
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      saveRebalanceRules(next).catch(() => { /* silent */ });
+    }, 500);
   }, []);
 
   useEffect(() => {

@@ -18,11 +18,13 @@ export function useDownsideRiskViewModel(currentAssetValue?: number): DownsideRi
   const [snapshots, setSnapshots] = useState<DailySnapshotDTO[] | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState<string | null>(null);
-  const fetchedRef = useRef(false);
+  const fetchedRef  = useRef(false);
+  const loadingRef  = useRef(false);
 
   const fetch = useCallback(async () => {
-    if (fetchedRef.current || loading) return;
+    if (fetchedRef.current || loadingRef.current) return;
     fetchedRef.current = true;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -37,9 +39,10 @@ export function useDownsideRiskViewModel(currentAssetValue?: number): DownsideRi
       setError((err as Error).message);
       fetchedRef.current = false;
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  }, [loading]);
+  }, []);
 
   const mdd = useMemo(() => {
     if (!snapshots || snapshots.length < 2) return null;

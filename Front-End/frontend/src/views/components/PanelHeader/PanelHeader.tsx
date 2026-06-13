@@ -81,12 +81,10 @@ export default function PanelHeader({
   }, [liveStockValue, resolvedForeignTwd, cashBalance, totalAssets]);
 
   /* 徽章主指標 */
-  const primaryRatio = useMemo(() => {
-    if (totalAssets <= 0) return null;
-    if (exposureMode === 'forex')      return forexRatio;
-    if (exposureMode === 'investment') return investRatio;
-    return stockRatio;
-  }, [exposureMode, stockRatio, forexRatio, investRatio, totalAssets]);
+  const primaryRatio = totalAssets <= 0 ? null
+    : exposureMode === 'forex'      ? forexRatio
+    : exposureMode === 'investment' ? investRatio
+    : stockRatio;
 
   const exposureThreshold = getExposureThreshold(marketStateAuto);
 
