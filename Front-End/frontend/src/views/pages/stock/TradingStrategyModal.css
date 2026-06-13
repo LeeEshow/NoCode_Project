@@ -1,6 +1,19 @@
-/* ── Modal 寬度覆寫 ──────────────────────────────────────────────────────── */
+/* ── Modal frame ─────────────────────────────────────────────────────────── */
 
-.ft-modal.tsm-modal { max-width: 600px; }
+.ft-modal.tsm-modal {
+  max-width: 680px;
+  background: #191919;
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.48);
+}
+
+.ft-modal.tsm-modal .ft-modal__body {
+  padding: 20px 20px 16px;
+}
+
+.ft-modal.tsm-modal .ft-modal__footer {
+  background: rgba(255, 255, 255, 0.015);
+}
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
@@ -8,10 +21,10 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: 18px;
   padding-bottom: 16px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .tsm-header__left {
@@ -22,264 +35,338 @@
 .tsm-header__title {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 10px;
+  margin-bottom: 6px;
+  min-width: 0;
 }
 
 .tsm-header__code {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   font-weight: 700;
   color: var(--text);
+  line-height: 1.18;
+  font-variant-numeric: tabular-nums;
 }
 
 .tsm-header__name {
-  font-size: 1rem;
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tsm-header__meta {
-  font-size: 0.78rem;
   color: var(--muted);
+  font-size: var(--text-md);
+  line-height: 1.5;
   font-variant-numeric: tabular-nums;
 }
 
 .tsm-header__badges {
   display: flex;
-  gap: 6px;
+  flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 7px;
+  max-width: 248px;
+}
+
+.tsm-header__badges .ft-badge {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* ── Price Axis ───────────────────────────────────────────────────────────── */
 
 .tsm-price-axis {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(220px, 1fr) max-content;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 14px 16px 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
+}
+
+.tsm-price-axis__stop,
+.tsm-price-axis__target {
+  min-width: 56px;
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .tsm-price-axis__stop {
-  font-size: 0.78rem;
   color: var(--up);
   text-align: right;
-  white-space: nowrap;
-  flex-shrink: 0;
-  line-height: 1.4;
 }
 
 .tsm-price-axis__target {
-  font-size: 0.78rem;
   color: var(--down);
   text-align: left;
-  white-space: nowrap;
-  flex-shrink: 0;
-  line-height: 1.4;
 }
 
 .tsm-price-axis__track-wrap {
-  flex: 1;
   position: relative;
-  height: 64px;
+  height: 74px;
+  min-width: 0;
   overflow: visible;
 }
 
 .tsm-price-axis__line {
   position: absolute;
   top: 50%;
-  left: 0;
   right: 0;
-  height: 8px;
+  left: 0;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 999px;
   transform: translateY(-50%);
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
 }
 
 .tsm-price-axis__fill {
   position: absolute;
   top: 50%;
   left: 0;
-  height: 8px;
-  transform: translateY(-50%);
-  background: var(--accent);
-  opacity: 0.22;
-  border-radius: 4px;
+  height: 7px;
+  background: linear-gradient(90deg, rgba(184, 122, 122, 0.24), rgba(106, 143, 181, 0.36));
+  border-radius: 999px;
   pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .tsm-price-axis__band {
   position: absolute;
   top: 50%;
-  height: 10px;
+  height: 12px;
+  background: rgba(106, 143, 181, 0.58);
+  border: 1px solid rgba(158, 188, 220, 0.20);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(106, 143, 181, 0.10);
   transform: translateY(-50%);
-  background: var(--accent);
-  opacity: 0.5;
-  border-radius: 3px;
 }
 
 .tsm-price-axis__dot {
   position: absolute;
   top: 50%;
-  transform: translate(-50%, -50%);
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
+  transform: translate(-50%, -50%);
 }
 
-.tsm-price-axis__dot--sm     { width: 8px; height: 8px; }
-.tsm-price-axis__dot--stop   { background: var(--up); }
+.tsm-price-axis__dot--sm { width: 8px; height: 8px; }
+.tsm-price-axis__dot--stop { background: var(--up); }
 .tsm-price-axis__dot--target { background: var(--down); }
-.tsm-price-axis__dot--entry  { background: var(--accent); }
+.tsm-price-axis__dot--entry { background: var(--accent); }
 
 .tsm-price-axis__dot--current {
   position: absolute;
   top: 50%;
+  width: 15px;
+  height: 15px;
+  background: var(--text);
+  border: 3px solid #191919;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(205, 214, 224, 0.62), 0 0 12px rgba(205, 214, 224, 0.20);
   transform: translate(-50%, -50%);
-  font-size: 1rem;
-  color: var(--text);        /* 統一白色 */
-  line-height: 1;
-  background: none;
-  border-radius: 0;
 }
 
 .tsm-price-axis__label {
   position: absolute;
-  bottom: calc(50% + 8px);
-  transform: translateX(-50%);
-  font-size: 0.78rem;        /* 與停損/目標一致 */
-  color: var(--accent);      /* 與進場色帶一致 */
-  white-space: nowrap;
-  text-align: center;
+  bottom: calc(50% + 12px);
+  color: var(--accent);
+  font-size: var(--text-sm);
   line-height: 1.3;
+  text-align: center;
+  white-space: nowrap;
+  transform: translateX(-50%);
 }
 
 .tsm-price-axis__label--current {
   position: absolute;
-  top: calc(50% + 8px);
-  transform: translateX(-50%);
-  font-size: 0.78rem;        /* 與停損/目標一致 */
-  color: var(--text);        /* 統一白色 */
-  white-space: nowrap;
+  top: calc(50% + 13px);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.35;
   text-align: center;
-  line-height: 1.3;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Tranches ─────────────────────────────────────────────────────────────── */
 
-.tsm-tranches { margin-bottom: 16px; }
+.tsm-tranches {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
 
 .tsm-tranche {
-  border-left: 3px solid var(--muted);
-  padding: 8px 0 8px 14px;
-  margin-bottom: 6px;
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: var(--radius-md);
 }
-.tsm-tranche:last-child { margin-bottom: 0; }
-.tsm-tranche--open    { border-left-color: var(--accent); }
-.tsm-tranche--skipped { opacity: 0.5; }
+
+.tsm-tranche::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--border-hi);
+  content: "";
+}
+
+.tsm-tranche--open {
+  border-color: rgba(106, 143, 181, 0.54);
+  background: rgba(106, 143, 181, 0.055);
+}
+
+.tsm-tranche--open::before { background: var(--accent); }
+.tsm-tranche--skipped { opacity: 0.52; }
 
 .tsm-tranche__header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  border-radius: 4px;
-  padding: 7px 0;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--radius-md);
+  outline: none;
   user-select: none;
 }
 
-.tsm-tranche__header--clickable {
-  cursor: pointer;
-}
+.tsm-tranche__header--clickable { cursor: pointer; }
 
 .tsm-tranche__header--clickable:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.tsm-tranche__header--clickable:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(205, 214, 224, 0.62);
 }
 
 .tsm-tranche__header-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: inline-flex;
   flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
   color: var(--muted);
+}
+
+.tsm-tranche__header-right .material-symbols-rounded {
+  color: var(--dim);
 }
 
 .tsm-tranche__title-group {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .tsm-tranche__num {
-  font-weight: 700;
-  font-size: 0.9rem;
   color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .tsm-tranche__range {
-  font-size: 0.9rem;
   color: var(--text-value);
+  font-size: 0.95rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
-  margin: 0 6px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .tsm-tranche__size {
-  font-size: 0.78rem;
   color: var(--muted);
+  font-size: var(--text-md);
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .tsm-tranche__rules {
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  margin-top: 6px;
+  display: grid;
+  gap: 7px;
+  margin: 0 12px 12px 16px;
+  padding: 11px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .tsm-tranche__rule {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 3px 0;
-  font-size: 0.82rem;
+  justify-content: space-between;
   gap: 12px;
+  min-height: 24px;
+  font-size: var(--text-md);
 }
 
 .tsm-tranche__rule-name {
-  color: var(--muted);
   flex: 1;
   min-width: 0;
+  color: var(--muted);
 }
 
 .tsm-tranche__rule-status {
+  display: inline-flex;
   flex-shrink: 0;
-  display: flex;
   align-items: center;
   gap: 6px;
+  color: var(--muted);
 }
 
 .tsm-tranche__rule-status--pass { color: var(--down); }
 .tsm-tranche__rule-status--fail { color: var(--up); }
 .tsm-tranche__rule-status--wait { color: var(--muted); }
 
+.tsm-tranche__rule-status .btn-ghost {
+  height: 24px;
+}
+
 /* ── Rebalance ────────────────────────────────────────────────────────────── */
 
 .tsm-rebalance {
   display: flex;
   align-items: center;
-  gap: 10px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
-  margin-top: 4px;
-  margin-bottom: 12px;
-  font-size: 0.82rem;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 4px 0 12px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.024);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
 }
 
 .tsm-rebalance__label {
-  color: var(--label);
-  font-size: 0.78rem;
   flex-shrink: 0;
+  color: var(--label);
+  font-size: var(--text-sm);
 }
 
 .tsm-rebalance__action {
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -289,31 +376,33 @@
 }
 
 .tsm-rebalance__efficiency {
-  font-size: 10px;
+  padding: 1px 5px;
   color: var(--dim);
+  font-size: var(--text-2xs);
   border: 1px solid var(--border-hi);
-  border-radius: 3px;
-  padding: 0 4px;
+  border-radius: var(--radius-xs);
 }
 
 /* ── Summary ──────────────────────────────────────────────────────────────── */
 
 .tsm-summary {
-  border-top: 1px solid var(--border);
-  padding-top: 14px;
   margin-top: 4px;
-  margin-bottom: 4px;
-  font-size: 0.82rem;
+  margin-bottom: 0;
+  padding: 13px 14px;
   color: var(--muted);
-  line-height: 1.6;
+  background: rgba(106, 143, 181, 0.045);
+  border: 1px solid rgba(106, 143, 181, 0.13);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  line-height: 1.7;
 }
 
 .tsm-summary__label {
   display: block;
-  font-size: 0.82rem;
-  font-weight: 700;
+  margin-bottom: 5px;
   color: var(--accent);
-  margin-bottom: 4px;
+  font-size: var(--text-md);
+  font-weight: 700;
 }
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */
@@ -323,4 +412,40 @@
   justify-content: flex-end;
   gap: 8px;
   width: 100%;
+}
+
+@media (max-width: 640px) {
+  .ft-modal.tsm-modal .ft-modal__body {
+    padding: 16px;
+  }
+
+  .tsm-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tsm-header__badges {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .tsm-price-axis {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .tsm-price-axis__stop,
+  .tsm-price-axis__target {
+    text-align: left;
+  }
+
+  .tsm-tranche__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tsm-tranche__header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
 }

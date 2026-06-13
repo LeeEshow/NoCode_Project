@@ -371,7 +371,7 @@ export default function TradingStrategyModal({
 
               {currentPrice > 0 && (
                 <>
-                  <span className="tsm-price-axis__dot--current" style={{ left: `${toPct(currentPrice)}%` }}>★</span>
+                  <span className="tsm-price-axis__dot--current" style={{ left: `${toPct(currentPrice)}%` }} />
                   <div  className="tsm-price-axis__label--current" style={{ left: `${Math.min(toPct(currentPrice), 95)}%` }}>
                     現價<br />${fmtAxis(currentPrice)}
                   </div>

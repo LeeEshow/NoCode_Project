@@ -69,7 +69,17 @@
       "Bash(git *)",
       "Bash(python -c \"import ast, os; files=[]; [files.extend\\([os.path.join\\(r,f\\) for f in fs if f.endswith\\('.py'\\) and '.venv' not in r]\\) for r,ds,fs in os.walk\\('.'\\)]; found=[f for f in files if 'api_switch_call' in open\\(f\\).read\\(\\)]; print\\('\\\\n'.join\\(found\\) if found else 'NONE'\\)\")",
       "Bash(python -c \"import os; files=[]; [files.extend\\([os.path.join\\(r,f\\) for f in fs if f.endswith\\('.py'\\) and '.venv' not in r]\\) for r,ds,fs in os.walk\\('.'\\)]; found=[f for f in files if 'api_switch_call' in open\\(f,encoding='utf-8'\\).read\\(\\)]; print\\('\\\\n'.join\\(found\\) if found else 'NONE'\\)\")",
-      "Bash(node -e \"const p = require\\('./node_modules/axios/package.json'\\); console.log\\(p.version\\)\")"
+      "Bash(node -e \"const p = require\\('./node_modules/axios/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(Get-ChildItem -Path \"E:\\\\Code\\\\NoCode_Project\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Bash(Get-Content -Path \"E:\\\\Code\\\\NoCode_Project\\\\Front-End\\\\frontend\\\\src\\\\views\\\\pages\\\\ReportPage.tsx\" -ReadCount 300)",
+      "Bash(Select-Object -Index 470 -SkipIndex 469)",
+      "Bash(Get-Content)",
+      "Bash(python -X utf8 test_local.py)",
+      "Bash(az functionapp *)",
+      "Bash(az login *)",
+      "Bash(az account *)",
+      "PowerShell(az functionapp show --name fintarck-scraper --resource-group finance-app-rg --query \"functionAppConfig.deployment\" -o json)"
     ]
   }
 }
