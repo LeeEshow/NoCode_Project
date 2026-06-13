@@ -69,7 +69,7 @@ export default function SideNav({ expanded, onToggle, onSettingsOpen }: SideNavP
 
       {/* FIX-06：展開時 Logo 靠左、‹ 靠右；收折時 › 置中 */}
       <div className="sidenav__top">
-        {expanded && <span className="sidenav__logo">FinTrack</span>}
+        {expanded && <img src="/logo-dark.svg" alt="FinTrack" className="sidenav__logo-img" />}
         <button
           className="sidenav__toggle"
           onClick={onToggle}
