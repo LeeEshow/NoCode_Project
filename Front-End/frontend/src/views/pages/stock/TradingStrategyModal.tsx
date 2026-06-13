@@ -4,7 +4,7 @@ import Modal from '../../components/Modal';
 import StatusBadge from '../../components/StatusBadge';
 import type { BadgeVariant } from '../../components/StatusBadge';
 import Icon from '../../components/Icon';
-import { resolveStrategyStatus, ruleKey, mergeRealTimePriceStatuses } from '../../../utils/tradingStrategy';
+import { resolveStrategyStatus, ruleKey, mergeRealTimePriceStatuses, analyzeDirectionConflict } from '../../../utils/tradingStrategy';
 import type { TradingStrategyDTO, StrategyTranche, TriggerRule, RebalanceSuggestion } from '../../../types';
 import './TradingStrategyModal.css';
 
@@ -251,6 +251,7 @@ export default function TradingStrategyModal({
   const status      = resolveStrategyStatus(strategy, currentPrice);
   const tranches    = strategy.tranches ?? [];
   const hasTranches = tranches.length > 0;
+  const conflict    = analyzeDirectionConflict(strategy, suggestion);
 
   /* Price axis geometry：右端 = 停利下限，若現價超出則以現價為右端 */
   const hasPriceData = strategy.stopLossPrice != null
@@ -314,6 +315,12 @@ export default function TradingStrategyModal({
                status === 'expired'   ? '已過期' : '已忽略'}
             </StatusBadge>
           </span>
+          {conflict.hasConflict && (
+            <StatusBadge variant="up">
+              <Icon name="warning" size={13} aria-hidden="true" />
+              &nbsp;方向衝突
+            </StatusBadge>
+          )}
         </div>
       </div>
 
@@ -422,32 +429,47 @@ export default function TradingStrategyModal({
         </div>
       )}
 
-      {/* ── 4. 再平衡建議 ── */}
-      {suggestion && suggestion.action !== 'hold' && suggestion.shares > 0 && (
-        <div className="tsm-rebalance">
-          <span className="tsm-rebalance__label">再平衡建議</span>
-          <span className="tsm-rebalance__action" style={{
-            color: suggestion.action === 'sell' ? 'var(--up)' : 'var(--accent)',
-          }}>
-            {suggestion.action === 'sell' ? '減碼' : '加碼'}&nbsp;
-            {suggestion.shares.toLocaleString('zh-TW')} 股
-          </span>
-          <span className="tsm-rebalance__amount">
-            約 NT${Math.round(suggestion.estimatedAmount).toLocaleString('zh-TW')}
-          </span>
-          {suggestion.efficiencyLabel && (
-            <span className="tsm-rebalance__efficiency">
-              {suggestion.efficiencyLabel}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* ── 5. AI 綜合建議 ── */}
+      {/* ── 4. AI 綜合建議 ── */}
       {strategy.summary && (
         <div className="tsm-summary">
           <span className="tsm-summary__label">AI建議：</span>
           {strategy.summary}
+        </div>
+      )}
+
+      {/* ── 5. 再平衡建議 + 方向衝突（合併區塊）── */}
+      {strategy.summary && suggestion && suggestion.action !== 'hold' && suggestion.shares > 0 && (
+        <div className="tsm-section-divider" />
+      )}
+      {suggestion && suggestion.action !== 'hold' && suggestion.shares > 0 && (
+        <div className={`tsm-insight${conflict.severity !== 'none' ? ` tsm-insight--${conflict.severity}` : ''}`}>
+          <div className="tsm-insight__rebalance">
+            <span className="tsm-rebalance__label">再平衡建議</span>
+            <span className="tsm-rebalance__action" style={{
+              color: suggestion.action === 'sell' ? 'var(--up)' : 'var(--accent)',
+            }}>
+              {suggestion.action === 'sell' ? '減碼' : '加碼'}&nbsp;
+              {suggestion.shares.toLocaleString('zh-TW')} 股
+            </span>
+            <span className="tsm-rebalance__amount">
+              約 NT${Math.round(suggestion.estimatedAmount).toLocaleString('zh-TW')}
+            </span>
+            {suggestion.efficiencyLabel && (
+              <span className="tsm-rebalance__efficiency">
+                {suggestion.efficiencyLabel}
+              </span>
+            )}
+          </div>
+          {conflict.severity !== 'none' && (
+            <>
+              <div className="tsm-conflict__title">
+                {conflict.severity === 'warning' && <Icon name="warning" size={15} aria-hidden="true" />}
+                {conflict.title}
+              </div>
+              <div className="tsm-conflict__desc">{conflict.description}</div>
+              <div className="tsm-conflict__hint">{conflict.suggestion}</div>
+            </>
+          )}
         </div>
       )}
 

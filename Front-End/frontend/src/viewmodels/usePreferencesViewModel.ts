@@ -79,5 +79,17 @@ export function usePreferencesViewModel() {
     });
   }, []);
 
-  return { prefs, loaded, setChartPref, setExpandTab, setWlCollapsedGroups };
+  const setWlViewMode = useCallback((mode: 'table' | 'card') => {
+    setPrefs(prev => {
+      const next: UserPreferences = { ...prev, wlViewMode: mode };
+      saveToStorage(next);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        updatePreferences(next).catch(() => {});
+      }, 500);
+      return next;
+    });
+  }, []);
+
+  return { prefs, loaded, setChartPref, setExpandTab, setWlCollapsedGroups, setWlViewMode };
 }

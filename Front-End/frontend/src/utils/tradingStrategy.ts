@@ -1,4 +1,76 @@
-import type { TradingStrategyDTO, StrategyStatus, TradeType, TriggerRule, StrategyTranche } from '../types';
+import type { TradingStrategyDTO, StrategyStatus, TradeType, TriggerRule, StrategyTranche, RebalanceSuggestion } from '../types';
+
+/* ── 方向衝突分析（Phase B）──────────────────────────────────── */
+
+export type TradeDirection = 'buy' | 'sell' | 'hold';
+
+export interface DirectionConflictAnalysis {
+  hasConflict:        boolean;
+  strategyDirection:  TradeDirection;
+  rebalanceDirection: TradeDirection;
+  severity:           'none' | 'info' | 'warning';
+  title:              string;
+  description:        string;
+  suggestion:         string;
+}
+
+export function resolveStrategyDirection(tradeType: TradeType): TradeDirection {
+  if (tradeType === 'entry' || tradeType === 'add') return 'buy';
+  if (
+    tradeType === 'reduce'     ||
+    tradeType === 'exit'       ||
+    tradeType === 'take_profit'||
+    tradeType === 'stop_loss'
+  ) return 'sell';
+  return 'hold';
+}
+
+export function resolveRebalanceDirection(action: RebalanceSuggestion['action']): TradeDirection {
+  if (action === 'buy')  return 'buy';
+  if (action === 'sell') return 'sell';
+  return 'hold';
+}
+
+export function analyzeDirectionConflict(
+  strategy:   TradingStrategyDTO,
+  suggestion?: RebalanceSuggestion,
+): DirectionConflictAnalysis {
+  const strategyDirection  = resolveStrategyDirection(strategy.tradeType);
+  const rebalanceDirection = suggestion ? resolveRebalanceDirection(suggestion.action) : 'hold';
+
+  if (!suggestion || suggestion.action === 'hold') {
+    return { hasConflict: false, strategyDirection, rebalanceDirection, severity: 'none', title: '', description: '', suggestion: '' };
+  }
+
+  const hasConflict =
+    strategyDirection  !== 'hold' &&
+    rebalanceDirection !== 'hold' &&
+    strategyDirection  !== rebalanceDirection;
+
+  if (!hasConflict) {
+    return {
+      hasConflict:        false,
+      strategyDirection,
+      rebalanceDirection,
+      severity:    'info',
+      title:       '方向一致',
+      description: 'AI 交易策略與再平衡建議方向一致。',
+      suggestion:  '可同時參考短期訊號與長期配置目標，仍需確認成交成本與流動性。',
+    };
+  }
+
+  const sBuy = strategyDirection  === 'buy';
+  const rBuy = rebalanceDirection === 'buy';
+  return {
+    hasConflict:        true,
+    strategyDirection,
+    rebalanceDirection,
+    severity:    'warning',
+    title:       '方向衝突',
+    description: `AI 交易策略偏向${sBuy ? '買入 / 加碼' : '賣出 / 減碼'}，但再平衡建議偏向${rBuy ? '買入 / 加碼' : '賣出 / 減碼'}。`,
+    suggestion:  '先檢查目前持股權重是否已超出目標區間；若未超限，短期 TAA 訊號可作為分批執行依據；若已明顯超限，應優先降低集中度風險。',
+  };
+}
 
 export function computeStrategyStatus(
   s: TradingStrategyDTO,

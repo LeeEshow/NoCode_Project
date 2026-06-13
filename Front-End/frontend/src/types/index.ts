@@ -556,12 +556,14 @@ export interface UserPreferences {
   chart:              ChartPreferences;
   expandTab:          ExpandTab;
   wlCollapsedGroups?: string[];
+  wlViewMode?:        'table' | 'card';
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   chart:             { showK: true, showMA5: true, showMA20: true, showMA60: true, showVolume: true, zoomLock: false },
   expandTab:         'kline' as ExpandTab,
   wlCollapsedGroups: [],
+  wlViewMode:        'table',
 };
 
 /* ── 再平衡規則（Phase 3）───────────────────────────────────── */

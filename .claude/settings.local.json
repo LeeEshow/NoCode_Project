@@ -79,7 +79,8 @@
       "Bash(az functionapp *)",
       "Bash(az login *)",
       "Bash(az account *)",
-      "PowerShell(az functionapp show --name fintarck-scraper --resource-group finance-app-rg --query \"functionAppConfig.deployment\" -o json)"
+      "PowerShell(az functionapp show --name fintarck-scraper --resource-group finance-app-rg --query \"functionAppConfig.deployment\" -o json)",
+      "Bash(npm run *)"
     ]
   }
 }

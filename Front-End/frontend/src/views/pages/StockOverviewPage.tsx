@@ -196,19 +196,25 @@ export default function StockOverviewPage() {
   const [addHoldingOpen, setAddHoldingOpen] = useState(false);
   const [wlModalOpen,   setWlModalOpen]   = useState(false);
   const [wlEditItem,    setWlEditItem]    = useState<WatchlistItemDTO | null>(null);
-  const [wlViewMode,    setWlViewMode]    = useState<'table' | 'card'>(() => {
-    try { return (localStorage.getItem('wl-view-mode') as 'table' | 'card') || 'table'; } catch { return 'table'; }
-  });
+  const [wlViewMode, setWlViewMode] = useState<'table' | 'card'>(
+    () => prefsVm.prefs.wlViewMode ?? 'table'
+  );
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(prefsVm.prefs.wlCollapsedGroups ?? [])
   );
   /* 後端回應後 one-time sync（localStorage 已提供無閃爍的初始值） */
-  const collapseSyncedRef = useRef(false);
+  const collapseSyncedRef  = useRef(false);
+  const viewModeSyncedRef  = useRef(false);
   useEffect(() => {
     if (!prefsVm.loaded || collapseSyncedRef.current) return;
     collapseSyncedRef.current = true;
     setCollapsedGroups(new Set(prefsVm.prefs.wlCollapsedGroups ?? []));
   }, [prefsVm.loaded, prefsVm.prefs.wlCollapsedGroups]);
+  useEffect(() => {
+    if (!prefsVm.loaded || viewModeSyncedRef.current) return;
+    viewModeSyncedRef.current = true;
+    startTransition(() => setWlViewMode(prefsVm.prefs.wlViewMode ?? 'table'));
+  }, [prefsVm.loaded, prefsVm.prefs.wlViewMode]);
   const [strategyModal, setStrategyModal] = useState<{
     open: boolean; stockCode: string; stockName: string;
   }>({ open: false, stockCode: '', stockName: '' });
@@ -237,8 +243,8 @@ export default function StockOverviewPage() {
 
   const handleWlViewMode = useCallback((mode: 'table' | 'card') => {
     startTransition(() => setWlViewMode(mode));
-    try { localStorage.setItem('wl-view-mode', mode); } catch {}
-  }, []);
+    prefsVm.setWlViewMode(mode);
+  }, [prefsVm]);
 
   const handleToggleGroup = useCallback((groupName: string) => {
     const next = new Set(collapsedGroups);

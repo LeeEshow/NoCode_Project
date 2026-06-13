@@ -344,20 +344,42 @@
   height: 24px;
 }
 
-/* ── Rebalance ────────────────────────────────────────────────────────────── */
+/* ── Section divider ─────────────────────────────────────────────────────── */
 
-.tsm-rebalance {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  margin: 4px 0 12px;
+.tsm-section-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: 14px 0 0;
+}
+
+/* ── Insight（再平衡 + 衝突合併區塊）────────────────────────────────────── */
+
+.tsm-insight {
+  margin-top: 10px;
   padding: 11px 12px;
   background: rgba(255, 255, 255, 0.024);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: var(--radius-md);
   font-size: var(--text-md);
 }
+
+.tsm-insight--warning {
+  border-color: var(--up-bd);
+  background: var(--up-bg);
+}
+
+.tsm-insight--info {
+  border-color: var(--accent-bd);
+  background: var(--accent-bg);
+}
+
+.tsm-insight__rebalance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
 
 .tsm-rebalance__label {
   flex-shrink: 0;
@@ -381,6 +403,34 @@
   font-size: var(--text-2xs);
   border: 1px solid var(--border-hi);
   border-radius: var(--radius-xs);
+}
+
+/* ── Conflict sub-elements（用於 .tsm-insight 內）────────────────────────── */
+
+.tsm-conflict__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-top: 6px;
+  margin-bottom: 4px;
+  font-size: var(--text-sm);
+}
+
+.tsm-insight--warning .tsm-conflict__title { color: var(--up); }
+.tsm-insight--info    .tsm-conflict__title { color: var(--accent); }
+
+.tsm-conflict__desc {
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.tsm-conflict__hint {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  margin-top: 6px;
 }
 
 /* ── Summary ──────────────────────────────────────────────────────────────── */
