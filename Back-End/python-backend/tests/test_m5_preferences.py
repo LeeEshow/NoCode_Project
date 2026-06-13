@@ -73,3 +73,35 @@ async def test_put_without_wl_collapsed_groups_preserves_value(client):
     res = await client.put("/api/v1/preferences/", json={"chart": {"zoomLock": False}})
     data = assert_success(res)
     assert data["wlCollapsedGroups"] == ["保留"]
+
+
+async def test_get_preferences_has_wl_view_mode(client):
+    res = await client.get("/api/v1/preferences/")
+    data = assert_success(res)
+    assert "wlViewMode" in data
+    assert data["wlViewMode"] in ("table", "card")
+
+
+async def test_put_wl_view_mode_round_trip(client):
+    res = await client.put("/api/v1/preferences/", json={"wlViewMode": "card"})
+    data = assert_success(res)
+    assert data["wlViewMode"] == "card"
+
+    res2 = await client.get("/api/v1/preferences/")
+    data2 = assert_success(res2)
+    assert data2["wlViewMode"] == "card"
+
+
+async def test_put_wl_view_mode_back_to_table(client):
+    await client.put("/api/v1/preferences/", json={"wlViewMode": "card"})
+    res = await client.put("/api/v1/preferences/", json={"wlViewMode": "table"})
+    data = assert_success(res)
+    assert data["wlViewMode"] == "table"
+
+
+async def test_put_without_wl_view_mode_preserves_value(client):
+    await client.put("/api/v1/preferences/", json={"wlViewMode": "card"})
+    # 只更新 chart，wlViewMode 應保持原值
+    res = await client.put("/api/v1/preferences/", json={"chart": {"zoomLock": False}})
+    data = assert_success(res)
+    assert data["wlViewMode"] == "card"

@@ -14,12 +14,15 @@ DEFAULTS = {
         "zoomLock":   False,
     },
     "wlCollapsedGroups": [],
+    "wlViewMode": "table",
 }
 
 
 def _from_firestore(d: dict) -> dict:
     """Firestore 欄位直接是 camelCase（例外規則）"""
     chart_raw = d.get("chart", {})
+    raw_view_mode = d.get("wlViewMode", DEFAULTS["wlViewMode"])
+    wl_view_mode = raw_view_mode if raw_view_mode in ("table", "card") else "table"
     return {
         "chart": {
             "showK":      bool(chart_raw.get("showK",      DEFAULTS["chart"]["showK"])),
@@ -30,6 +33,7 @@ def _from_firestore(d: dict) -> dict:
             "zoomLock":   bool(chart_raw.get("zoomLock",  DEFAULTS["chart"]["zoomLock"])),
         },
         "wlCollapsedGroups": list(d.get("wlCollapsedGroups", [])),
+        "wlViewMode": wl_view_mode,
     }
 
 
@@ -62,10 +66,18 @@ async def update_preferences(body: dict):
     else:
         wl_groups = current.get("wlCollapsedGroups", [])
 
+    # Direct replace for wlViewMode
+    raw_mode = body.get("wlViewMode")
+    if raw_mode in ("table", "card"):
+        wl_view_mode = raw_mode
+    else:
+        wl_view_mode = current.get("wlViewMode", DEFAULTS["wlViewMode"])
+
     db.collection("preferences").document("default").set({
         "chart":             merged_chart,
         "wlCollapsedGroups": wl_groups,
+        "wlViewMode":        wl_view_mode,
         "updated_at":        fs.SERVER_TIMESTAMP,
     }, merge=True)
 
-    return {"success": True, "data": _from_firestore({"chart": merged_chart, "wlCollapsedGroups": wl_groups})}
+    return {"success": True, "data": _from_firestore({"chart": merged_chart, "wlCollapsedGroups": wl_groups, "wlViewMode": wl_view_mode})}
