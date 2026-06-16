@@ -117,3 +117,51 @@ def _fetch_twse(stock_id: str, date_str: str) -> dict | None:
     except Exception as e:
         logger.warning("TWSE API 查詢失敗 %s: %s", stock_id, e)
         return None
+
+
+def get_twse_taiex() -> dict | None:
+    """
+    即時 TAIEX（加權指數）via TWSE MIS API（~5s 延遲，遠優於 Yahoo Finance 20min）。
+
+    回傳格式與 get_indices() cards[0] 相容：
+        {id, name, price, change, changePercent}
+    """
+    cache_key = "twse:taiex:realtime"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        res = requests.get(
+            "https://mis.twse.com.tw/stock/api/getStockInfo.jsp",
+            params={"ex_ch": "tse_t00.tw", "json": "1", "delay": "0"},
+            headers=_HEADERS,
+            timeout=5,
+        )
+        res.raise_for_status()
+        data = res.json()
+
+        msg_array = data.get("msgArray") or []
+        if not msg_array:
+            return None
+
+        row  = msg_array[0]
+        price = _parse_num(row.get("z") or row.get("y"))  # z=成交價；盤前/收盤後取昨收 y
+        prev  = _parse_num(row.get("y"))                   # 昨收
+        if not price or not prev:
+            return None
+
+        change     = round(price - prev, 2)
+        change_pct = round(change / prev * 100, 2) if prev else 0.0
+        result = {
+            "id":            "taiex",
+            "name":          "加權指數",
+            "price":         price,
+            "change":        change,
+            "changePercent": change_pct,
+        }
+        cache_set(cache_key, result, 10)   # 10s cache（MIS 約 5s 更新一次）
+        return result
+    except Exception:
+        logger.warning("get_twse_taiex failed", exc_info=True)
+        return None

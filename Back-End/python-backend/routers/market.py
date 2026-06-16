@@ -61,14 +61,26 @@ async def market_indices():
         _ndc_safe(),
     )
 
-    # 盤中且 Shioaji 已啟用時，台指期（index 1）以 WebSocket tick cache 覆蓋
-    # TAIEX（index 0）由 Yahoo Finance ^TWII 提供（Index 不支援 Tick 訂閱）
-    if shioaji_enabled() and is_market_open():
-        from services.shioaji_manager import shioaji_manager
-        if shioaji_manager.initialized:
-            futures = shioaji_manager.get_cached_futures()
-            if futures:
-                cards[1] = _sj_to_index_card("futures", "台指期", futures)
+    cards = list(cards)  # shallow copy，避免直接修改 LRU cache 內的 list
+
+    if is_market_open():
+        # TAIEX 即時指數（TWSE MIS API，~5s 延遲，遠優於 Yahoo Finance 的 20min）
+        from services.twse_finance import get_twse_taiex
+        try:
+            taiex = await asyncio.wait_for(asyncio.to_thread(get_twse_taiex), timeout=8)
+        except asyncio.TimeoutError:
+            logger.warning("get_twse_taiex timeout, fallback to Yahoo")
+            taiex = None
+        if taiex:
+            cards[0] = taiex
+
+        # 台指期：以 Shioaji WebSocket tick cache 覆蓋（盤中才訂閱）
+        if shioaji_enabled():
+            from services.shioaji_manager import shioaji_manager
+            if shioaji_manager.initialized:
+                futures = shioaji_manager.get_cached_futures()
+                if futures:
+                    cards[1] = _sj_to_index_card("futures", "台指期", futures)
 
     return {"success": True, "data": cards, "ndcIndicators": ndc}
 

@@ -10,6 +10,13 @@ _TICK_MAX_AGE_SECONDS = 120  # tick 有效期（秒）
 _TZ_TAIPEI = timezone(timedelta(hours=8))
 
 
+def _txf_session() -> str:
+    """台指期目前是日盤（day）還是夜盤（night）？
+    日盤 05:00–14:59；夜盤 15:00–隔日 04:59。"""
+    h = datetime.now(_TZ_TAIPEI).hour
+    return "night" if h >= 15 or h < 5 else "day"
+
+
 def _is_fresh(cached: dict) -> bool:
     try:
         ts = datetime.fromisoformat(cached["timestamp"])
@@ -34,6 +41,8 @@ class ShioajiManager:
         self._subscribed_stocks: set[str] = set()
         self._subscribing_stocks: set[str] = set()   # 訂閱進行中（防重複 ensure_future）
         self._txf_reference: Optional[float] = None
+        self._txf_last_session: Optional[str] = None
+        self._txf_reference_refreshing: bool = False
         # Snapshot API 限流（僅供啟動暖身 + /system/shioaji-test 診斷，不在報價熱路徑上）
         self._snap_single_sem = asyncio.Semaphore(3)
 
@@ -88,7 +97,7 @@ class ShioajiManager:
 
         @self._api.on_tick_fop_v1()
         def on_fop_tick(exchange: Exchange, tick: TickFOPv1) -> None:
-            """TXF 期貨 tick push → 寫入 memory cache"""
+            """TXF 期貨 tick push → 寫入 memory cache；偵測換盤觸發 reference 刷新"""
             price = float(tick.close)
             ref = self._txf_reference
             change = round(price - ref, 0) if ref else None
@@ -106,6 +115,15 @@ class ShioajiManager:
                 "timestamp":      _ts.isoformat(),
                 "source":         "tick",
             }
+
+            # 偵測換盤（日→夜 或 夜→日），重新向 Shioaji 取最新參考價
+            cur_session = _txf_session()
+            if cur_session != self._txf_last_session:
+                self._txf_last_session = cur_session
+                if self._loop and not self._loop.is_closed():
+                    asyncio.run_coroutine_threadsafe(
+                        self._refresh_txf_reference(), self._loop
+                    )
 
         @self._api.quote.on_event
         def on_event(resp_code: int, event_code: int, info: str, event: str) -> None:
@@ -175,6 +193,26 @@ class ShioajiManager:
             self._subscribed_stocks.clear()
             await self.subscribe_stocks(prev_stocks)
             logger.info("Resubscribed %d stocks after reconnect", len(prev_stocks))
+
+    async def _refresh_txf_reference(self) -> None:
+        """換盤時重新從合約取得新盤 reference price，並清 futures cache 讓漲跌重算。"""
+        if self._txf_reference_refreshing:
+            return
+        self._txf_reference_refreshing = True
+        try:
+            def _get_ref() -> Optional[float]:
+                c = self._get_nearest_txf()
+                return float(c.reference) if c else None
+
+            ref = await asyncio.wait_for(asyncio.to_thread(_get_ref), timeout=10)
+            if ref:
+                self._txf_reference = ref
+                self._futures_cache.clear()
+                logger.info("TXF reference refreshed: %.0f (session=%s)", ref, self._txf_last_session)
+        except Exception as e:
+            logger.warning("TXF reference refresh failed: %s", e)
+        finally:
+            self._txf_reference_refreshing = False
 
     # ─── 個股 WebSocket Tick 訂閱 ──────────────────────────────────────────────
 
