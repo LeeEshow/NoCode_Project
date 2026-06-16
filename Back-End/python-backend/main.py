@@ -98,8 +98,8 @@ async def lifespan(app: FastAPI):
             pass
     try:
         from services.shioaji_manager import shioaji_manager
-        await shioaji_manager.shutdown()
-    except Exception:
+        await asyncio.wait_for(shioaji_manager.shutdown(), timeout=10)
+    except (asyncio.TimeoutError, Exception):
         pass
 
 
