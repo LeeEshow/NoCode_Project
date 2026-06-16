@@ -40,6 +40,59 @@ def _parse_num(s) -> float | None:
         return None
 
 
+def get_twse_taiex() -> dict | None:
+    """
+    盤中從 TWSE 即時行情 API 取得加權指數（約 5 秒延遲，遠優於 Yahoo 20 分鐘）。
+    盤前 / 盤後 z 欄位為 "-"，回傳 None 由呼叫方 fallback 至 Yahoo Finance。
+    快取 5 秒，與 get_indices() 一致。
+    """
+    cache_key = "twse:taiex:live"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    def _call():
+        with twse_sem:
+            res = requests.get(
+                "https://mis.twse.com.tw/stock/api/getStockInfo.jsp",
+                params={"ex_ch": "tse_t00.tw", "json": "1", "delay": "0"},
+                headers={**_HEADERS, "Referer": "https://mis.twse.com.tw"},
+                timeout=8,
+            )
+            res.raise_for_status()
+            return res.json()
+
+    try:
+        data = twse_cb.call(_call)
+        items = data.get("msgArray", [])
+        if not items:
+            return None
+
+        item  = items[0]
+        price = _parse_num(item.get("z"))   # 最新成交價（盤前/盤後為 "-"）
+        prev  = _parse_num(item.get("y"))   # 昨日收盤
+
+        if price is None or prev is None or price <= 0:
+            return None  # 尚未開盤或已收盤，交由 Yahoo fallback
+
+        change     = round(price - prev, 2)
+        change_pct = round(change / prev * 100, 2) if prev else 0.0
+
+        result = {
+            "id":            "twii",
+            "name":          "台股大盤",
+            "price":         price,
+            "change":        change,
+            "changePercent": change_pct,
+        }
+        cache_set(cache_key, result, 5)
+        return result
+
+    except Exception as e:
+        logger.warning("TWSE TAIEX 即時查詢失敗: %s", e)
+        return None
+
+
 def get_twse_closing_price(stock_id: str) -> dict | None:
     """
     從 TWSE STOCK_DAY API 取得當日收盤報價（僅限 TSE 上市股票）。
