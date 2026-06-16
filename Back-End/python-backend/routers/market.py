@@ -41,12 +41,24 @@ def _get_ndc_indicators() -> dict:
         return {"businessCycle": None, "pmi": None}
 
 
+async def _ndc_safe() -> dict:
+    """Firestore 讀取加 5s timeout，超時或失敗一律 fallback 空值，不阻塞主路徑。"""
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_get_ndc_indicators),
+            timeout=5.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("market_indicators Firestore read timeout")
+        return {"businessCycle": None, "pmi": None}
+
+
 @router.get("/indices")
 async def market_indices():
     loop = asyncio.get_running_loop()
     cards, ndc = await asyncio.gather(
         loop.run_in_executor(None, get_indices),
-        asyncio.to_thread(_get_ndc_indicators),
+        _ndc_safe(),
     )
 
     # 盤中且 Shioaji 已啟用時，台指期（index 1）以 WebSocket tick cache 覆蓋
