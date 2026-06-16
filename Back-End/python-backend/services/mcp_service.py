@@ -220,7 +220,7 @@ MCP_TOOLS = [
             "properties": {
                 "tag_id":              {"type": "string",          "description": "Tag 唯一識別碼（必填）"},
                 "base_risk":           {"type": "number",          "description": "基礎風險係數 0.0–1.0（選填）"},
-                "target_weight":       {"type": ["number", "null"],"description": "目標配比（百分比），0–100，例如 25 代表 25%，null = 不設目標（選填）"},
+                "target_weight":       {"type": ["number", "null"],"description": "目標配比 0.0–1.0，null = 不設目標（選填）"},
                 "direction":           {"type": "string",          "description": "both | upper_only | lower_only（選填）"},
                 "concentration_limit": {"type": ["number", "null"],"description": "同質 Tag 集中度上限 0.0–1.0（選填）"},
                 "dry_run":             {"type": "boolean",         "description": "預設 true（預覽模式）"},
@@ -626,7 +626,7 @@ async def _get_portfolio_tag_analysis() -> dict:
         for st in stock_tag_map.get(sc, []):
             tag_name     = st["tagName"]
             weight_ratio = st["weightRatio"]
-            contribution = (hv["value"] * weight_ratio) / total_value * 100  # 百分比，與 targetWeight 單位一致
+            contribution = (hv["value"] * weight_ratio) / total_value
             if tag_name not in tag_accum:
                 tag_accum[tag_name] = {"actualWeight": 0.0, "holdings": []}
             tag_accum[tag_name]["actualWeight"] += contribution
@@ -684,8 +684,8 @@ async def _update_tag(arguments: dict) -> dict:
             return _text({"error": "base_risk must be between 0.0 and 1.0"})
         base_risk = float(base_risk)
     if has_target_weight and target_weight is not None:
-        if not isinstance(target_weight, (int, float)) or float(target_weight) <= 0 or float(target_weight) > 100:
-            return _text({"error": "target_weight 必須為 0 < value ≤ 100 的百分比數字（例如 25 代表 25%）"})
+        if not isinstance(target_weight, (int, float)) or not (0.0 <= float(target_weight) <= 1.0):
+            return _text({"error": "target_weight must be between 0.0 and 1.0"})
         target_weight = float(target_weight)
     if has_conc_limit and conc_limit is not None:
         if not isinstance(conc_limit, (int, float)) or not (0.0 <= float(conc_limit) <= 1.0):

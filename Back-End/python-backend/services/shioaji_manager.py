@@ -10,15 +10,6 @@ _TICK_MAX_AGE_SECONDS = 120  # tick 有效期（秒）
 _TZ_TAIPEI = timezone(timedelta(hours=8))
 
 
-def _txf_session(hour: int) -> str:
-    """台灣時間小時 → 'day'（09–13）| 'night'（15–04）| 'closed'"""
-    if 9 <= hour < 14:
-        return "day"
-    if hour >= 15 or hour < 5:
-        return "night"
-    return "closed"
-
-
 def _is_fresh(cached: dict) -> bool:
     try:
         ts = datetime.fromisoformat(cached["timestamp"])
@@ -43,8 +34,6 @@ class ShioajiManager:
         self._subscribed_stocks: set[str] = set()
         self._subscribing_stocks: set[str] = set()   # 訂閱進行中（防重複 ensure_future）
         self._txf_reference: Optional[float] = None
-        self._txf_last_session: Optional[str] = None      # 'day' | 'night'；None = 尚未初始化
-        self._txf_reference_refreshing: bool = False       # 防止並發 refresh
         # Snapshot API 限流（僅供啟動暖身 + /system/shioaji-test 診斷，不在報價熱路徑上）
         self._snap_single_sem = asyncio.Semaphore(3)
 
@@ -100,23 +89,11 @@ class ShioajiManager:
         @self._api.on_tick_fop_v1()
         def on_fop_tick(exchange: Exchange, tick: TickFOPv1) -> None:
             """TXF 期貨 tick push → 寫入 memory cache"""
-            _ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
             price = float(tick.close)
-
-            # 偵測日盤/夜盤切換，異步重取 reference（防止跨 session 累加漲跌）
-            session = _txf_session(_ts.hour)
-            if session != self._txf_last_session and session in ("day", "night"):
-                self._txf_last_session = session
-                if not self._txf_reference_refreshing and self._loop and not self._loop.is_closed():
-                    self._txf_reference_refreshing = True
-                    asyncio.run_coroutine_threadsafe(
-                        self._refresh_txf_reference(), self._loop
-                    )
-                    logger.info("TXF session → '%s', refreshing reference in background", session)
-
             ref = self._txf_reference
             change = round(price - ref, 0) if ref else None
             change_pct = round((price - ref) / ref * 100, 2) if ref else None
+            _ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
             self._futures_cache[tick.code] = {
                 "code":           tick.code,
                 "price":          price,
@@ -189,31 +166,6 @@ class ShioajiManager:
             logger.info(f"Subscribed TXF: {contract.code}, ref: {self._txf_reference}")
         except Exception as e:
             logger.warning(f"TXF subscribe failed: {e}")
-
-    async def _refresh_txf_reference(self) -> None:
-        """Session 切換時，透過 snapshot 重算 TXF 基準價（reference = close - change_price）"""
-        try:
-            def _snap() -> Optional[float]:
-                contract = self._get_nearest_txf()
-                if contract is None:
-                    return None
-                snaps = self._api.snapshots([contract])
-                if not snaps:
-                    return None
-                s = snaps[0]
-                # 交易所提供的 change_price 才是正確漲跌額；倒推出本 session 基準價
-                return float(s.close) - float(s.change_price)
-
-            # _snap_single_sem(3) 限制並行 snapshot 呼叫；wait_for 防止 Shioaji 無回應時永久卡住
-            async with self._snap_single_sem:
-                new_ref = await asyncio.wait_for(asyncio.to_thread(_snap), timeout=8)
-            if new_ref is not None:
-                self._txf_reference = new_ref
-                logger.info("TXF reference updated: %.0f", new_ref)
-        except Exception as e:
-            logger.warning("TXF reference refresh failed: %s", e)
-        finally:
-            self._txf_reference_refreshing = False
 
     async def _resubscribe_startup(self) -> None:
         """斷線重連後重訂閱 TXF + 所有已訂閱個股"""
