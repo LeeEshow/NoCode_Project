@@ -67,13 +67,20 @@ function fmtAxisWan(v: number): string {
 export default memo(function ReportChart({ portfolioSeries, stockSeries, targetRate, height = 320 }: Props) {
   const hasStocks = stockSeries.length > 0;
 
-  // 快照日期為主軸；有個股時取聯集，避免個股資料延遲導致快照點消失
-  const allDates = [
-    ...new Set([
-      ...portfolioSeries.flatMap(s => s.data.map(d => d.date)),
-      ...(hasStocks ? stockSeries.flatMap(s => s.data.map(d => d.date)) : []),
-    ]),
-  ].sort();
+  // 沒有股票時：以快照日期為唯一來源
+  // 有股票時：取交集，只保留「portfolio 有快照且每支股票都有資料」的日期，消除假日空洞
+  const portfolioDates = new Set(portfolioSeries.flatMap(s => s.data.map(d => d.date)));
+  let allDates: string[];
+  if (!hasStocks) {
+    allDates = [...portfolioDates].sort();
+  } else {
+    let valid = [...portfolioDates];
+    for (const stock of stockSeries) {
+      const stockDateSet = new Set(stock.data.map(d => d.date));
+      valid = valid.filter(d => stockDateSet.has(d));
+    }
+    allDates = valid.sort();
+  }
 
   if (allDates.length === 0) {
     return (

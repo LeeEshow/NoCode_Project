@@ -269,11 +269,6 @@ export default function ReportPage() {
     } catch {}
   }, [segments]);
 
-  const isModified =
-    segments.length !== 1 ||
-    segments[0].start !== YEAR_START ||
-    segments[0].end   !== YEAR_END;
-
   function addSegment() {
     const id = nextIdRef.current++;
     setSegments(prev => [...prev, { id, start: addStart, end: addEnd, page: 1 }]);
@@ -284,14 +279,6 @@ export default function ReportPage() {
     const remaining = segments.filter(s => s.id !== id);
     setSegments(remaining);
     if (activeSegId === id && remaining.length > 0) setActiveSegId(remaining[0].id);
-  }
-
-  function resetToDefault() {
-    nextIdRef.current = 2;
-    setSegments([{ id: 1, start: YEAR_START, end: YEAR_END, page: 1 }]);
-    setActiveSegId(1);
-    setAddStart(YEAR_START);
-    setAddEnd(YEAR_END);
   }
 
   function handleAdd() {
@@ -415,16 +402,6 @@ export default function ReportPage() {
                       {vm.comparisonLoading ? '…' : <><Icon name="add" size={20} /> 新增</>}
                     </button>
 
-                    <button
-                      className="btn-ghost"
-                      onClick={resetToDefault}
-                      disabled={!isModified && vm.stockComparisons.length === 0}
-                      style={{ padding: '3px 10px' }}
-                      title="還原為預設區間"
-                    >
-                      <Icon name="restart_alt" size={20} />
-                      還原預設
-                    </button>
                   </div>
                 </div>
 

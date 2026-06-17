@@ -80,7 +80,8 @@
       "Bash(az login *)",
       "Bash(az account *)",
       "PowerShell(az functionapp show --name fintarck-scraper --resource-group finance-app-rg --query \"functionAppConfig.deployment\" -o json)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(.venv\\\\Scripts\\\\python.exe -m pytest tests/test_m5_preferences.py -v)"
     ]
   }
 }
