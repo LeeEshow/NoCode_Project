@@ -76,7 +76,7 @@ export function useTransactionsViewModel(stockCode: string | null) {
         ? -(payload.shares * payload.price + payload.fee)
         :   payload.shares * payload.price - payload.fee;
       await Promise.all([
-        recalculateHoldings([{ stockCode: payload.stockCode, ...calc }]),
+        recalculateHoldings([{ stockCode: payload.stockCode, stockName: payload.stockName, ...calc }]),
         snap.loaded ? snap.update(snap.cashBalance + cashDelta) : Promise.resolve(),
       ]);
 

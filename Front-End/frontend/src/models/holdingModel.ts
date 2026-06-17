@@ -187,10 +187,11 @@ export async function searchStocks(q: string): Promise<StockSearchResultDTO[]> {
 }
 
 export async function recalculateHoldings(
-  holdings: Array<{ stockCode: string; shares: number; costAvg: number; totalCost: number }>
+  holdings: Array<{ stockCode: string; stockName?: string; shares: number; costAvg: number; totalCost: number }>
 ): Promise<void> {
   const payload = holdings.map(h => ({
     stockId:        h.stockCode,
+    stockName:      h.stockName,
     sharesHeld:     h.shares,
     avgCost:        h.costAvg,
     totalCost:      h.totalCost,

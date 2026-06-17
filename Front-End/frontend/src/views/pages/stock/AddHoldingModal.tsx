@@ -97,7 +97,7 @@ export default function AddHoldingModal({ open, onClose, onSuccess }: AddHolding
       });
       const txs  = await fetchTransactions(stockCode);
       const calc = calcCostFromTransactions(txs);
-      await recalculateHoldings([{ stockCode, ...calc }]);
+      await recalculateHoldings([{ stockCode, stockName, ...calc }]);
 
       /* 連動流動資金：新增持股視同買入，扣除總金額 */
       const snap = useSnapshotStore.getState();
