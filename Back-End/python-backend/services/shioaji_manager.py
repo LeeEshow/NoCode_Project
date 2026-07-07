@@ -117,12 +117,15 @@ class ShioajiManager:
             }
 
             # 偵測換盤（日→夜 或 夜→日），重新向 Shioaji 取最新參考價
+            # 使用 call_soon_threadsafe 而非 run_coroutine_threadsafe，
+            # 避免在 Python 3.14 的 callback thread 中建立 concurrent.futures.Future
+            # 而導致 threading lock 阻塞 Shioaji callback thread。
             cur_session = _txf_session()
             if cur_session != self._txf_last_session:
                 self._txf_last_session = cur_session
                 if self._loop and not self._loop.is_closed():
-                    asyncio.run_coroutine_threadsafe(
-                        self._refresh_txf_reference(), self._loop
+                    self._loop.call_soon_threadsafe(
+                        asyncio.ensure_future, self._refresh_txf_reference()
                     )
 
         @self._api.quote.on_event
@@ -180,8 +183,10 @@ class ShioajiManager:
             if contract is None:
                 raise ValueError("找不到有效的 TXF 近月合約")
             self._txf_reference = float(contract.reference)
+            # 啟動時記錄當前盤別，避免第一個 tick 誤判為「換盤」而觸發刷新
+            self._txf_last_session = _txf_session()
             self._api.quote.subscribe(contract, quote_type=sj.constant.QuoteType.Tick)
-            logger.info(f"Subscribed TXF: {contract.code}, ref: {self._txf_reference}")
+            logger.info(f"Subscribed TXF: {contract.code}, ref: {self._txf_reference}, session: {self._txf_last_session}")
         except Exception as e:
             logger.warning(f"TXF subscribe failed: {e}")
 
