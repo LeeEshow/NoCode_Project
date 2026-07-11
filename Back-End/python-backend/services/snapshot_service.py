@@ -122,7 +122,7 @@ async def record_snapshot() -> dict:
         current_price = _f(q.get("price"), 0.0)
         current_value = round(h["sharesHeld"] * current_price)
         upl           = round((current_price - h["avgCost"]) * h["sharesHeld"])
-        stock_name    = q.get("name") or h.get("stockName") or sid
+        stock_name    = h.get("stockName") or sid
 
         if current_price > 0:
             stock_value       += h["sharesHeld"] * current_price * 0.997
