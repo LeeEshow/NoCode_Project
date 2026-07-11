@@ -18,8 +18,8 @@ export const colors = {
   text:        '#cdd6e0',
   textValue:   '#c8d2de',
   muted:       '#7a8390',
-  dim:         '#4e5e6e',
-  label:       '#5e6c7a',
+  dim:         '#627282',
+  label:       '#708292',
 
   /* 漲跌 */
   up:          '#B87A7A',
@@ -47,7 +47,7 @@ export const fonts = {
 } as const;
 
 export const fontSizes = {
-  '2xs':  10,
+  '2xs':  11,
   xs:     11,
   sm:     12,
   md:     13,

@@ -20,8 +20,8 @@
   --text:        #cdd6e0;   /* 主文字（代碼、section title）降亮冷白 */
   --text-value:  #c8d2de;   /* 數值統一色（指數 / Table num-value）略藍 */
   --muted:       #7a8390;   /* 次要文字（label、btn、Table 次要數值欄） */
-  --dim:         #4e5e6e;   /* 輔助文字（nav icon、分隔線文字）對比 ≈ 6:1 */
-  --label:       #5e6c7a;   /* 小標題（card-label、stock-name）對比 ≈ 10:1 */
+  --dim:         #627282;   /* 輔助文字（nav icon、分隔線文字）對比 ≈ 4.6:1 */
+  --label:       #708292;   /* 小標題（card-label、stock-name）對比 ≈ 5.8:1 */
 
   /* ── 漲跌色系 ────────────────────────────── */
   --up:          #B87A7A;
@@ -47,7 +47,7 @@
   --font-mono:   'Open Sans', sans-serif;
 
   /* ── 字級 ────────────────────────────────── */
-  --text-2xs:    10px;   /* 極小標註（日期、session） */
+  --text-2xs:    11px;   /* 極小標註（日期、session） */
   --text-xs:     11px;   /* 保留（少用） */
   --text-sm:     12px;   /* Table 欄位標題 / card-label / stock-name */
   --text-md:     13px;   /* Table body、btn、nav label */
@@ -74,5 +74,5 @@
   --topbar-h:    52px;
 
   /* ── 控制項統一高度（input / select / btn-ghost）── */
-  --ctrl-h:      26px;
+  --ctrl-h:      32px;
 }

@@ -328,7 +328,7 @@ function SortableGroupBody({
                     onOpenStrategy={onOpenStrategy}
                   />
                   {isExpanded && (
-                    <ViewTransition enter="slide-up" default="none">
+                    <ViewTransition enter="slide-up" exit="slide-up" default="none">
                       <StockExpandPanel
                         colSpan={COL_COUNT}
                         code={item.stockCode}
@@ -490,7 +490,7 @@ export default function WatchlistTable({
                           onOpenStrategy={onOpenStrategy}
                         />
                         {isExpanded && (
-                          <ViewTransition enter="slide-up" default="none">
+                          <ViewTransition enter="slide-up" exit="slide-up" default="none">
                             <StockExpandPanel
                               colSpan={COL_COUNT}
                               code={item.stockCode}

@@ -298,7 +298,7 @@ export default function HoldingsTable({
                     onOpenStrategy={onOpenStrategy}
                   />
                   {isExpanded && (
-                    <ViewTransition enter="slide-up" default="none">
+                    <ViewTransition enter="slide-up" exit="slide-up" default="none">
                       <StockExpandPanel
                         colSpan={COL_COUNT}
                         code={h.stockCode}

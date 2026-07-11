@@ -655,7 +655,7 @@ export default function StockOverviewPage() {
                 )}
                 {wlViewMode === 'card'
                   ? (
-                    <ViewTransition key="wl-card" enter="fade-in" default="none">
+                    <ViewTransition key="wl-card" enter="fade-in" exit="fade-out" default="none">
                       <WatchlistCardGrid
                         items={watchlist.items}
                         groupOrder={watchlist.groupOrder}
@@ -666,7 +666,7 @@ export default function StockOverviewPage() {
                     </ViewTransition>
                   )
                   : (
-                    <ViewTransition key="wl-table" enter="fade-in" default="none">
+                    <ViewTransition key="wl-table" enter="fade-in" exit="fade-out" default="none">
                       <WatchlistTable
                         items={watchlist.items}
                         sparklines={watchlist.sparklines}
