@@ -679,7 +679,7 @@ export default function StockOverviewPage() {
                         onEdit={handleWlEdit}
                         onDelete={handleWlDelete}
                         onReorder={watchlist.reorder}
-                        onReorderWithGroup={watchlist.reorderWithGroup}
+                        onReorderGroups={watchlist.reorderGroups}
                         collapsedGroups={collapsedGroups}
                         onToggleGroup={handleToggleGroup}
                         onRenameGroup={handleRenameGroup}

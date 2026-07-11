@@ -19,6 +19,8 @@ function fmt(n: number, decimals = 2) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
+const COL_COUNT = 7;
+
 export interface WatchlistTableProps {
   items:        WatchlistItemDTO[];
   sparklines:   Record<string, number[]>;
@@ -31,13 +33,12 @@ export interface WatchlistTableProps {
   onEdit:       (item: WatchlistItemDTO) => void;
   onDelete:     (id: string) => void;
   onReorder:    (newItems: WatchlistItemDTO[]) => void;
-  onReorderWithGroup: (newItems: WatchlistItemDTO[], movedId: string, newGroup: string | undefined) => void;
+  onReorderGroups: (newGroupOrder: string[]) => void;
   onToggleGroup: (groupName: string) => void;
   onRenameGroup: (oldName: string, newName: string) => void;
   onDeleteGroup: (groupName: string) => void;
   collapsedGroups: Set<string>;
   deleting:     boolean;
-  /* F01 */
   strategies?:     Record<string, TradingStrategyDTO>;
   onOpenStrategy?: (stockCode: string) => void;
 }
@@ -163,27 +164,207 @@ const WatchlistRow = memo(function WatchlistRow({
   );
 });
 
+/* ── Group tbody：外層 DnD 拖動整個 <tbody>，內層 DnD 拖動 group 內 item ── */
+function SortableGroupBody({
+  groupName, groupItems,
+  expandedCode, sparklines, klines, profiles, chips,
+  onToggle, onEdit, onConfirm, onExpandLoad,
+  isCollapsed, onToggleGroup, onRenameGroup, onDeleteGroup,
+  onItemReorder,
+  strategies, onOpenStrategy,
+}: {
+  groupName:    string;
+  groupItems:   WatchlistItemDTO[];
+  expandedCode: string | null;
+  sparklines:   Record<string, number[]>;
+  klines:       Record<string, KLineDTO[]>;
+  profiles:     Record<string, StockProfileDTO>;
+  chips:        Record<string, ChipDTO[]>;
+  onToggle:     (code: string) => void;
+  onEdit:       (item: WatchlistItemDTO) => void;
+  onConfirm:    (id: string) => void;
+  onExpandLoad: (code: string) => void;
+  isCollapsed:  boolean;
+  onToggleGroup: (name: string) => void;
+  onRenameGroup: (old: string, next: string) => void;
+  onDeleteGroup: (name: string) => void;
+  onItemReorder: (reorderedGroupItems: WatchlistItemDTO[]) => void;
+  strategies?:     Record<string, TradingStrategyDTO>;
+  onOpenStrategy?: (stockCode: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: `group:${groupName}` });
+
+  const [renamingGroup, setRenamingGroup] = useState(false);
+  const [renameValue,   setRenameValue]   = useState('');
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const isUngrouped = groupName === '未分組';
+
+  function handleItemDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = groupItems.findIndex(i => i.id === active.id);
+    const newIdx = groupItems.findIndex(i => i.id === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    onItemReorder(arrayMove(groupItems, oldIdx, newIdx));
+  }
+
+  function commitRename() {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== groupName) onRenameGroup(groupName, trimmed);
+    setRenamingGroup(false);
+  }
+
+  useEffect(() => {
+    const expanded = groupItems.find(i => i.stockCode === expandedCode);
+    if (expanded) onExpandLoad(expanded.stockCode);
+  }, [expandedCode, groupItems, onExpandLoad]);
+
+  return (
+    <tbody
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
+    >
+      {/* Group header row */}
+      <tr style={{ background: 'var(--surface)', userSelect: 'none' }}>
+        <td colSpan={COL_COUNT} style={{ padding: '4px 8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {!isUngrouped && (
+                <span
+                  {...attributes} {...listeners}
+                  className="drag-handle"
+                  onClick={e => e.stopPropagation()}
+                  style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                >
+                  <Icon name="drag_indicator" size={20} />
+                </span>
+              )}
+              {renamingGroup ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={e => setRenameValue(e.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') commitRename();
+                    if (e.key === 'Escape') setRenamingGroup(false);
+                  }}
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    background: 'var(--panel)', border: '1px solid var(--accent-bd)',
+                    borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+                    padding: '2px 6px', fontSize: 'var(--text-sm)', width: 120,
+                  }}
+                />
+              ) : (
+                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--muted)' }}>
+                  {groupName}
+                </span>
+              )}
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>
+                {groupItems.length}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {!isUngrouped && (
+                <>
+                  <button
+                    className="btn-icon"
+                    aria-label={`重新命名分組 ${groupName}`}
+                    title="重新命名"
+                    onClick={e => { e.stopPropagation(); setRenamingGroup(true); setRenameValue(groupName); }}
+                  >
+                    <Icon name="edit" size={16} />
+                  </button>
+                  <button
+                    className="btn-icon"
+                    aria-label={`刪除分組 ${groupName}`}
+                    title="刪除組別（移至未分組）"
+                    onClick={e => { e.stopPropagation(); onDeleteGroup(groupName); }}
+                  >
+                    <Icon name="delete" size={16} />
+                  </button>
+                </>
+              )}
+              <button
+                className="btn-icon"
+                aria-label={isCollapsed ? `展開 ${groupName}` : `收折 ${groupName}`}
+                aria-expanded={!isCollapsed}
+                onClick={e => { e.stopPropagation(); onToggleGroup(groupName); }}
+              >
+                <Icon name={isCollapsed ? 'expand_more' : 'expand_less'} size={20} />
+              </button>
+            </div>
+          </div>
+        </td>
+      </tr>
+
+      {/* Item rows */}
+      {!isCollapsed && (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
+          <SortableContext items={groupItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
+            {groupItems.map(item => {
+              const isExpanded = expandedCode === item.stockCode;
+              const loadingExpand = isExpanded
+                && !klines[item.stockCode]
+                && !profiles[item.stockCode]
+                && !chips[item.stockCode];
+              return (
+                <Fragment key={item.id}>
+                  <WatchlistRow
+                    item={item}
+                    sparkline={sparklines[item.stockCode] ?? []}
+                    isExpanded={isExpanded}
+                    onToggle={onToggle}
+                    onEdit={onEdit}
+                    onConfirm={onConfirm}
+                    strategy={strategies?.[item.stockCode]}
+                    onOpenStrategy={onOpenStrategy}
+                  />
+                  {isExpanded && (
+                    <ViewTransition enter="slide-up" default="none">
+                      <StockExpandPanel
+                        colSpan={COL_COUNT}
+                        code={item.stockCode}
+                        name={item.stockName}
+                        kline={klines[item.stockCode]}
+                        profile={profiles[item.stockCode]}
+                        chips={chips[item.stockCode]}
+                        loadingExpand={loadingExpand}
+                        showTxTab={false}
+                      />
+                    </ViewTransition>
+                  )}
+                </Fragment>
+              );
+            })}
+          </SortableContext>
+        </DndContext>
+      )}
+    </tbody>
+  );
+}
+
 export default function WatchlistTable({
   items, sparklines, klines, profiles, chips,
   expandedCode, onToggle, onExpandLoad,
-  onEdit, onDelete, onReorder, onReorderWithGroup,
+  onEdit, onDelete, onReorder, onReorderGroups,
   onToggleGroup, onRenameGroup, onDeleteGroup, collapsedGroups,
   deleting: _,
   strategies, onOpenStrategy,
 }: WatchlistTableProps) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const groupSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  useEffect(() => {
-    if (expandedCode) onExpandLoad(expandedCode);
-  }, [expandedCode, onExpandLoad]);
-
-  /* 是否啟用分組模式 */
   const hasGroups = useMemo(() => items.some(i => i.group), [items]);
 
-  /* 依分組分段，未分組排最後 */
+  /* 依 items 順序建立分組（未分組排最後） */
   const grouped = useMemo(() => {
     if (!hasGroups) return null;
     const map = new Map<string, WatchlistItemDTO[]>();
@@ -200,210 +381,144 @@ export default function WatchlistTable({
     return result;
   }, [items, hasGroups]);
 
-  function handleDragEnd(event: DragEndEvent) {
+  const groupIds = useMemo(
+    () => (grouped ?? []).map(g => `group:${g.group}`),
+    [grouped],
+  );
+
+  function handleGroupDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !grouped) return;
+    const oldIdx = grouped.findIndex(g => `group:${g.group}` === active.id);
+    const newIdx = grouped.findIndex(g => `group:${g.group}` === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    const reordered = arrayMove(grouped, oldIdx, newIdx);
+    onReorderGroups(reordered.map(g => g.group));
+  }
+
+  /* group 內 item 重排：用 onReorder 傳完整的新 flat list */
+  function handleGroupItemReorder(groupName: string, reorderedGroupItems: WatchlistItemDTO[]) {
+    if (!grouped) return;
+    const newItems: WatchlistItemDTO[] = [];
+    for (const { group: g, items: gItems } of grouped) {
+      if (g === groupName) newItems.push(...reorderedGroupItems);
+      else newItems.push(...gItems);
+    }
+    onReorder(newItems);
+  }
+
+  /* ungrouped items reorder（無分組模式） */
+  function handleFlatDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const activeItem = items.find(i => i.id === active.id);
-    const overItem   = items.find(i => i.id === over.id);
-    if (!activeItem || !overItem) return;
-    const oldIndex = items.findIndex(i => i.id === active.id);
-    const newIndex = items.findIndex(i => i.id === over.id);
-    const newItems = arrayMove(items, oldIndex, newIndex);
-    if (activeItem.group !== overItem.group) {
-      onReorderWithGroup(newItems, String(active.id), overItem.group);
-    } else {
-      onReorder(newItems);
-    }
+    const oldIdx = items.findIndex(i => i.id === active.id);
+    const newIdx = items.findIndex(i => i.id === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    onReorder(arrayMove(items, oldIdx, newIdx));
   }
 
-  function commitRename() {
-    if (!renamingGroup) return;
-    const trimmed = renameValue.trim();
-    if (trimmed && trimmed !== renamingGroup) onRenameGroup(renamingGroup, trimmed);
-    setRenamingGroup(null);
-  }
-
-  const COL_COUNT = 7;
+  useEffect(() => {
+    if (expandedCode && !hasGroups) onExpandLoad(expandedCode);
+  }, [expandedCode, hasGroups, onExpandLoad]);
 
   return (
     <>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-          <div className="ft-table-scroll">
-            <table className="ft-table">
-              <thead>
-                <tr>
-                  <th style={{ minWidth: 120 }}>代號 / 名稱</th>
-                  <th className="right" style={{ minWidth: 80 }}>即時報價</th>
-                  <th className="right" style={{ minWidth: 120 }}>漲跌幅</th>
-                  <th className="center" style={{ minWidth: 88 }}>90日走勢</th>
-                  <th className="right" style={{ minWidth: 80 }}>目標價</th>
-                  <th className="center" style={{ minWidth: 80 }}>判斷</th>
-                  <th className="center" style={{ minWidth: 72 }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grouped
-                  ? grouped.map(({ group: groupName, items: groupItems }) => {
-                      const isCollapsed = collapsedGroups.has(groupName);
-                      const isUngrouped = groupName === '未分組';
-                      return (
-                        <Fragment key={groupName}>
-                          {/* 分組 header row */}
-                          <tr style={{ background: 'var(--surface)', userSelect: 'none' }}>
-                            <td colSpan={COL_COUNT} style={{ padding: '4px 8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  {renamingGroup === groupName ? (
-                                    <input
-                                      autoFocus
-                                      value={renameValue}
-                                      onChange={e => setRenameValue(e.target.value)}
-                                      onBlur={commitRename}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') commitRename();
-                                        if (e.key === 'Escape') setRenamingGroup(null);
-                                      }}
-                                      onClick={e => e.stopPropagation()}
-                                      style={{
-                                        background: 'var(--panel)', border: '1px solid var(--accent-bd)',
-                                        borderRadius: 'var(--radius-sm)', color: 'var(--text)',
-                                        padding: '2px 6px', fontSize: 'var(--text-sm)', width: 120,
-                                      }}
-                                    />
-                                  ) : (
-                                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--muted)' }}>
-                                      {groupName}
-                                    </span>
-                                  )}
-                                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>
-                                    {groupItems.length}
-                                  </span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  {!isUngrouped && (
-                                    <>
-                                      <button
-                                        className="btn-icon"
-                                        aria-label={`重新命名分組 ${groupName}`}
-                                        title="重新命名"
-                                        onClick={e => {
-                                          e.stopPropagation();
-                                          setRenamingGroup(groupName);
-                                          setRenameValue(groupName);
-                                        }}
-                                      >
-                                        <Icon name="edit" size={16} />
-                                      </button>
-                                      <button
-                                        className="btn-icon"
-                                        aria-label={`刪除分組 ${groupName}`}
-                                        title="刪除組別（移至未分組）"
-                                        onClick={e => { e.stopPropagation(); onDeleteGroup(groupName); }}
-                                      >
-                                        <Icon name="delete" size={16} />
-                                      </button>
-                                    </>
-                                  )}
-                                  <button
-                                    className="btn-icon"
-                                    aria-label={isCollapsed ? `展開 ${groupName}` : `收折 ${groupName}`}
-                                    aria-expanded={!isCollapsed}
-                                    onClick={e => { e.stopPropagation(); onToggleGroup(groupName); }}
-                                  >
-                                    <Icon name={isCollapsed ? 'expand_more' : 'expand_less'} size={20} />
-                                  </button>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                          {/* 分組 item rows */}
-                          {!isCollapsed && groupItems.map(item => {
-                            const isExpanded = expandedCode === item.stockCode;
-                            const loadingExpand = isExpanded
-                              && !klines[item.stockCode]
-                              && !profiles[item.stockCode]
-                              && !chips[item.stockCode];
-                            return (
-                              <Fragment key={item.id}>
-                                <WatchlistRow
-                                  item={item}
-                                  sparkline={sparklines[item.stockCode] ?? []}
-                                  isExpanded={isExpanded}
-                                  onToggle={onToggle}
-                                  onEdit={onEdit}
-                                  onConfirm={setConfirmId}
-                                  strategy={strategies?.[item.stockCode]}
-                                  onOpenStrategy={onOpenStrategy}
-                                />
-                                {isExpanded && (
-                                  <ViewTransition enter="slide-up" default="none">
-                                    <StockExpandPanel
-                                      colSpan={COL_COUNT}
-                                      code={item.stockCode}
-                                      name={item.stockName}
-                                      kline={klines[item.stockCode]}
-                                      profile={profiles[item.stockCode]}
-                                      chips={chips[item.stockCode]}
-                                      loadingExpand={loadingExpand}
-                                      showTxTab={false}
-                                    />
-                                  </ViewTransition>
-                                )}
-                              </Fragment>
-                            );
-                          })}
-                        </Fragment>
-                      );
-                    })
-                  : items.map(item => {
-                      const isExpanded = expandedCode === item.stockCode;
-                      const loadingExpand = isExpanded
-                        && !klines[item.stockCode]
-                        && !profiles[item.stockCode]
-                        && !chips[item.stockCode];
-                      return (
-                        <Fragment key={item.id}>
-                          <WatchlistRow
-                            item={item}
-                            sparkline={sparklines[item.stockCode] ?? []}
-                            isExpanded={isExpanded}
-                            onToggle={onToggle}
-                            onEdit={onEdit}
-                            onConfirm={setConfirmId}
-                            strategy={strategies?.[item.stockCode]}
-                            onOpenStrategy={onOpenStrategy}
-                          />
-                          {isExpanded && (
-                            <ViewTransition enter="slide-up" default="none">
-                              <StockExpandPanel
-                                colSpan={COL_COUNT}
-                                code={item.stockCode}
-                                name={item.stockName}
-                                kline={klines[item.stockCode]}
-                                profile={profiles[item.stockCode]}
-                                chips={chips[item.stockCode]}
-                                loadingExpand={loadingExpand}
-                                showTxTab={false}
-                              />
-                            </ViewTransition>
-                          )}
-                        </Fragment>
-                      );
-                    })
-                }
-                {items.length === 0 && (
-                  <tr>
-                    <td colSpan={COL_COUNT} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--dim)' }}>
-                      尚無關注清單
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </SortableContext>
-      </DndContext>
+      <div className="ft-table-scroll">
+        <table className="ft-table">
+          <thead>
+            <tr>
+              <th style={{ minWidth: 120 }}>代號 / 名稱</th>
+              <th className="right" style={{ minWidth: 80 }}>即時報價</th>
+              <th className="right" style={{ minWidth: 120 }}>漲跌幅</th>
+              <th className="center" style={{ minWidth: 88 }}>90日走勢</th>
+              <th className="right" style={{ minWidth: 80 }}>目標價</th>
+              <th className="center" style={{ minWidth: 80 }}>判斷</th>
+              <th className="center" style={{ minWidth: 72 }}>操作</th>
+            </tr>
+          </thead>
+
+          {grouped ? (
+            /* ── 分組模式：外層 DnD 拖動 <tbody>（整個 group）── */
+            <DndContext sensors={groupSensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
+              <SortableContext items={groupIds} strategy={verticalListSortingStrategy}>
+                {grouped.map(({ group: groupName, items: groupItems }) => (
+                  <SortableGroupBody
+                    key={groupName}
+                    groupName={groupName}
+                    groupItems={groupItems}
+                    expandedCode={expandedCode}
+                    sparklines={sparklines}
+                    klines={klines}
+                    profiles={profiles}
+                    chips={chips}
+                    onToggle={onToggle}
+                    onEdit={onEdit}
+                    onConfirm={setConfirmId}
+                    onExpandLoad={onExpandLoad}
+                    isCollapsed={collapsedGroups.has(groupName)}
+                    onToggleGroup={onToggleGroup}
+                    onRenameGroup={onRenameGroup}
+                    onDeleteGroup={onDeleteGroup}
+                    onItemReorder={reordered => handleGroupItemReorder(groupName, reordered)}
+                    strategies={strategies}
+                    onOpenStrategy={onOpenStrategy}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          ) : (
+            /* ── 無分組模式：原本的 flat item DnD ── */
+            <DndContext sensors={groupSensors} collisionDetection={closestCenter} onDragEnd={handleFlatDragEnd}>
+              <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                <tbody>
+                  {items.map(item => {
+                    const isExpanded = expandedCode === item.stockCode;
+                    const loadingExpand = isExpanded
+                      && !klines[item.stockCode]
+                      && !profiles[item.stockCode]
+                      && !chips[item.stockCode];
+                    return (
+                      <Fragment key={item.id}>
+                        <WatchlistRow
+                          item={item}
+                          sparkline={sparklines[item.stockCode] ?? []}
+                          isExpanded={isExpanded}
+                          onToggle={onToggle}
+                          onEdit={onEdit}
+                          onConfirm={setConfirmId}
+                          strategy={strategies?.[item.stockCode]}
+                          onOpenStrategy={onOpenStrategy}
+                        />
+                        {isExpanded && (
+                          <ViewTransition enter="slide-up" default="none">
+                            <StockExpandPanel
+                              colSpan={COL_COUNT}
+                              code={item.stockCode}
+                              name={item.stockName}
+                              kline={klines[item.stockCode]}
+                              profile={profiles[item.stockCode]}
+                              chips={chips[item.stockCode]}
+                              loadingExpand={loadingExpand}
+                              showTxTab={false}
+                            />
+                          </ViewTransition>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                  {items.length === 0 && (
+                    <tr>
+                      <td colSpan={COL_COUNT} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--dim)' }}>
+                        尚無關注清單
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </SortableContext>
+            </DndContext>
+          )}
+        </table>
+      </div>
 
       <ConfirmDialog
         open={!!confirmId}

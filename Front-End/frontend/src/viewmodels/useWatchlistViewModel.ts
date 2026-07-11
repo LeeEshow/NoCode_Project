@@ -138,21 +138,27 @@ export function useWatchlistViewModel() {
     reorderWatchlist(newOrder).catch(() => {});
   }, []);
 
-  /* 跨組拖拉：更新排序 + 更新被移動 item 的 group */
-  const reorderWithGroup = useCallback((
-    newItems: WatchlistItemDTO[],
-    movedId: string,
-    newGroup: string | undefined,
-  ) => {
+  const sortedItemsRef = useLatest(sortedItems);
+
+  /* 依新 groupOrder 重排 items flat order（group 內相對順序不變） */
+  const reorderGroups = useCallback((newGroupOrder: string[]) => {
+    const current = sortedItemsRef.current;
+    const groupMap = new Map<string, WatchlistItemDTO[]>();
+    const ungrouped: WatchlistItemDTO[] = [];
+    for (const item of current) {
+      if (!item.group) { ungrouped.push(item); continue; }
+      if (!groupMap.has(item.group)) groupMap.set(item.group, []);
+      groupMap.get(item.group)!.push(item);
+    }
+    const newItems: WatchlistItemDTO[] = [];
+    for (const g of newGroupOrder) {
+      if (g === '未分組') ungrouped.forEach(i => newItems.push(i));
+      else (groupMap.get(g) ?? []).forEach(i => newItems.push(i));
+    }
     const newOrder = newItems.map(i => i.id);
     setOrder(newOrder);
-    setState(s => ({
-      ...s,
-      items: s.items.map(i => i.id === movedId ? { ...i, group: newGroup } : i),
-    }));
     reorderWatchlist(newOrder).catch(() => {});
-    updateWatchlistItem(movedId, { group: newGroup ?? null }).catch(() => {});
-  }, []);
+  }, [sortedItemsRef]);
 
   /* 批次更新同組所有 item 的 group 欄位（樂觀更新，API 失敗靜默） */
   const renameGroup = useCallback(async (oldName: string, newName: string) => {
@@ -199,7 +205,7 @@ export function useWatchlistViewModel() {
     groupOrder,
     load, toggleExpand, ensureExpandData,
     addItem, updateItem, removeItem,
-    reorder, reorderWithGroup,
+    reorder, reorderGroups,
     renameGroup, deleteGroup,
     silentReload,
   };

@@ -83,11 +83,13 @@ def create(body: dict):
     if ref.get().exists:
         raise HTTPException(status_code=409, detail=f"關注清單已存在：{stock_id}")
 
+    group = body.get("group")
     ref.set({
         "stock_id":     str(stock_id),
         "stock_name":   str(body.get("stockName", "")),
         "target_price": float(target_price),
         "note":         str(body.get("note", "")),
+        "group":        group if isinstance(group, str) else None,
         "created_at":   fs.SERVER_TIMESTAMP,
         "updated_at":   fs.SERVER_TIMESTAMP,
     })
