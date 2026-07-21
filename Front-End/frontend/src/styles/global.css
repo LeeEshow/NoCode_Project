@@ -336,6 +336,15 @@ tr:hover .drag-handle { color: var(--dim); }
   .report-snapshot-body { transition: none; }
 }
 
+/* ── RiskPanel 量表填充動畫（VIX bar / 因子曝險 bar 共用）── */
+.rp-meter-fill {
+  display: block;
+  transition: transform 0.35s ease, background 0.35s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp-meter-fill { transition: none; }
+}
+
 /* ── TabPanel 展開背景（統一規則）── */
 /* 對應 StockExpandPanel <tr> 的 rgba(0,0,0,0.22)；凡展開式 Tab 內容區均套此 class */
 .tab-panel-body {

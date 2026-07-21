@@ -29,6 +29,9 @@ export const colors = {
   downBg:      'rgba(124,168,141,0.10)',
   downBd:      'rgba(124,168,141,0.22)',
   flat:        '#636b74',
+  warn:        '#B89A5A',
+  warnBg:      'rgba(184,154,90,0.10)',
+  warnBd:      'rgba(184,154,90,0.22)',
 
   /* Accent */
   accent:      '#6A8FB5',

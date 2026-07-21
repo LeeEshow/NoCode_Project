@@ -505,7 +505,6 @@ export default function StockOverviewPage() {
           onAdd={tagVm.addTag}
           onUpdate={tagVm.updateTag}
           onRemove={tagVm.removeTag}
-          riskTotal={risk.riskTotal}
           tagStats={risk.tagStats}
           overlappingGroups={risk.overlappingGroups}
           hasWarning={risk.hasWarning}

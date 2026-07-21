@@ -30,7 +30,6 @@ interface Props {
   onUpdate: (id: string, payload: Partial<CreateTagPayload>, onSuccess?: () => void) => void;
   onRemove: (id: string, onSuccess?: () => void) => void;
   /* Phase 2 */
-  riskTotal:               number;
   tagStats:                TagStat[];
   overlappingGroups:       OverlappingTagGroup[];
   hasWarning:              boolean;
@@ -188,7 +187,7 @@ interface RhoCalcState {
 
 export default function RiskPanel({
   tags, loading, saving, onAdd, onUpdate, onRemove,
-  riskTotal, tagStats, overlappingGroups,
+  tagStats, overlappingGroups,
   baseThreshold, onThresholdChange,
   marketState, marketStateChanging, correlationMatrix, correlationLoading,
   onMarketStateChange, onSaveCorrelationMatrix, onExpand,
@@ -296,10 +295,15 @@ export default function RiskPanel({
     return !isThisMonth(snapshots[0].createdAt);
   }, [snapshots, snapshotsReady]);
 
-  const RISK_MAX = 2.0;
-  const riskLabel        = tags.length > 0 && riskTotal > 0 ? riskTotal.toFixed(2) : '—';
-  const riskBarPct       = tags.length > 0 && riskTotal > 0 ? Math.min(riskTotal / RISK_MAX, 1) * 100 : 0;
-  const riskBarColor     = riskTotal < 0.3 ? 'var(--down)' : riskTotal < 0.6 ? 'var(--accent)' : riskTotal < 1.0 ? '#B89A5A' : 'var(--up)';
+  /* VIX 恐慌指數：<15 穩定 / 15-20 正常 / 20-30 觀察 / ≥30 恐慌 */
+  const VIX_MAX   = 40;
+  const vixLabel  = vix != null ? vix.toFixed(1) : '—';
+  const vixBarPct = vix != null ? Math.min(vix / VIX_MAX, 1) * 100 : 0;
+  const vixBarColor = vix == null ? 'var(--border)'
+    : vix < 15 ? 'var(--down)'
+    : vix < 20 ? 'var(--accent)'
+    : vix < 30 ? 'var(--warn)'
+    : 'var(--up)';
   const marketStateLabel = MARKET_STATE_OPTIONS.find(o => o.value === marketState)?.label ?? marketState;
   const deviationCount   = tagStats.filter(s => s.triggered).length;
 
@@ -348,18 +352,28 @@ export default function RiskPanel({
               風險/再平衡模組
             </span>
           </span>
-          {/* {市場狀態}：進度條 {風險值} {標籤偏差說明} */}
+          {/* {市場狀態}：VIX 進度條 {數值} {標籤偏差說明} */}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
             <span style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{marketStateLabel}：</span>
-            {!showMatrixAlert && riskBarPct > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              <span style={{ color: 'var(--muted)' }}>VIX</span>
               <span
                 aria-hidden="true"
-                style={{ display: 'inline-flex', alignItems: 'center', width: 56, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}
+                style={{ display: 'inline-flex', alignItems: 'center', width: 64, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}
               >
-                <span style={{ width: `${riskBarPct}%`, height: '100%', background: riskBarColor, borderRadius: 3, transition: 'width 0.4s ease, background 0.4s ease' }} />
+                <span
+                  className="rp-meter-fill"
+                  style={{ width: '100%', height: '100%', transform: `scaleX(${vixBarPct / 100})`, transformOrigin: 'left', background: vixBarColor, borderRadius: 3 }}
+                />
               </span>
-            )}
-            {showMatrixAlert ? (
+              <span
+                aria-live="polite"
+                style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}
+              >
+                {vixLabel}
+              </span>
+            </span>
+            {showMatrixAlert && (
               <button
                 className="btn-ghost"
                 onClick={handleReloadMatrix}
@@ -369,13 +383,6 @@ export default function RiskPanel({
               >
                 <Icon name="warning" size={20} /> 矩陣未載入，重算
               </button>
-            ) : (
-              <span
-                aria-live="polite"
-                style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
-              >
-                {riskLabel}
-              </span>
             )}
             {deviationCount > 0 && (
               <AppTooltip content={`${deviationCount} 個標籤偏離目標配置`} sideOffset={4}>
@@ -411,7 +418,7 @@ export default function RiskPanel({
             {marketStateAuto && marketStateAuto !== marketState && (
               <AppTooltip
                 sideOffset={4}
-                content={`系統建議：${MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}${vix != null ? `（VIX ${vix.toFixed(1)}）` : ''}`}
+                content={`系統建議：${MARKET_STATE_AUTO_LABEL[marketStateAuto] ?? marketStateAuto}`}
               >
                 <span style={{ color: 'var(--accent)', cursor: 'help', display: 'inline-flex', alignItems: 'center' }}>
                   <Icon name="tips_and_updates" size={24} />
@@ -567,14 +574,17 @@ export default function RiskPanel({
                             <span style={{ width: 80, fontSize: 'var(--text-xs)', color: 'var(--muted)', flexShrink: 0, textAlign: 'right' }}>
                               {stat.tagName}
                             </span>
-                            <div style={{ flex: 1, height: 8, background: 'var(--surface)', borderRadius: 4, overflow: 'hidden' }}>
-                              <div style={{
-                                width: `${Math.min(stat.actualWeight, 100)}%`,
-                                height: '100%',
-                                background: chartColors[idx % chartColors.length],
-                                borderRadius: 4,
-                                transition: 'width 0.3s',
-                              }} />
+                            <div aria-hidden="true" style={{ flex: 1, height: 8, background: 'var(--surface)', borderRadius: 4, overflow: 'hidden' }}>
+                              <div
+                                className="rp-meter-fill"
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  transform: `scaleX(${Math.min(stat.actualWeight, 100) / 100})`,
+                                  transformOrigin: 'left',
+                                  background: chartColors[idx % chartColors.length],
+                                  borderRadius: 4,
+                                }} />
                             </div>
                             <span style={{ width: 44, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--text-value)', textAlign: 'right', flexShrink: 0 }}>
                               {stat.actualWeight.toFixed(1)}%
