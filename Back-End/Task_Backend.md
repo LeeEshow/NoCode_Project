@@ -38,4 +38,26 @@
 
 ---
 
-*(代辦清單目前為空)*
+- **【已修正待驗證】Shioaji event loop 卡死（2026-07-22 定位，2026-07-22 修正）**：後端 `fastapi.service` 近期反覆卡死（7/14、7/22 各發生一次，症状皆為所有 HTTP 端點無回應、需 `systemctl restart` 才恢復）。用 `py-spy dump` 在卡死當下（7/22 03:xx）抓到的 stack trace 顯示：
+
+  - Shioaji SDK 原生 callback thread（非 Python `threading` 建立，`py-spy` 只看得到單一 Python frame、無 `_bootstrap` 呼叫鏈）停在 `services/shioaji_manager.py:86`（`on_stk_tick` 內），事件迴圈 thread（uvicorn main）與所有 worker thread 同時呈現 idle，符合「GIL 被某個 callback thread 卡住不放」的模式。
+  - 追查程式碼發現 `services/shioaji_manager.py:143`（`on_event` 的 `event_code == 4` 重連分支）**仍在使用 `asyncio.run_coroutine_threadsafe(self._resubscribe_startup(), self._loop)`**。
+  - 但 `services/shioaji_manager.py:119-129`（`on_fop_tick` 換盤偵測，commit `28c98f7fix(shioaji)`）的程式碼註解已明確記載同一類 bug 並改用 `call_soon_threadsafe` 修復：
+    > 使用 call_soon_threadsafe 而非 run_coroutine_threadsafe，避免在 Python 3.14 的 callback thread 中建立 concurrent.futures.Future 而導致 threading lock 阻塞 Shioaji callback thread。
+  - **研判根因**：`on_event` 重連回呼（Shioaji WebSocket 斷線重連時觸發，`event_code==4`）沒有套用同樣的修法，仍在建立 `concurrent.futures.Future`（`run_coroutine_threadsafe` 內部行為），在 Python 3.14 + 非 Python 建立的原生 callback thread 組合下觸發同一個 threading lock 阻塞，進而卡住整個 process（含 event loop thread），導致所有 API 無回應，只能重啟恢復。`on_stk_tick` 本身不含任何 asyncio 呼叫，py-spy 抓到它停在該行，較可能是「受害者」（GIL 被 `on_event` 卡住的 thread 佔用不放，導致其他 callback thread 也連帶卡在自己正在執行的那一行），而非它自己是根因。
+
+  - **建議修法**（比照 `on_fop_tick` 已驗證有效的模式）：
+    ```python
+    # services/shioaji_manager.py:143
+    # before:
+    asyncio.run_coroutine_threadsafe(self._resubscribe_startup(), self._loop)
+    # after:
+    self._loop.call_soon_threadsafe(
+        asyncio.ensure_future, self._resubscribe_startup()
+    )
+    ```
+  - **驗證方式**：修正後需在盤中觀察至少一次 Shioaji 斷線重連事件（或人為觸發重連），確認 `on_event` 不再導致 process 卡死；另建議全文搜尋是否還有其他 callback（`on_tick_*`、`on_event`、`on_*`）殘留 `run_coroutine_threadsafe` 呼叫，一併改用 `call_soon_threadsafe`。
+  - **佐證**：`grep -rn "run_coroutine_threadsafe" services/` 目前僅剩這一處。
+
+  - **已套用修正（2026-07-22）**：`services/shioaji_manager.py` 的 `on_event`（`event_code == 4` 重連分支）已改為 `self._loop.call_soon_threadsafe(asyncio.ensure_future, self._resubscribe_startup())`，比照 `on_fop_tick` 已驗證模式，並補上相同說明註解。全文複查 `python-backend/` 已無殘留 `run_coroutine_threadsafe` 呼叫。
+  - **待驗證**：需部署至 GCE 後，在盤中觀察至少一次 Shioaji 斷線重連事件（或人為觸發），確認 process 不再卡死、`fastapi.service` 維持正常回應。驗證通過後再將本項標記為完成並移入「現況」區塊。

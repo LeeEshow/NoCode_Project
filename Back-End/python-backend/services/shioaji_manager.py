@@ -139,8 +139,13 @@ class ShioajiManager:
             elif event_code == 4:
                 self._connected = True
                 logger.info("Shioaji reconnected, resubscribing...")
+                # 使用 call_soon_threadsafe 而非 run_coroutine_threadsafe，
+                # 避免在 Python 3.14 的 callback thread 中建立 concurrent.futures.Future
+                # 而導致 threading lock 阻塞 Shioaji callback thread。
                 if self._loop and not self._loop.is_closed():
-                    asyncio.run_coroutine_threadsafe(self._resubscribe_startup(), self._loop)
+                    self._loop.call_soon_threadsafe(
+                        asyncio.ensure_future, self._resubscribe_startup()
+                    )
 
     def _get_nearest_txf(self):
         """
