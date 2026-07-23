@@ -179,8 +179,8 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, txBars,
     const buyData  = allDates.map(d => txMap.get(d)?.buyAmount  ?? 0);
     const sellData = allDates.map(d => txMap.get(d)?.sellAmount ?? 0);
     seriesOptions.push(
-      { name: '買進', type: 'bar', yAxisIndex: 0, data: buyData,  itemStyle: { color: colors.accent, opacity: 0.15, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
-      { name: '賣出', type: 'bar', yAxisIndex: 0, data: sellData, itemStyle: { color: colors.up,     opacity: 0.15, borderRadius: [0, 0, 3, 3] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
+      { name: '買進', type: 'bar', yAxisIndex: 0, data: buyData,  itemStyle: { color: colors.accent, opacity: 0.15, borderRadius: [0, 0, 3, 3] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
+      { name: '賣出', type: 'bar', yAxisIndex: 0, data: sellData, itemStyle: { color: colors.up,     opacity: 0.15, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
     );
     legendData.push('買進', '賣出');
   }
@@ -210,7 +210,7 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, txBars,
         name: hasStocks ? '' : '淨損益',
         nameTextStyle: { color: colors.dim, fontSize: 10, padding: [0, 0, 0, 40] },
         axisLabel: { show: !hasStocks || hasTxBars, color: colors.dim, fontSize: 10, formatter: fmtAxisWan },
-        splitLine: { show: !hasStocks || hasTxBars, lineStyle: { color: colors.border, type: 'dashed' } },
+        splitLine: { show: false },
         axisLine: { show: false },
         axisTick: { show: false },
       },
@@ -274,7 +274,8 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, txBars,
       data:     legendData,
       selected: legendSelected,
       bottom: 4,
-      textStyle: { color: colors.muted, fontSize: 10 },
+      inactiveColor: colors.dim,
+      textStyle: { color: colors.muted, fontSize: 10, inactiveColor: colors.dim },
       itemWidth: 12,
       itemHeight: 8,
     },

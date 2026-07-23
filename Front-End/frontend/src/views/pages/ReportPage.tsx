@@ -321,7 +321,7 @@ export default function ReportPage() {
     }
     return [...map.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, { buy, sell }]) => ({ date, buyAmount: buy, sellAmount: -sell }));
+      .map(([date, { buy, sell }]) => ({ date, buyAmount: -buy, sellAmount: sell }));
   }, [txData]);
 
   const [txDetailDate, setTxDetailDate] = useState<string | null>(null);
@@ -617,7 +617,7 @@ export default function ReportPage() {
                     {tx.price.toLocaleString('zh-TW')}
                   </span>
                   <span className="num-value" style={{ color: c, fontWeight: 600 }}>
-                    {isBuy ? '+' : ''}{(isBuy ? -total : total).toLocaleString('zh-TW')}
+                    {isBuy ? '-' : '+'}{total.toLocaleString('zh-TW')}
                   </span>
                 </div>
               );
