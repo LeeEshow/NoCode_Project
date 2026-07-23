@@ -1,68 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-These rules apply to every task in this project unless explicitly overridden.
-Bias: caution over speed on non-trivial work. Use judgment on trivial tasks.
-
-## Rule 1 — Think Before Coding
-State assumptions explicitly. If uncertain, ask rather than guess.
-Present multiple interpretations when ambiguity exists.
-Push back when a simpler approach exists.
-Stop when confused. Name what's unclear.
-
-## Rule 2 — Simplicity First
-Minimum code that solves the problem. Nothing speculative.
-No features beyond what was asked. No abstractions for single-use code.
-Test: would a senior engineer say this is overcomplicated? If yes, simplify.
-
-## Rule 3 — Surgical Changes
-Touch only what you must. Clean up only your own mess.
-Don't "improve" adjacent code, comments, or formatting.
-Don't refactor what isn't broken. Match existing style.
-
-## Rule 4 — Goal-Driven Execution
-Define success criteria. Loop until verified.
-Don't follow steps. Define success and iterate.
-Strong success criteria let you loop independently.
-
-## Rule 5 — Use the model only for judgment calls
-Use me for: classification, drafting, summarization, extraction.
-Do NOT use me for: routing, retries, deterministic transforms.
-If code can answer, code answers.
-
-## Rule 6 — Token budgets are not advisory
-Per-task: 4,000 tokens. Per-session: 30,000 tokens.
-If approaching budget, summarize and start fresh.
-Surface the breach. Do not silently overrun.
-
-## Rule 7 — Surface conflicts, don't average them
-If two patterns contradict, pick one (more recent / more tested).
-Explain why. Flag the other for cleanup.
-Don't blend conflicting patterns.
-
-## Rule 8 — Read before you write
-Before adding code, read exports, immediate callers, shared utilities.
-"Looks orthogonal" is dangerous. If unsure why code is structured a way, ask.
-
-## Rule 9 — Tests verify intent, not just behavior
-Tests must encode WHY behavior matters, not just WHAT it does.
-A test that can't fail when business logic changes is wrong.
-
-## Rule 10 — Checkpoint after every significant step
-Summarize what was done, what's verified, what's left.
-Don't continue from a state you can't describe back.
-If you lose track, stop and restate.
-
-## Rule 11 — Match the codebase's conventions, even if you disagree
-Conformance > taste inside the codebase.
-If you genuinely think a convention is harmful, surface it. Don't fork silently.
-
-## Rule 12 — Fail loud
-"Completed" is wrong if anything was skipped silently.
-"Tests pass" is wrong if any were skipped.
-Default to surfacing uncertainty, not hiding it.
-
 ---
 
 ## Repository Layout
@@ -217,7 +154,7 @@ python-backend/
 │   ├── rate_helper.py      # 即時匯率 Map
 │   ├── snapshot_service.py # 快照自動記錄（VIX + marketStateAuto；不含風險重算）
 │   ├── tag_risk_service.py # 動態風險重算（volRatio + presets；使用共用 executor）
-│   └── mcp_service.py      # MCP 22 個 Tool 實作 + _convert_keys() camelCase 轉換
+│   └── mcp_service.py      # MCP 22 個 Tool 實作 + _convert_keys() camelCase 轉換；get_transactions 支援 start_date / end_date
 ├── utils/
 │   └── market_hours.py     # is_market_open()（週一–五 09:00–13:30 UTC+8）
 └── tests/                  # pytest 測試套件（全數通過）
@@ -233,7 +170,7 @@ python-backend/
 |------|------|
 | `/api/v1/holdings` | 持股 CRUD、排序、重算（報價已移至 `POST /stocks/quotes`）|
 | `/api/v1/holdings/:stockCode/tags` | 持股 Tag 嵌套操作（POST/PUT/DELETE） |
-| `/api/v1/transactions` | 交易紀錄 |
+| `/api/v1/transactions` | 交易紀錄（支援 `stock_id` / `start_date` / `end_date` 篩選；Python-side 過濾，無需 Firestore 複合索引） |
 | `/api/v1/market` | 指數、匯率、出口指標 |
 | `/api/v1/stocks` | 股票清單、個股報價、K 線、基本面、籌碼；`POST /quotes` 批次報價（零 Firestore） |
 | `/api/v1/snapshots` | 每日資產快照（GET/POST/PUT；`/record` 後端自算） |

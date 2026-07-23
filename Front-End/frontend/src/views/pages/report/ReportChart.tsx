@@ -179,8 +179,8 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, txBars,
     const buyData  = allDates.map(d => txMap.get(d)?.buyAmount  ?? 0);
     const sellData = allDates.map(d => txMap.get(d)?.sellAmount ?? 0);
     seriesOptions.push(
-      { name: '買進', type: 'bar', yAxisIndex: 0, data: buyData,  itemStyle: { color: colors.accent, opacity: 0.28, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
-      { name: '賣出', type: 'bar', yAxisIndex: 0, data: sellData, itemStyle: { color: colors.up,     opacity: 0.28, borderRadius: [0, 0, 3, 3] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
+      { name: '買進', type: 'bar', yAxisIndex: 0, data: buyData,  itemStyle: { color: colors.accent, opacity: 0.15, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
+      { name: '賣出', type: 'bar', yAxisIndex: 0, data: sellData, itemStyle: { color: colors.up,     opacity: 0.15, borderRadius: [0, 0, 3, 3] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
     );
     legendData.push('買進', '賣出');
   }

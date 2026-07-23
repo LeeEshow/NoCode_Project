@@ -409,7 +409,7 @@ Modal 動畫：`data-state="open/closed"` 搭配 CSS `@keyframes overlay-in/out`
 
 **SettingsModal 佈局**：size="md"，無 tab 結構，三個扁平 section（股票清單 / 每日快照 / 系統診斷），內容用 `.settings-section` / `.settings-row` rows，**不使用 `.ft-panel`**。系統診斷 section 包含報價/持倉/指數測試與 Shioaji 重新初始化（輪詢最多 10 次×2s）。CSS 定義於 `views/layout/SettingsModal.css`。
 
-**ReportPage 圖表**（非共用元件，位於 `pages/report/ReportChart.tsx`，已加 `React.memo`）：Bar（累計投入）+ Line（報酬率）混合 ECharts 圖，雙 Y 軸，支援雙段比較，含 markLine 目標線。`toChartData()` 以**第一筆實際快照日期**為 dayIndex 基準（非 startDate），避免左側空洞。
+**ReportPage 圖表**（非共用元件，位於 `pages/report/ReportChart.tsx`，已加 `React.memo`）：Line 折線圖（淨損益 / 相對報酬率）+ Bar 長條圖（每日交易買賣金額）混合 ECharts 圖，雙 Y 軸，支援雙段比較。無股票對比時顯示淨損益折線，Tooltip 內附報酬率%；有股票對比時切換為相對報酬率折線。`txBars` prop 傳入每日交易資料（買正賣負，重疊同位），點擊長條觸發 `onBarClick(date)`；圖例顯示/隱藏狀態持久化至 `localStorage`（key: `report_legend_selected`）。`transactionModel.fetchTransactionsInRange(start, end)` 依快照日期範圍拉取交易，`ReportPage` 彙整為 `DailyTxBar[]` 後傳入。
 
 ### Accessibility 必要項
 

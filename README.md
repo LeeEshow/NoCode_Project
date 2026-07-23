@@ -36,8 +36,8 @@
 
 ### 📈 績效報告
 - 每日資產快照（股票現值 / 外幣 / 現金 / 已實現損益）
-- 歷史趨勢折線圖（雙段比較）
-- 年化報酬率計算
+- 歷史趨勢折線圖（雙段比較）、年化報酬率計算
+- 每日交易買賣長條圖，點擊查看當日交易明細
 
 ### 📅 年度計畫
 - 投入資本、再投入設定、30 年複利試算表
@@ -58,7 +58,7 @@
 Cloud Run `fintarck-proxy`（asia-east1，免費額度）
   └─ Nginx reverse proxy → GCE backend :8000
 
-GCE e2-small `fintarck-backend`（asia-east1-b，~$13.65 USD/月）
+GCE e2-micro `fintarck-backend`（asia-east1-b，~$7 USD/月）
   └─ Python FastAPI（API /api/v1/*）
        整合 Shioaji WebSocket + Yahoo Finance fallback
        MCP Server（Streamable HTTP + SSE，22 Tools）
@@ -202,7 +202,7 @@ py -3.14 -m pytest tests/test_m6_mcp.py       # 單模組測試
 
 | 服務 | 方案 | 月費 |
 |------|------|------|
-| GCE e2-small（後端） | 隨需付費 | ~$13.65 USD |
+| GCE e2-micro（後端） | 隨需付費 | ~$7 USD |
 | Cloud Run Proxy | 免費額度 | $0 |
 | Azure Static Web Apps（前端） | Free | $0 |
 | Firebase Firestore | Spark（免費） | $0 |
@@ -219,9 +219,7 @@ py -3.14 -m pytest tests/test_m6_mcp.py       # 單模組測試
 
 | 文件 | 說明 |
 |------|------|
-| [`Docs/Cloud-Deployment.md`](Docs/Cloud-Deployment.md) | 雲端部署完整紀錄（GCE / Cloud Run / Azure SWA 架構、參數、除錯） |
-| [`Docs/REQUIREMENTS.md`](Docs/REQUIREMENTS.md) | 功能規劃與設計決策 |
-| [`Docs/Backend-Node.md`](Docs/Backend-Node.md) | 舊 Node.js 後端架構（歷史存檔，實際服務已移除） |
-| [`Docs/Frontend-React.md`](Docs/Frontend-React.md) | 前端 MVVM 架構設計原則 |
+| [`Docs/Cloud-Deployment.md`](Docs/Cloud-Deployment.md) | 雲端部署（GCE / Cloud Run / Azure SWA 架構、CI/CD、除錯紀錄） |
+| [`Docs/REQUIREMENTS.md`](Docs/REQUIREMENTS.md) | 功能規格與設計決策 |
 | [`Front-End/CLAUDE.md`](Front-End/CLAUDE.md) | 前端開發規範（供 AI 輔助開發） |
 | [`Back-End/CLAUDE.md`](Back-End/CLAUDE.md) | 後端開發規範（供 AI 輔助開發） |
