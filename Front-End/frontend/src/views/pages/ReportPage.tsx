@@ -3,10 +3,12 @@ import PanelHeader from '../components/PanelHeader';
 import LoadingPanel from '../components/LoadingPanel';
 import Icon from '../components/Icon';
 import { useReportViewModel } from '../../viewmodels/useReportViewModel';
-import ReportChart, { type SeriesEntry } from './report/ReportChart';
-import type { DailySnapshotDTO } from '../../types';
+import ReportChart, { type SeriesEntry, type DailyTxBar } from './report/ReportChart';
+import type { DailySnapshotDTO, TransactionDTO } from '../../types';
 import { chartColors } from '../../styles';
 import { computeMaxDrawdown } from '../../utils/downsideRisk';
+import { fetchTransactionsInRange } from '../../models/transactionModel';
+import Modal from '../components/Modal/Modal';
 import './report/report.css';
 
 const PAGE_SIZE         = 30;
@@ -292,6 +294,46 @@ export default function ReportPage() {
     }
   }
 
+  const [txData, setTxData] = useState<TransactionDTO[]>([]);
+
+  const txDateRange = useMemo(() => ({
+    start: segments.reduce((m, s) => s.start < m ? s.start : m, segments[0].start),
+    end:   segments.reduce((m, s) => s.end   > m ? s.end   : m, segments[0].end),
+  }), [segments]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchTransactionsInRange(txDateRange.start, txDateRange.end)
+      .then(data => { if (!cancelled) setTxData(data); })
+      .catch(() => { if (!cancelled) setTxData([]); });
+    return () => { cancelled = true; };
+  }, [txDateRange.start, txDateRange.end]);
+
+  const txBars = useMemo((): DailyTxBar[] => {
+    const map = new Map<string, { buy: number; sell: number }>();
+    for (const tx of txData) {
+      const date = tx.date.slice(0, 10);
+      if (!map.has(date)) map.set(date, { buy: 0, sell: 0 });
+      const entry = map.get(date)!;
+      const amount = tx.shares * tx.price;
+      if (tx.type === 'buy') entry.buy  += amount;
+      else                   entry.sell += amount;
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, { buy, sell }]) => ({ date, buyAmount: buy, sellAmount: -sell }));
+  }, [txData]);
+
+  const [txDetailDate, setTxDetailDate] = useState<string | null>(null);
+
+  const txDetailItems = useMemo(() =>
+    txDetailDate
+      ? txData
+          .filter(tx => tx.date.slice(0, 10) === txDetailDate)
+          .sort((a, b) => a.type.localeCompare(b.type))  // buy 在前
+      : [],
+  [txData, txDetailDate]);
+
   const portfolioChartData = useMemo(
     () => segments.map((s, i): SeriesEntry => ({
       label: `段 ${i + 1}`,
@@ -454,7 +496,8 @@ export default function ReportPage() {
                 <ReportChart
                   portfolioSeries={portfolioChartData}
                   stockSeries={stockChartData}
-                  targetRate={vm.rBase}
+                  txBars={txBars}
+                  onBarClick={setTxDetailDate}
                   height={320}
                 />
               </div>
@@ -539,6 +582,61 @@ export default function ReportPage() {
           )
         }
       </div>
+      <Modal
+        open={txDetailDate !== null}
+        onClose={() => setTxDetailDate(null)}
+        title={txDetailDate ? `${txDetailDate.replace(/-/g, '/')} 交易紀錄` : ''}
+        size="sm"
+      >
+        {txDetailItems.length === 0 ? (
+          <div style={{ color: 'var(--dim)', fontSize: 'var(--text-sm)', padding: '8px 0' }}>此日無交易紀錄</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {txDetailItems.map(tx => {
+              const isBuy  = tx.type === 'buy';
+              const total  = tx.shares * tx.price;
+              const c      = isBuy ? 'var(--accent)' : 'var(--up)';
+              return (
+                <div key={tx.id} style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'auto 1fr auto auto',
+                  alignItems: 'center',
+                  gap: '0 12px',
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  background: 'var(--surface)',
+                  border: `1px solid ${isBuy ? 'var(--accent-bd)' : 'var(--up-bd)'}`,
+                }}>
+                  <span style={{ fontSize: 'var(--text-xs)', color: c, fontWeight: 700, letterSpacing: 1 }}>
+                    {isBuy ? '買進' : '賣出'}
+                  </span>
+                  <span className="stock-code">{tx.stockCode}</span>
+                  <span className="num-value" style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)' }}>
+                    {tx.shares.toLocaleString('zh-TW')} 股
+                    <span style={{ color: 'var(--dim)', margin: '0 4px' }}>×</span>
+                    {tx.price.toLocaleString('zh-TW')}
+                  </span>
+                  <span className="num-value" style={{ color: c, fontWeight: 600 }}>
+                    {isBuy ? '+' : ''}{(isBuy ? -total : total).toLocaleString('zh-TW')}
+                  </span>
+                </div>
+              );
+            })}
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
+              {(() => {
+                const buyTotal  = txDetailItems.filter(t => t.type === 'buy' ).reduce((s, t) => s + t.shares * t.price, 0);
+                const sellTotal = txDetailItems.filter(t => t.type === 'sell').reduce((s, t) => s + t.shares * t.price, 0);
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: 'var(--text-sm)' }}>
+                    {buyTotal  > 0 && <span style={{ color: 'var(--accent)' }}>買進合計 <b>{buyTotal.toLocaleString('zh-TW')}</b></span>}
+                    {sellTotal > 0 && <span style={{ color: 'var(--up)'    }}>賣出合計 <b>{sellTotal.toLocaleString('zh-TW')}</b></span>}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

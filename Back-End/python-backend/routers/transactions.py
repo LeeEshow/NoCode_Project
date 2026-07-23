@@ -34,11 +34,19 @@ def deserialize_transaction(doc) -> dict:
 # ─── GET /transactions ─────────────────────────────────────────────────────────
 
 @router.get("")
-def get_all(stock_id: str | None = Query(default=None, alias="stock_id")):
+def get_all(
+    stock_id:   str | None = Query(default=None, alias="stock_id"),
+    start_date: str | None = Query(default=None, alias="start_date"),
+    end_date:   str | None = Query(default=None, alias="end_date"),
+):
     db = get_db()
     col = db.collection("transactions")
     snap = col.where(filter=FieldFilter("stock_id", "==", stock_id)).get() if stock_id else col.get()
     items = [deserialize_transaction(doc) for doc in snap]
+    if start_date:
+        items = [t for t in items if t["date"][:10] >= start_date]
+    if end_date:
+        items = [t for t in items if t["date"][:10] <= end_date]
     items.sort(key=lambda x: x["date"])
     return {"success": True, "data": items}
 

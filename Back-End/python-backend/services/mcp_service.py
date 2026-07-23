@@ -101,11 +101,13 @@ MCP_TOOLS = [
     },
     {
         "name": "get_transactions",
-        "description": "取得交易紀錄（買進/賣出），可篩選單一個股，依交易日期升冪排列。",
+        "description": "取得交易紀錄（買進/賣出），可篩選單一個股及日期範圍，依交易日期升冪排列。",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "stock_id": {"type": "string", "description": "股票代號（選填，不填回傳全部）"},
+                "stock_id":   {"type": "string", "description": "股票代號（選填，不填回傳全部）"},
+                "start_date": {"type": "string", "description": "起始日期 YYYY-MM-DD（選填）"},
+                "end_date":   {"type": "string", "description": "結束日期 YYYY-MM-DD（選填，含當日）"},
             },
             "required": [],
         },
@@ -472,7 +474,11 @@ async def _get_tag_correlation_matrix() -> dict:
     return _text(await loop.run_in_executor(None, _read))
 
 
-async def _get_transactions(stock_id: str | None) -> dict:
+async def _get_transactions(
+    stock_id: str | None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict:
     loop = asyncio.get_running_loop()
 
     def _read():
@@ -481,7 +487,12 @@ async def _get_transactions(stock_id: str | None) -> dict:
         if stock_id:
             q = q.where(filter=FieldFilter("stock_id", "==", stock_id))
         q = q.order_by("date", direction="ASCENDING")
-        return [_convert_keys({"id": doc.id, **doc.to_dict()}) for doc in q.get()]
+        items = [_convert_keys({"id": doc.id, **doc.to_dict()}) for doc in q.get()]
+        if start_date:
+            items = [t for t in items if str(t.get("date", ""))[:10] >= start_date]
+        if end_date:
+            items = [t for t in items if str(t.get("date", ""))[:10] <= end_date]
+        return items
 
     return _text(await loop.run_in_executor(None, _read))
 
@@ -1124,8 +1135,10 @@ async def call_tool(name: str, arguments: dict) -> dict:
     if name == "get_tag_correlation_matrix":
         return await _get_tag_correlation_matrix()
     if name == "get_transactions":
-        sid = str(arguments.get("stock_id", "")).strip() or None
-        return await _get_transactions(sid)
+        sid   = str(arguments.get("stock_id",   "")).strip() or None
+        start = str(arguments.get("start_date", "")).strip() or None
+        end   = str(arguments.get("end_date",   "")).strip() or None
+        return await _get_transactions(sid, start, end)
     if name == "get_stock_history":
         sid = str(arguments.get("stock_id", "")).strip()
         if not sid:

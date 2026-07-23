@@ -1,7 +1,7 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts/core';
-import { LineChart } from 'echarts/charts';
+import { LineChart, BarChart } from 'echarts/charts';
 import {
   GridComponent,
   TooltipComponent,
@@ -11,7 +11,18 @@ import {
 import { CanvasRenderer } from 'echarts/renderers';
 import { colors, chartColors } from '../../../styles';
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer]);
+echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer]);
+
+const LEGEND_KEY = 'report_legend_selected';
+
+function loadLegendSelected(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(LEGEND_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
 
 export interface ChartDayData {
   date:       string;
@@ -25,10 +36,17 @@ export interface SeriesEntry {
   data:  ChartDayData[];
 }
 
+export interface DailyTxBar {
+  date:       string;
+  buyAmount:  number;
+  sellAmount: number;
+}
+
 interface Props {
   portfolioSeries: SeriesEntry[];
   stockSeries:     SeriesEntry[];
-  targetRate:      number;
+  txBars?:         DailyTxBar[];
+  onBarClick?:     (date: string) => void;
   height?:         number;
 }
 
@@ -64,22 +82,25 @@ function fmtAxisWan(v: number): string {
   return String(v);
 }
 
-export default memo(function ReportChart({ portfolioSeries, stockSeries, targetRate, height = 320 }: Props) {
-  const hasStocks = stockSeries.length > 0;
+export default memo(function ReportChart({ portfolioSeries, stockSeries, txBars, onBarClick, height = 320 }: Props) {
+  const hasStocks  = stockSeries.length > 0;
+  const hasTxBars  = (txBars?.length ?? 0) > 0;
+  const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>(loadLegendSelected);
 
-  // 沒有股票時：以快照日期為唯一來源
+  // 沒有股票時：以快照日期為唯一來源（含交易日期）
   // 有股票時：取交集，只保留「portfolio 有快照且每支股票都有資料」的日期，消除假日空洞
   const portfolioDates = new Set(portfolioSeries.flatMap(s => s.data.map(d => d.date)));
+  const txDateSet      = new Set(txBars?.map(t => t.date) ?? []);
   let allDates: string[];
   if (!hasStocks) {
-    allDates = [...portfolioDates].sort();
+    allDates = [...new Set([...portfolioDates, ...txDateSet])].sort();
   } else {
     let valid = [...portfolioDates];
     for (const stock of stockSeries) {
       const stockDateSet = new Set(stock.data.map(d => d.date));
       valid = valid.filter(d => stockDateSet.has(d));
     }
-    allDates = valid.sort();
+    allDates = [...new Set([...valid, ...txDateSet])].sort();
   }
 
   if (allDates.length === 0) {
@@ -98,16 +119,14 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
     );
   }
 
-  const targetPct = parseFloat((targetRate * 100).toFixed(2));
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const seriesOptions: any[] = [];
   const legendData: string[] = [];
+  const netToRateMap = new Map<string, (number | null)[]>();
 
   portfolioSeries.forEach((seg, i) => {
     const netColor = chartColors[(i * 2)     % chartColors.length];
     const ratColor = chartColors[(i * 2 + 1) % chartColors.length];
-    const ratKey   = `報酬率 (${seg.label})`;
 
     const denseRate = hasStocks
       ? shiftToZero(buildDenseByDate(seg.data, allDates, 'returnRate'))
@@ -116,41 +135,29 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
     if (!hasStocks) {
       const netKey   = `淨損益 (${seg.label})`;
       const denseNet = buildDenseByDate(seg.data, allDates, 'netReturn');
+      netToRateMap.set(netKey, denseRate);
       seriesOptions.push(
         { name: netKey, type: 'line', color: netColor, yAxisIndex: 0, data: denseNet, connectNulls: false, smooth: false, symbol: 'none', lineStyle: { color: netColor, width: 1.4, type: 'solid' }, z: 2 },
         { name: `__gap_net_${i}`, type: 'line', color: netColor, yAxisIndex: 0, data: denseNet, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: netColor, width: 1.2, type: 'dashed', opacity: 0.4 }, z: 1 },
       );
       legendData.push(netKey);
+    } else {
+      const ratKey = `報酬率 (${seg.label})`;
+      seriesOptions.push({
+        name: ratKey,
+        type: 'line',
+        color: ratColor,
+        yAxisIndex: 1,
+        data: denseRate,
+        connectNulls: false,
+        smooth: false,
+        symbol: 'none',
+        lineStyle: { color: ratColor, width: 1.8, type: 'solid' },
+        z: 3,
+      });
+      seriesOptions.push({ name: `__gap_rate_${i}`, type: 'line', color: ratColor, yAxisIndex: 1, data: denseRate, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: ratColor, width: 1.4, type: 'dashed', opacity: 0.5 }, z: 2 });
+      legendData.push(ratKey);
     }
-
-    seriesOptions.push({
-      name: ratKey,
-      type: 'line',
-      color: ratColor,
-      yAxisIndex: 1,
-      data: denseRate,
-      connectNulls: false,
-      smooth: false,
-      symbol: 'none',
-      lineStyle: { color: ratColor, width: 1.8, type: 'solid' },
-      z: 3,
-      ...(!hasStocks && i === 0 ? {
-        markLine: {
-          silent: true,
-          data: [{ yAxis: targetPct }],
-          lineStyle: { type: 'dashed', color: colors.accent, width: 1.2, opacity: 0.7 },
-          label: {
-            position: 'insideEndTop',
-            formatter: `目標 ${targetPct.toFixed(1)}%`,
-            color: colors.accent,
-            fontSize: 10,
-          },
-          symbol: ['none', 'none'],
-        },
-      } : {}),
-    });
-    seriesOptions.push({ name: `__gap_rate_${i}`, type: 'line', color: ratColor, yAxisIndex: 1, data: denseRate, connectNulls: true, smooth: false, symbol: 'none', lineStyle: { color: ratColor, width: 1.4, type: 'dashed', opacity: 0.5 }, z: 2 });
-    legendData.push(ratKey);
   });
 
   stockSeries.forEach((stock, i) => {
@@ -167,13 +174,24 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
     legendData.push(key);
   });
 
+  if (hasTxBars) {
+    const txMap   = new Map((txBars ?? []).map(t => [t.date, t]));
+    const buyData  = allDates.map(d => txMap.get(d)?.buyAmount  ?? 0);
+    const sellData = allDates.map(d => txMap.get(d)?.sellAmount ?? 0);
+    seriesOptions.push(
+      { name: '買進', type: 'bar', yAxisIndex: 0, data: buyData,  itemStyle: { color: colors.accent, opacity: 0.28, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
+      { name: '賣出', type: 'bar', yAxisIndex: 0, data: sellData, itemStyle: { color: colors.up,     opacity: 0.28, borderRadius: [0, 0, 3, 3] }, barMaxWidth: 8, barGap: '-100%', cursor: 'pointer', z: 1 },
+    );
+    legendData.push('買進', '賣出');
+  }
+
   const xLabels = allDates.map(d => d.slice(5).replace('-', '/'));
 
   const option = {
     animation: false,
     backgroundColor: colors.panel,
     textStyle: { color: colors.dim, fontFamily: 'Open Sans, sans-serif', fontSize: 11 },
-    grid: { left: 68, right: 72, top: 28, bottom: 56 },
+    grid: { left: 68, right: hasStocks ? 72 : 16, top: 28, bottom: 56 },
     xAxis: {
       type: 'category',
       data: xLabels,
@@ -191,21 +209,22 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
         type: 'value',
         name: hasStocks ? '' : '淨損益',
         nameTextStyle: { color: colors.dim, fontSize: 10, padding: [0, 0, 0, 40] },
-        axisLabel: { show: !hasStocks, color: colors.dim, fontSize: 10, formatter: fmtAxisWan },
-        splitLine: { show: false },
+        axisLabel: { show: !hasStocks || hasTxBars, color: colors.dim, fontSize: 10, formatter: fmtAxisWan },
+        splitLine: { show: !hasStocks || hasTxBars, lineStyle: { color: colors.border, type: 'dashed' } },
         axisLine: { show: false },
         axisTick: { show: false },
       },
       {
         type: 'value',
-        name: '相對報酬',
+        name: hasStocks ? '相對報酬' : '',
         nameTextStyle: { color: colors.dim, fontSize: 10, padding: [0, 40, 0, 0] },
         axisLabel: {
+          show: hasStocks,
           color: colors.dim,
           fontSize: 10,
           formatter: (v: number) => `${v.toFixed(1)}%`,
         },
-        splitLine: { lineStyle: { color: colors.border, type: 'dashed' } },
+        splitLine: { show: hasStocks, lineStyle: { color: colors.border, type: 'dashed' } },
         axisLine: { show: false },
         axisTick: { show: false },
       },
@@ -223,18 +242,27 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
         const idx = all[0].dataIndex ?? 0;
         const dateStr = allDates[idx]?.replace(/-/g, '/') ?? '';
 
+        const isTxBar = (name: string) => name === '買進' || name === '賣出';
         const ps = all.filter(p =>
           !p.seriesName.startsWith('__') &&
           typeof p.value === 'number' &&
-          isFinite(p.value),
+          isFinite(p.value) &&
+          !(isTxBar(p.seriesName) && p.value === 0),
         );
 
         const lines = ps.map(p => {
           const v      = p.value as number;
           const isNet  = p.seriesName.startsWith('淨損益');
-          const display = isNet
-            ? `${v >= 0 ? '+' : ''}${v.toLocaleString('zh-TW')}`
-            : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+          let display: string;
+          if (isNet) {
+            const rate = netToRateMap.get(p.seriesName)?.[p.dataIndex] ?? null;
+            const rateStr = rate !== null ? ` (${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%)` : '';
+            display = `${v >= 0 ? '+' : ''}${v.toLocaleString('zh-TW')}${rateStr}`;
+          } else if (isTxBar(p.seriesName)) {
+            display = `${v >= 0 ? '+' : ''}${Math.abs(v).toLocaleString('zh-TW')}`;
+          } else {
+            display = `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+          }
           return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:5px"></span>${p.seriesName}：<b>${display}</b>`;
         });
 
@@ -243,7 +271,8 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
       },
     },
     legend: {
-      data: legendData,
+      data:     legendData,
+      selected: legendSelected,
       bottom: 4,
       textStyle: { color: colors.muted, fontSize: 10 },
       itemWidth: 12,
@@ -252,6 +281,23 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
     series: seriesOptions,
   };
 
+  const chartEvents: Record<string, (p: unknown) => void> = {
+    legendselectchanged: (params: unknown) => {
+      const p = params as { selected: Record<string, boolean> };
+      setLegendSelected(p.selected);
+      try { localStorage.setItem(LEGEND_KEY, JSON.stringify(p.selected)); } catch {}
+    },
+  };
+  if (hasTxBars && onBarClick) {
+    chartEvents.click = (params: unknown) => {
+      const p = params as { componentType: string; seriesName: string; dataIndex: number };
+      if (p.componentType !== 'series') return;
+      if (p.seriesName !== '買進' && p.seriesName !== '賣出') return;
+      const date = allDates[p.dataIndex];
+      if (date) onBarClick(date);
+    };
+  }
+
   return (
     <ReactECharts
       echarts={echarts}
@@ -259,6 +305,7 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, targetR
       notMerge
       style={{ width: '100%', height }}
       opts={{ renderer: 'canvas' }}
+      onEvents={chartEvents}
     />
   );
 });

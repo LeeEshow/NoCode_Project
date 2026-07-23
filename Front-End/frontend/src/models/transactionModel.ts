@@ -36,6 +36,16 @@ export async function fetchTransactions(stockCode: string): Promise<TransactionD
   return res.data.data.map(toTransactionDTO);
 }
 
+export async function fetchTransactionsInRange(
+  start: string,
+  end: string,
+): Promise<TransactionDTO[]> {
+  const res = await api.get<ApiResponse<RawTransaction[]>>('/transactions', {
+    params: { start_date: start, end_date: end },
+  });
+  return res.data.data.map(toTransactionDTO);
+}
+
 export async function createTransaction(payload: CreateTransactionPayload): Promise<TransactionDTO> {
   const res = await api.post<ApiResponse<RawTransaction>>('/transactions', {
     stockId:       payload.stockCode,
