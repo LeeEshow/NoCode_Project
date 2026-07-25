@@ -335,6 +335,61 @@ MCP_TOOLS = [
             "required": ["stock_code"],
         },
     },
+    {
+        "name": "save_daily_assessment",
+        "description": "儲存當日庫存監控報告的策略評估結果至 Firestore（daily_assessments/{date}）。每日排程執行完畢後呼叫，作為後續 7 天的比對基準。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "評估日期，格式 YYYY-MM-DD（必填）",
+                },
+                "market_snapshot": {
+                    "type": "object",
+                    "description": "當日大盤快照（選填）",
+                    "properties": {
+                        "taiex":   {"type": ["number", "null"], "description": "加權指數"},
+                        "futures": {"type": ["number", "null"], "description": "台指期"},
+                        "nasdaq":  {"type": ["number", "null"], "description": "NASDAQ 漲跌幅 %"},
+                        "sox":     {"type": ["number", "null"], "description": "SOX 漲跌幅 %"},
+                        "sp500":   {"type": ["number", "null"], "description": "S&P500 漲跌幅 %"},
+                    },
+                },
+                "stocks": {
+                    "type": "array",
+                    "description": "每檔持股的評估結果（必填，需涵蓋全部持股）",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "stock_code":      {"type": "string", "description": "股票代號"},
+                            "stock_name":      {"type": "string", "description": "股票名稱"},
+                            "price":           {"type": ["number", "null"], "description": "當日現價"},
+                            "strategy_status": {"type": "string", "description": "白話策略標籤：可以買/先觀望/漲太多別追/建議分批賣/止損/未設策略"},
+                            "chip_direction":  {"type": "string", "description": "5日籌碼方向摘要，例如：外資買超3日"},
+                            "action_advice":   {"type": "string", "description": "當日動作建議，例如：執行第1批進場/不動作/出清"},
+                        },
+                        "required": ["stock_code", "stock_name", "strategy_status", "action_advice"],
+                    },
+                },
+            },
+            "required": ["date", "stocks"],
+        },
+    },
+    {
+        "name": "get_daily_assessments",
+        "description": "取得近 N 天的每日庫存監控評估紀錄，用於比對策略狀態趨勢。最多 30 天。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "description": "往回查幾天（預設 7，最多 30）",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -1103,6 +1158,63 @@ async def _get_trading_strategy(stock_code: str) -> dict:
     return _text(await loop.run_in_executor(None, _read))
 
 
+# ─── M11: daily_assessments ───────────────────────────────────────────────────
+
+async def _save_daily_assessment(arguments: dict) -> dict:
+    date = str(arguments.get("date", "")).strip()
+    if not date:
+        return _text({"error": "date 為必填，格式 YYYY-MM-DD"})
+
+    stocks = arguments.get("stocks")
+    if not isinstance(stocks, list) or not stocks:
+        return _text({"error": "stocks 為必填且不可為空陣列"})
+
+    market_snapshot = arguments.get("market_snapshot") or {}
+
+    def _write():
+        from datetime import datetime, timezone
+        doc = {
+            "date":            date,
+            "market_snapshot": market_snapshot,
+            "stocks": [
+                {
+                    "stock_code":      s.get("stock_code", ""),
+                    "stock_name":      s.get("stock_name", ""),
+                    "price":           s.get("price"),
+                    "strategy_status": s.get("strategy_status", ""),
+                    "chip_direction":  s.get("chip_direction", ""),
+                    "action_advice":   s.get("action_advice", ""),
+                }
+                for s in stocks
+            ],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        get_db().collection("daily_assessments").document(date).set(doc)
+        return {"date": date, "savedCount": len(stocks)}
+
+    loop = asyncio.get_running_loop()
+    return _text(await loop.run_in_executor(None, _write))
+
+
+async def _get_daily_assessments(days: int) -> dict:
+    loop = asyncio.get_running_loop()
+
+    def _read():
+        from datetime import datetime, timezone, timedelta
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        docs = (
+            get_db()
+            .collection("daily_assessments")
+            .where(filter=FieldFilter("date", ">=", since))
+            .order_by("date", direction="DESCENDING")
+            .limit(days)
+            .get()
+        )
+        return [doc.to_dict() for doc in docs if doc.exists]
+
+    return _text(await loop.run_in_executor(None, _read))
+
+
 # ─── Dispatch ─────────────────────────────────────────────────────────────────
 
 async def call_tool(name: str, arguments: dict) -> dict:
@@ -1189,4 +1301,10 @@ async def call_tool(name: str, arguments: dict) -> dict:
         if not sid:
             return _text({"error": "stock_code 為必填"})
         return await _get_trading_strategy(sid)
+    # ── M11
+    if name == "save_daily_assessment":
+        return await _save_daily_assessment(arguments)
+    if name == "get_daily_assessments":
+        days = min(int(arguments.get("days", 7)), 30)
+        return await _get_daily_assessments(days)
     return _text({"error": f"未知工具：{name}"})
