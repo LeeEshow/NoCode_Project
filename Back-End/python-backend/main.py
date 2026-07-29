@@ -1,8 +1,11 @@
+import asyncio
 import base64
 import json
 import logging
 import os
+import signal
 import sys
+import threading
 import time
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
@@ -25,12 +28,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ── Event Loop Watchdog ────────────────────────────────────────────────────────
+_heartbeat_ts: float = 0.0  # asyncio 協程每 5s 更新；OS thread 監控是否停止
+
+async def _heartbeat_loop() -> None:
+    global _heartbeat_ts
+    while True:
+        _heartbeat_ts = time.monotonic()
+        await asyncio.sleep(5)
+
+def _watchdog_thread(threshold: float = 90.0) -> None:
+    """若 asyncio heartbeat 超過 threshold 秒未更新，表示 event loop 靜默卡死，
+    發 SIGTERM 讓 systemd (Restart=always) 自動重啟進程。"""
+    time.sleep(60)  # 等候啟動初始化完成
+    while True:
+        time.sleep(15)
+        if _heartbeat_ts > 0 and (time.monotonic() - _heartbeat_ts) > threshold:
+            logger.critical(
+                "Event loop heartbeat timeout (%.0fs > %.0fs)! Sending SIGTERM.",
+                time.monotonic() - _heartbeat_ts, threshold,
+            )
+            os.kill(os.getpid(), signal.SIGTERM)
+
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import asyncio
-
     # ── 統一 Thread Pool：將 asyncio default executor 換成共用 _io_executor ────
     # 預設 executor 在 Azure B1（1 vCPU）只有 5 workers；run_in_executor(None, …)
     # 遍佈 market.py / quote_service.py，不換會有兩個互不相知的 pool。
@@ -87,9 +110,15 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Shioaji warmup failed (non-critical): %s", e)
 
+    # ── Event loop watchdog 啟動 ─────────────────────────────────────────────
+    _heartbeat_task = asyncio.ensure_future(_heartbeat_loop())
+    threading.Thread(target=_watchdog_thread, daemon=True, name="el-watchdog").start()
+    logger.info("Event loop watchdog started (threshold=90s)")
+
     yield
 
     # ── Shioaji shutdown ──────────────────────────────────────────────────────
+    _heartbeat_task.cancel()
     if _warmup_task is not None and not _warmup_task.done():
         _warmup_task.cancel()
         try:
