@@ -73,7 +73,7 @@ def _yf_chart(symbol: str, interval: str = "1d", range_: str = "1d") -> dict:
             res = requests.get(
                 f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
                 params={"interval": interval, "range": range_},
-                timeout=10,
+                timeout=(5, 10),  # (connect, read)：TCP connect 最多 5s
                 headers=_YF_HEADERS,
             )
             res.raise_for_status()
@@ -233,7 +233,7 @@ def _fetch_taiwan_futures() -> dict:
         with yahoo_sem:
             res = requests.get(
                 "https://tw.stock.yahoo.com/future/WTX%26",
-                timeout=10,
+                timeout=(5, 10),
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -318,7 +318,7 @@ def get_history_range(stock_id: str, start_date: str | None = None,
                     f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
                     params={"interval": interval, "period1": int(start_dt.timestamp()),
                             "period2": int(end_dt.timestamp())},
-                    timeout=10,
+                    timeout=(5, 10),
                     headers=_YF_HEADERS,
                 )
                 res.raise_for_status()

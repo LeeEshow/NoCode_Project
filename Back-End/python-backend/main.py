@@ -37,18 +37,44 @@ async def _heartbeat_loop() -> None:
         _heartbeat_ts = time.monotonic()
         await asyncio.sleep(5)
 
+def _http_healthy() -> bool:
+    """用原始 socket 向 /health 發送一次 HTTP 請求，5s 內有 200 回應才算健康。"""
+    import socket as _socket
+    try:
+        with _socket.create_connection(("127.0.0.1", 8000), timeout=5) as s:
+            s.sendall(b"GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n")
+            return b"200" in s.recv(64)
+    except Exception:
+        return False
+
+
 def _watchdog_thread(threshold: float = 90.0) -> None:
-    """若 asyncio heartbeat 超過 threshold 秒未更新，表示 event loop 靜默卡死，
-    發 SIGTERM 讓 systemd (Restart=always) 自動重啟進程。"""
+    """雙重防護：
+    1. asyncio heartbeat 超過 threshold 秒未更新 → event loop 卡死
+    2. HTTP /health 連續 3 次不回應 → uvicorn 不接連線（executor 滿等）
+    任一觸發即發 SIGTERM，讓 systemd Restart=always 自動重啟。"""
     time.sleep(60)  # 等候啟動初始化完成
+    http_fail = 0
     while True:
         time.sleep(15)
+        # 檢查一：asyncio event loop heartbeat
         if _heartbeat_ts > 0 and (time.monotonic() - _heartbeat_ts) > threshold:
             logger.critical(
-                "Event loop heartbeat timeout (%.0fs > %.0fs)! Sending SIGTERM.",
-                time.monotonic() - _heartbeat_ts, threshold,
+                "Event loop heartbeat timeout (%.0fs)! Sending SIGTERM.",
+                time.monotonic() - _heartbeat_ts,
             )
             os.kill(os.getpid(), signal.SIGTERM)
+            return
+        # 檢查二：HTTP /health 可達性
+        if _http_healthy():
+            http_fail = 0
+        else:
+            http_fail += 1
+            logger.warning("Watchdog: HTTP health check failed (%d/3)", http_fail)
+            if http_fail >= 3:
+                logger.critical("HTTP health check failed 3 consecutive times! Sending SIGTERM.")
+                os.kill(os.getpid(), signal.SIGTERM)
+                return
 
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
