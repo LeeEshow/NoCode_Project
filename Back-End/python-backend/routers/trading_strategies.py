@@ -1,154 +1,58 @@
 """
-GET/GET_one/PATCH(dismiss)/PATCH(rule-status)/DELETE /api/v1/trading-strategies
-trading_strategies/{stockCode}  ← singleton-per-stock，AI 覆寫，無堆疊
+GET/GET_one/PUT/DELETE /api/v1/trading-strategies
+GET /{stock_code}/progress
+
+trading_strategies/{stockCode} ← singleton-per-stock，AI 覆寫，無堆疊
+
+新設計：簡單意圖記錄
+  action: buy | sell | hold
+  target_quantity: int（股）
+  priority: normal | urgent
+  notes: str
+
+進度由 transactions 集合中 linked_strategy=True 的買進紀錄計算。
 """
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, field_validator
+from google.cloud.firestore_v1.base_query import FieldFilter
+from pydantic import BaseModel
 from services.firestore import get_db
 
 TZ_TAIPEI = timezone(timedelta(hours=8))
 
 router = APIRouter()
 
-_CHIP_RULE_TYPES = frozenset({"chip_dealer_buy", "chip_foreign_buy", "chip_trust_buy"})
+_VALID_ACTIONS  = {"buy", "sell", "hold"}
+_VALID_PRIORITY = {"normal", "urgent"}
 
 
 # ─── 工具函式 ──────────────────────────────────────────────────────────────────
 
-def _rule_to_dto(r: dict) -> dict:
-    result: dict = {"type": r["type"]}
-    if "value" in r:
-        result["value"] = r["value"]
-    if "period" in r:
-        result["period"] = r["period"]
-    return result
+def _compute_executed(db, stock_code: str) -> int:
+    txns = db.collection("transactions").where(
+        filter=FieldFilter("stock_id", "==", stock_code)
+    ).get()
+    return int(sum(
+        doc.to_dict().get("shares", 0)
+        for doc in txns
+        if doc.to_dict().get("linked_strategy") is True
+        and doc.to_dict().get("type") == "buy"
+    ))
 
 
-def _tranche_to_dto(t: dict) -> dict:
-    rules = t.get("trigger_rules") or []
-    raw_statuses = t.get("rule_statuses") or {}
-    # rule_statuses keys 是規則類型識別符（如 chip_dealer_buy），不做 camelCase 轉換
-    statuses = {k: v for k, v in raw_statuses.items() if k in _CHIP_RULE_TYPES or k == "manual"}
+def _to_dto(stock_code: str, d: dict, executed: int = 0) -> dict:
+    target    = int(d.get("target_quantity", 0))
+    remaining = max(0, target - executed)
     return {
-        "batch":            t.get("batch", 1),
-        "priceLow":         t.get("price_low"),
-        "priceHigh":        t.get("price_high"),
-        "sizeRatio":        t.get("size_ratio"),
-        "shares":           t.get("shares", 0),
-        "triggerCondition": t.get("trigger_condition", ""),
-        "triggerRules":     [_rule_to_dto(r) for r in rules],
-        "ruleStatuses":     statuses,
-        "ruleEvaluatedAt":  t.get("rule_evaluated_at"),
-        "status":           t.get("status", "pending"),
-        "executions": [
-            {
-                "transactionId":  e.get("transaction_id", ""),
-                "executedAt":     e.get("executed_at"),
-                "executedShares": e.get("executed_shares"),
-                "executedPrice":  e.get("executed_price"),
-            }
-            for e in t.get("executions", [])
-        ],
-    }
-
-
-def _evaluate_tranche_status(tranche: dict) -> dict:
-    """H-3: chip_* 全 true + manual 全 true → triggered（在 Firestore snake_case dict 上操作）"""
-    rules    = tranche.get("trigger_rules") or []
-    statuses = tranche.get("rule_statuses") or {}
-
-    chip_rules   = [r for r in rules if r.get("type") in _CHIP_RULE_TYPES]
-    manual_rules = [r for r in rules if r.get("type") == "manual"]
-
-    # 必須至少有一條 chip_* 或 manual rule
-    if not chip_rules and not manual_rules:
-        return tranche
-
-    for r in chip_rules:
-        if statuses.get(r["type"]) is not True:
-            return tranche
-
-    for _ in manual_rules:
-        if statuses.get("manual") is not True:
-            return tranche
-
-    return {**tranche, "status": "triggered"}
-
-
-def _compute_strategy_status(d: dict, tranches: list[dict]) -> str:
-    """依 H-3 規則計算 strategy.status（在 Firestore raw dict 上操作）"""
-    if d.get("dismissed", False):
-        return "dismissed"
-    expires_at = d.get("expires_at")
-    current    = d.get("status", "active")
-    if expires_at and str(expires_at)[:10] < date.today().isoformat() and current in ("active", "triggered"):
-        return "expired"
-    if tranches and all(
-        t.get("status") in ("executed", "skipped") for t in tranches
-    ):
-        return "completed"
-    if current in ("active", "triggered") and any(t.get("status") == "triggered" for t in tranches):
-        return "triggered"
-    return current
-
-
-def _to_dto(doc_id: str, d: dict) -> dict:
-    # tranches：新格式 or 向後相容舊 trigger_price
-    tranches_raw = d.get("tranches")
-    if tranches_raw:
-        tranches = [_tranche_to_dto(t) for t in tranches_raw]
-    else:
-        trigger_price = d.get("trigger_price")
-        if trigger_price is not None:
-            tranches = [{
-                "batch":            1,
-                "priceLow":         float(trigger_price),
-                "priceHigh":        float(trigger_price),
-                "sizeRatio":        1.0,
-                "shares":           0,
-                "triggerCondition": "",
-                "triggerRules":     [],
-                "ruleStatuses":     {},
-                "ruleEvaluatedAt":  None,
-                "status":           "pending",
-                "executions":       [],
-            }]
-        else:
-            tranches = []
-
-    dismissed  = d.get("dismissed", False)
-    raw_status = d.get("status", "active")
-    expires_at = d.get("expires_at")
-    today      = date.today().isoformat()
-
-    # dismissed 優先；lazy expires_at check（L-1）
-    if dismissed:
-        effective_status = "dismissed"
-    elif expires_at and str(expires_at)[:10] < today and raw_status in ("active", "triggered"):
-        effective_status = "expired"
-    else:
-        effective_status = raw_status
-
-    return {
-        "stockCode":             d.get("stock_code", doc_id),
-        "stockName":             d.get("stock_name"),
-        "tradeType":             d.get("trade_type"),
-        "tranches":              tranches,
-        "referencePrice":        d.get("reference_price"),
-        "stopLossPrice":         d.get("stop_loss_price"),
-        "targetPriceLow":        d.get("target_price_low"),
-        "targetPriceHigh":       d.get("target_price_high"),
-        "riskRewardRatio":       d.get("risk_reward_ratio"),
-        "triggerCondition":      d.get("trigger_condition"),
-        "invalidationCondition": d.get("invalidation_condition"),
-        "confidence":            d.get("confidence"),
-        "timeframe":             d.get("timeframe"),
-        "summary":               d.get("summary"),
-        "status":                effective_status,
-        "dismissed":             dismissed,
-        "createdAt":             d.get("created_at"),
-        "expiresAt":             expires_at,
+        "stockCode":         d.get("stock_code", stock_code),
+        "stockName":         d.get("stock_name"),
+        "action":            d.get("action", "hold"),
+        "targetQuantity":    target,
+        "priority":          d.get("priority", "normal"),
+        "notes":             d.get("notes", ""),
+        "updatedAt":         d.get("updated_at"),
+        "executedQuantity":  executed,
+        "remainingQuantity": remaining,
     }
 
 
@@ -158,8 +62,23 @@ def _to_dto(doc_id: str, d: dict) -> dict:
 def get_all():
     db   = get_db()
     docs = db.collection("trading_strategies").get()
-    items = [_to_dto(doc.id, doc.to_dict()) for doc in docs]
-    items.sort(key=lambda x: x.get("createdAt") or "", reverse=True)
+    if not docs:
+        return {"success": True, "data": []}
+
+    # 一次拿所有交易，避免 N 次查詢
+    all_txns = db.collection("transactions").get()
+    executed_map: dict[str, int] = {}
+    for tx in all_txns:
+        d = tx.to_dict()
+        if d.get("linked_strategy") is True and d.get("type") == "buy":
+            sid = str(d.get("stock_id", ""))
+            executed_map[sid] = executed_map.get(sid, 0) + int(d.get("shares", 0))
+
+    items = [
+        _to_dto(doc.id, doc.to_dict(), executed_map.get(doc.id, 0))
+        for doc in docs
+    ]
+    items.sort(key=lambda x: x.get("updatedAt") or "", reverse=True)
     return {"success": True, "data": items}
 
 
@@ -169,124 +88,72 @@ def get_all():
 def get_one(stock_code: str):
     db  = get_db()
     doc = db.collection("trading_strategies").document(stock_code).get()
-    data = _to_dto(doc.id, doc.to_dict()) if doc.exists else None
-    return {"success": True, "data": data}
-
-
-# ─── PATCH /trading-strategies/{stock_code}/dismiss ───────────────────────────
-
-@router.patch("/{stock_code}/dismiss")
-def dismiss(stock_code: str):
-    db  = get_db()
-    ref = db.collection("trading_strategies").document(stock_code)
-    if not ref.get().exists:
-        raise HTTPException(status_code=404, detail="策略不存在")
-    ref.update({"dismissed": True, "status": "dismissed"})
-    return {"success": True, "data": _to_dto(stock_code, ref.get().to_dict())}
-
-
-# ─── PATCH /trading-strategies/{stock_code}/rule-status ───────────────────────
-
-@router.patch("/{stock_code}/rule-status")
-def update_rule_status(stock_code: str, body: dict):
-    """手動確認 manual 規則（M-2）。
-    body: { batch: int, ruleType: "manual", confirmed: bool }
-    """
-    batch_num = body.get("batch")
-    rule_type = body.get("ruleType")
-    confirmed = body.get("confirmed")
-
-    if rule_type != "manual":
-        raise HTTPException(status_code=400, detail="ruleType 只允許 'manual'")
-    if not isinstance(batch_num, int) or batch_num < 1:
-        raise HTTPException(status_code=400, detail="batch 必須為正整數")
-    if not isinstance(confirmed, bool):
-        raise HTTPException(status_code=400, detail="confirmed 必須為 boolean")
-
-    db  = get_db()
-    ref = db.collection("trading_strategies").document(stock_code)
-    doc = ref.get()
     if not doc.exists:
-        raise HTTPException(status_code=404, detail="策略不存在")
-
-    d        = doc.to_dict()
-    tranches = list(d.get("tranches") or [])
-
-    idx = next((i for i, t in enumerate(tranches) if t.get("batch") == batch_num), None)
-    if idx is None:
-        raise HTTPException(status_code=400, detail=f"找不到 batch={batch_num} 的批次")
-
-    tranche       = tranches[idx]
-    trigger_rules = tranche.get("trigger_rules") or []
-    if not any(r.get("type") == "manual" for r in trigger_rules):
-        raise HTTPException(status_code=400, detail=f"batch={batch_num} 不含 manual 規則")
-
-    rule_statuses        = dict(tranche.get("rule_statuses") or {})
-    rule_statuses["manual"] = confirmed
-    tranches[idx]        = _evaluate_tranche_status({**tranche, "rule_statuses": rule_statuses})
-
-    new_status = _compute_strategy_status(d, tranches)
-    ref.update({"tranches": tranches, "status": new_status})
-
-    return {"success": True, "data": _to_dto(stock_code, {**d, "tranches": tranches, "status": new_status})}
+        return {"success": True, "data": None}
+    executed = _compute_executed(db, stock_code)
+    return {"success": True, "data": _to_dto(doc.id, doc.to_dict(), executed)}
 
 
-# ─── POST /trading-strategies/{stock_code}/tranches/{batch}/executions ────────
+# ─── PUT /trading-strategies/{stock_code} ─────────────────────────────────────
 
-class AddExecutionBody(BaseModel):
-    executedPrice:  float
-    executedShares: int
-    transactionId:  str | None = None
-    executedAt:     str | None = None
-
-    @field_validator("executedPrice")
-    @classmethod
-    def price_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("executedPrice 必須大於 0")
-        return v
-
-    @field_validator("executedShares")
-    @classmethod
-    def shares_positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("executedShares 必須大於 0")
-        return v
+class StrategyBody(BaseModel):
+    action:          str
+    target_quantity: int
+    stock_name:      str | None = None
+    priority:        str        = "normal"
+    notes:           str        = ""
 
 
-@router.post("/{stock_code}/tranches/{batch}/executions")
-def add_execution(stock_code: str, batch: int, body: AddExecutionBody):
+@router.put("/{stock_code}")
+def upsert(stock_code: str, body: StrategyBody):
+    if body.action not in _VALID_ACTIONS:
+        raise HTTPException(status_code=400, detail="action 必須為 buy|sell|hold")
+    if body.priority not in _VALID_PRIORITY:
+        raise HTTPException(status_code=400, detail="priority 必須為 normal|urgent")
+    if body.target_quantity < 0:
+        raise HTTPException(status_code=400, detail="target_quantity 不可為負數")
+
     db  = get_db()
     ref = db.collection("trading_strategies").document(stock_code)
-    doc = ref.get()
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="策略不存在")
+    existing = ref.get()
 
-    d        = doc.to_dict()
-    tranches = list(d.get("tranches") or [])
+    stock_name = body.stock_name or (
+        existing.to_dict().get("stock_name", stock_code) if existing.exists else stock_code
+    )
 
-    idx = next((i for i, t in enumerate(tranches) if t.get("batch") == batch), None)
-    if idx is None:
-        raise HTTPException(status_code=400, detail=f"找不到 batch={batch} 的批次")
-
-    execution = {
-        "transaction_id":  body.transactionId or "",
-        "executed_at":     body.executedAt or datetime.now(TZ_TAIPEI).isoformat(),
-        "executed_price":  body.executedPrice,
-        "executed_shares": body.executedShares,
+    doc_data = {
+        "stock_code":      stock_code,
+        "stock_name":      stock_name,
+        "action":          body.action,
+        "target_quantity": body.target_quantity,
+        "priority":        body.priority,
+        "notes":           body.notes,
+        "updated_at":      datetime.now(TZ_TAIPEI).isoformat(),
     }
+    ref.set(doc_data)
 
-    tranche = dict(tranches[idx])
-    existing_execs = list(tranche.get("executions") or [])
-    existing_execs.append(execution)
-    tranche["executions"] = existing_execs
-    tranche["status"]     = "executed"
-    tranches[idx]         = tranche
+    executed = _compute_executed(db, stock_code)
+    return {"success": True, "data": _to_dto(stock_code, doc_data, executed)}
 
-    new_status = _compute_strategy_status(d, tranches)
-    ref.update({"tranches": tranches, "status": new_status})
 
-    return {"success": True, "data": _to_dto(stock_code, {**d, "tranches": tranches, "status": new_status})}
+# ─── GET /trading-strategies/{stock_code}/progress ────────────────────────────
+
+@router.get("/{stock_code}/progress")
+def get_progress(stock_code: str):
+    db  = get_db()
+    doc = db.collection("trading_strategies").document(stock_code).get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="策略不存在")
+    target   = int(doc.to_dict().get("target_quantity", 0))
+    executed = _compute_executed(db, stock_code)
+    return {
+        "success": True,
+        "data": {
+            "targetQuantity":    target,
+            "executedQuantity":  executed,
+            "remainingQuantity": max(0, target - executed),
+        },
+    }
 
 
 # ─── DELETE /trading-strategies/{stock_code} ──────────────────────────────────

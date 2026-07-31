@@ -187,7 +187,7 @@ python-backend/
 | `/api/v1/preferences` | 使用者偏好 |
 | `/api/v1/system` | 系統狀態（apiSwitch + Shioaji）；`POST /shioaji/reinitialize`（202，非同步重連） |
 | `/api/v1/finmind` | FinMind 每日同步（`POST /sync`，收盤後批次寫入基本面 + 三大法人至 Firestore） |
-| `/api/v1/trading-strategies` | AI 交易策略（GET/GET_one/PATCH_dismiss/PATCH_rule-status/DELETE；singleton-per-stock，tranches[] 多批次） |
+| `/api/v1/trading-strategies` | 布局意圖（GET/GET_one/PUT/DELETE/GET_progress；singleton-per-stock，action+target_quantity 簡單意圖） |
 | `/api/v1/mcp/sse` | MCP SSE 長連線（GET，bypass EasyAuth） |
 | `/api/v1/mcp` | MCP Streamable HTTP（POST，bypass EasyAuth，MCP 2025-03-26 推薦） |
 | `/api/v1/mcp/message` | MCP JSON-RPC 2.0 via SSE（POST，bypass EasyAuth，向下相容） |

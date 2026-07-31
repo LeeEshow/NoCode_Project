@@ -19,15 +19,16 @@ def deserialize_transaction(doc) -> dict:
     date_val = d.get("date")
     created_val = d.get("created_at")
     return {
-        "id":            doc.id,
-        "stockId":       d.get("stock_id"),
-        "type":          d.get("type"),
-        "date":          ts_iso(date_val),
-        "shares":        d.get("shares", 0),
-        "pricePerShare": d.get("price_per_share", 0),
-        "fee":           d.get("fee", 0),
-        "note":          d.get("note", ""),
-        "createdAt":     ts_iso(created_val),
+        "id":             doc.id,
+        "stockId":        d.get("stock_id"),
+        "type":           d.get("type"),
+        "date":           ts_iso(date_val),
+        "shares":         d.get("shares", 0),
+        "pricePerShare":  d.get("price_per_share", 0),
+        "fee":            d.get("fee", 0),
+        "note":           d.get("note", ""),
+        "createdAt":      ts_iso(created_val),
+        "linkedStrategy": d.get("linked_strategy", False),
     }
 
 
@@ -90,6 +91,7 @@ def create(body: dict):
         "price_per_share": float(price_per_share),
         "fee":             float(fee),
         "note":            str(body.get("note", "")),
+        "linked_strategy": bool(body.get("linkedStrategy", False)),
         "created_at":      fs.SERVER_TIMESTAMP,
     })
     created = deserialize_transaction(ref.get())
@@ -113,7 +115,8 @@ def update(tx_id: str, body: dict):
     if "shares"        in body: patch["shares"]           = float(body["shares"])
     if "pricePerShare" in body: patch["price_per_share"]  = float(body["pricePerShare"])
     if "fee"           in body: patch["fee"]              = float(body["fee"])
-    if "note"          in body: patch["note"]             = str(body["note"])
+    if "note"           in body: patch["note"]             = str(body["note"])
+    if "linkedStrategy" in body: patch["linked_strategy"] = bool(body["linkedStrategy"])
 
     ref.update(patch)
     updated = deserialize_transaction(ref.get())

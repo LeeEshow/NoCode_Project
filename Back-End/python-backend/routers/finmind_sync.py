@@ -30,11 +30,5 @@ async def finmind_sync():
         stock_ids = [doc.id for doc in holdings if doc.exists]
         return sync_stocks_finmind(db, stock_ids)
 
-    def _evaluate():
-        from services.finmind import evaluate_trigger_rules
-        return evaluate_trigger_rules(get_db())
-
-    result      = await asyncio.to_thread(_sync)
-    eval_result = await asyncio.to_thread(_evaluate)
-    result["triggerEvaluation"] = eval_result
+    result = await asyncio.to_thread(_sync)
     return {"success": True, "data": result}

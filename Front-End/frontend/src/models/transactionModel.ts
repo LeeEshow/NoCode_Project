@@ -48,13 +48,14 @@ export async function fetchTransactionsInRange(
 
 export async function createTransaction(payload: CreateTransactionPayload): Promise<TransactionDTO> {
   const res = await api.post<ApiResponse<RawTransaction>>('/transactions', {
-    stockId:       payload.stockCode,
-    type:          payload.type,
-    date:          payload.date,
-    shares:        payload.shares,
-    pricePerShare: payload.price,
-    fee:           payload.fee,
-    note:          payload.note,
+    stockId:        payload.stockCode,
+    type:           payload.type,
+    date:           payload.date,
+    shares:         payload.shares,
+    pricePerShare:  payload.price,
+    fee:            payload.fee,
+    note:           payload.note,
+    linkedStrategy: payload.linkedStrategy ?? false,
   });
   return toTransactionDTO(res.data.data);
 }

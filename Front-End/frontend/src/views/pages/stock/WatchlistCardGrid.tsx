@@ -1,5 +1,4 @@
 import './WatchlistCardGrid.css';
-import { resolveStrategyStatus } from '../../../utils/tradingStrategy';
 import type { WatchlistItemDTO, TradingStrategyDTO } from '../../../types';
 
 function fmt(n: number) {
@@ -83,10 +82,9 @@ function WatchlistCard({
   const sign  = item.changePct > 0 ? '+' : '';
   const hasBadQuote = item.currentPrice === 0 && item.quoteStatus != null && item.quoteStatus !== 'ok';
 
-  const hasStrategy = strategy != null && !strategy.dismissed;
-  const stratStatus = hasStrategy ? resolveStrategyStatus(strategy, item.currentPrice) : null;
-  const showDot     = hasStrategy && stratStatus !== 'expired';
-  const dotColor    = stratStatus === 'triggered' ? 'var(--up)' : 'var(--accent)';
+  const hasStrategy = strategy != null;
+  const showDot     = hasStrategy;
+  const dotColor    = strategy?.action === 'sell' ? 'var(--up)' : 'var(--accent)';
 
   function handleClick() {
     if (hasStrategy) onOpenStrategy?.(item.stockCode);

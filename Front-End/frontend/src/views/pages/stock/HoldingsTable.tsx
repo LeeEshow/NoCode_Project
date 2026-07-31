@@ -15,7 +15,6 @@ import StockExpandPanel from '../../components/StockExpandPanel';
 import Icon from '../../components/Icon';
 import StatusBadge from '../../components/StatusBadge';
 import type { BadgeVariant } from '../../components/StatusBadge';
-import { resolveStrategyStatus } from '../../../utils/tradingStrategy';
 import type {
   HoldingDTO, KLineDTO, StockProfileDTO, ChipDTO,
   TagDTO, AddHoldingTagPayload, UpdateHoldingTagPayload,
@@ -55,34 +54,17 @@ function ValTooltip({ label, value, color, children }: {
   );
 }
 
-function StrategyBadge({ strategy, currentPrice, stockName, onClick }: {
+const _ACTION_LABEL: Record<string, string>        = { buy: '布局買進', sell: '計劃賣出', hold: '觀察中' };
+const _ACTION_VARIANT: Record<string, BadgeVariant> = { buy: 'accent',   sell: 'up',      hold: 'muted'  };
+
+function StrategyBadge({ strategy, stockName, onClick }: {
   strategy?:    TradingStrategyDTO;
-  currentPrice: number;
   stockName:    string;
   onClick:      (e: React.MouseEvent) => void;
 }) {
-  let label: string;
-  let variant: BadgeVariant;
-
-  if (!strategy) {
-    label = '無策略'; variant = 'muted';
-  } else {
-    const status        = resolveStrategyStatus(strategy, currentPrice);
-    const isStopLossHit = strategy.stopLossPrice != null
-      && currentPrice > 0
-      && currentPrice <= strategy.stopLossPrice;
-    const isCompleted   = status === 'completed' || (
-      strategy.tranches.length > 0 &&
-      strategy.tranches.every(t => t.executions.length > 0 || t.status === 'skipped')
-    );
-
-    if      (isCompleted)            { label = 'AI 已完成'; variant = 'flat';   }
-    else if (status === 'dismissed') { label = '忽略';      variant = 'muted';  }
-    else if (status === 'expired')   { label = 'AI 已過期'; variant = 'muted';  }
-    else if (isStopLossHit)          { label = '觸發停損';  variant = 'up';     }
-    else if (status === 'triggered') { label = 'AI 已觸發'; variant = 'down';   }
-    else                             { label = 'AI 觀察中'; variant = 'accent'; }
-  }
+  const action  = strategy?.action ?? null;
+  const label   = action ? _ACTION_LABEL[action]   ?? 'AI 策略' : '無策略';
+  const variant = action ? _ACTION_VARIANT[action] ?? 'muted'   : 'muted';
 
   return (
     <button
@@ -203,7 +185,6 @@ const HoldingRow = memo(function HoldingRow({
       <td className="center">
         <StrategyBadge
           strategy={strategy}
-          currentPrice={h.currentPrice}
           stockName={h.stockName}
           onClick={e => { e.stopPropagation(); onOpenStrategy?.(h.stockCode); }}
         />

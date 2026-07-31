@@ -263,70 +263,26 @@ MCP_TOOLS = [
     {
         "name": "save_trading_strategy",
         "description": (
-            "AI 分析後建立或覆寫指定個股的交易策略（singleton-per-stock，覆寫不堆疊）。"
-            "dismissed 強制重置為 false；created_at 由後端自動填入 UTC+8 現在時間。"
-            "riskRewardRatio 由後端自動計算，AI 不需填入。summary ≤100字。"
-            "使用 tranches[] 描述多批次進場腳本（最多 4 批，sizeRatio 合計須 = 1.0）。"
+            "建立或覆寫指定個股的布局意圖（singleton-per-stock，覆寫不堆疊）。"
+            "記錄 Claude 決定的操作方向（action）與目標數量（target_quantity）。"
+            "何時執行、如何分批由 Claude 每日排程自行判斷，不需填入觸發條件。"
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "stock_code":             {"type": "string", "description": "股票代號（必填）"},
-                "stock_name":             {"type": "string", "description": "股票名稱（必填）"},
-                "trade_type":             {"type": "string", "description": "entry|add|reduce|exit|watch（必填）"},
-                "reference_price":        {"type": "number", "description": "分析當下市價（必填）"},
-                "stop_loss_price":        {"type": "number", "description": "停損價（必填）"},
-                "target_price_low":       {"type": "number", "description": "停利區間下緣（必填）"},
-                "target_price_high":      {"type": "number", "description": "停利區間上緣（必填）"},
-                "tranches": {
-                    "type": "array",
-                    "description": "多批次進場腳本，最多 4 批，sizeRatio 合計須 = 1.0（watch 類型除外）",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "batch":             {"type": "integer", "description": "批次序號，從 1 開始"},
-                            "price_low":         {"type": "number",  "description": "進場區間下緣"},
-                            "price_high":        {"type": "number",  "description": "進場區間上緣"},
-                            "size_ratio":        {"type": "number",  "description": "佔總部位比例 0.0–1.0"},
-                            "shares":            {"type": "integer", "description": "AI 建議股數（entry/add 由 AI 估算；reduce/exit = round(持股數 × sizeRatio)；watch 填 0）"},
-                            "trigger_condition": {"type": "string",  "description": "此批次觸發條件（人讀文字）"},
-                            "trigger_rules": {
-                                "type": "array",
-                                "description": "機器可評估的結構化條件（選填）",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "type":   {"type": "string",  "description": "price_in_range|price_above|price_below|price_above_ma|chip_dealer_buy|chip_foreign_buy|chip_trust_buy|manual"},
-                                        "value":  {"type": "number",  "description": "price_above/price_below 使用"},
-                                        "period": {"type": "integer", "description": "MA 週期或籌碼連續天數"},
-                                    },
-                                    "required": ["type"],
-                                },
-                            },
-                            "status": {"type": "string", "description": "pending|triggered|skipped"},
-                        },
-                        "required": ["batch", "price_low", "price_high", "size_ratio", "shares", "trigger_condition"],
-                    },
-                },
-                "trigger_condition":       {"type": "string", "description": "整體進場觸發條件（必填）"},
-                "invalidation_condition":  {"type": "string", "description": "策略失效條件（必填）"},
-                "confidence":              {"type": "string", "description": "high|medium|low（必填）"},
-                "timeframe":               {"type": "string", "description": "short|medium|long（必填）"},
-                "summary":                 {"type": "string", "description": "AI 簡述（≤100字，必填）"},
-                "expires_at":              {"type": "string", "description": "到期日 ISO datetime（選填）"},
-                "trigger_price":           {"type": "number", "description": "（deprecated）觸發價，改用 tranches"},
+                "stock_code":      {"type": "string",  "description": "股票代號（必填）"},
+                "stock_name":      {"type": "string",  "description": "股票名稱（必填）"},
+                "action":          {"type": "string",  "description": "buy｜sell｜hold（必填）"},
+                "target_quantity": {"type": "integer", "description": "目標股數，單位為股（必填，hold 時填 0）"},
+                "priority":        {"type": "string",  "description": "normal｜urgent，預設 normal（選填）"},
+                "notes":           {"type": "string",  "description": "布局理由或注意事項（選填，≤200字）"},
             },
-            "required": [
-                "stock_code", "stock_name", "trade_type", "reference_price",
-                "stop_loss_price", "target_price_low", "target_price_high",
-                "confidence", "timeframe", "summary",
-                "trigger_condition", "invalidation_condition",
-            ],
+            "required": ["stock_code", "stock_name", "action", "target_quantity"],
         },
     },
     {
         "name": "get_trading_strategy",
-        "description": "取得指定個股的現有交易策略。無資料時回傳 {stockCode, strategy: null}。",
+        "description": "取得指定個股的現有布局意圖（含進度：目標/已執行/剩餘股數）。無資料時回傳 {stockCode, strategy: null}。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -976,171 +932,58 @@ async def _set_asset_tags(arguments: dict) -> dict:
 
 # ─── M10/M13 handlers ────────────────────────────────────────────────────────
 
-_VALID_TRADE_TYPES = {"entry", "add", "reduce", "exit", "stop_loss", "take_profit", "watch"}
-_VALID_CONFIDENCE  = {"high", "medium", "low"}
-_VALID_TIMEFRAME   = {"short", "medium", "long"}
-_CHIP_RULE_TYPES        = frozenset({"chip_dealer_buy", "chip_foreign_buy", "chip_trust_buy"})
-_PERIOD_REQUIRED_TYPES  = frozenset({"chip_dealer_buy", "chip_foreign_buy", "chip_trust_buy", "price_above_ma"})
-_VALUE_REQUIRED_TYPES   = frozenset({"price_above", "price_below"})
-
-
-def _compute_risk_reward(trade_type: str, ref_price: float, stop_loss, tgt_low) -> float | None:
-    """M-1: 計算風報比，語義不適用或數值異常時回 None"""
-    if trade_type in ("watch", "exit"):
-        return None
-    if stop_loss is None or tgt_low is None:
-        return None
-    denom = ref_price - float(stop_loss)
-    if denom <= 0:
-        return None
-    if float(tgt_low) <= ref_price:
-        return None
-    return round((float(tgt_low) - ref_price) / denom, 2)
+_VALID_STRATEGY_ACTIONS  = {"buy", "sell", "hold"}
+_VALID_STRATEGY_PRIORITY = {"normal", "urgent"}
 
 
 async def _save_trading_strategy(arguments: dict) -> dict:
     from datetime import datetime, timezone, timedelta
 
-    stock_code             = str(arguments.get("stock_code", "")).strip()
-    stock_name             = str(arguments.get("stock_name", "")).strip()
-    trade_type             = str(arguments.get("trade_type", "")).strip()
-    reference_price        = arguments.get("reference_price")
-    stop_loss_price        = arguments.get("stop_loss_price")
-    target_price_low       = arguments.get("target_price_low")
-    target_price_high      = arguments.get("target_price_high")
-    confidence             = str(arguments.get("confidence", "")).strip()
-    timeframe              = str(arguments.get("timeframe", "")).strip()
-    summary                = str(arguments.get("summary", "")).strip()
-    trigger_condition      = str(arguments.get("trigger_condition") or "")
-    invalidation_condition = str(arguments.get("invalidation_condition") or "")
-    expires_at             = arguments.get("expires_at")
-    tranches_input         = arguments.get("tranches")       # 新格式
-    trigger_price          = arguments.get("trigger_price")  # deprecated，向後相容
+    stock_code      = str(arguments.get("stock_code", "")).strip()
+    stock_name      = str(arguments.get("stock_name", "")).strip()
+    action          = str(arguments.get("action", "")).strip()
+    target_quantity = arguments.get("target_quantity")
+    priority        = str(arguments.get("priority") or "normal").strip()
+    notes           = str(arguments.get("notes") or "").strip()
 
-    # ── 基本驗證 ──────────────────────────────────────────────────────────────
     if not stock_code:
         return _text({"error": "stock_code 為必填"})
     if not stock_name:
         return _text({"error": "stock_name 為必填"})
-    if trade_type not in _VALID_TRADE_TYPES:
-        return _text({"error": "trade_type 必須為 entry|add|reduce|exit|stop_loss|take_profit|watch"})
-    if reference_price is None:
-        return _text({"error": "reference_price 為必填"})
-    if confidence not in _VALID_CONFIDENCE:
-        return _text({"error": "confidence 必須為 high|medium|low"})
-    if timeframe not in _VALID_TIMEFRAME:
-        return _text({"error": "timeframe 必須為 short|medium|long"})
-    if not summary:
-        return _text({"error": "summary 為必填"})
-    if len(summary) > 100:
-        return _text({"error": "summary 不可超過 100 字"})
-    if tranches_input is None and trigger_price is None:
-        return _text({"error": "tranches 或 trigger_price（deprecated）至少需提供一項"})
+    if action not in _VALID_STRATEGY_ACTIONS:
+        return _text({"error": "action 必須為 buy|sell|hold"})
+    if target_quantity is None:
+        return _text({"error": "target_quantity 為必填"})
+    if priority not in _VALID_STRATEGY_PRIORITY:
+        return _text({"error": "priority 必須為 normal|urgent"})
+    if len(notes) > 200:
+        return _text({"error": "notes 不可超過 200 字"})
 
-    reference_price = float(reference_price)
-
-    # ── 建立 Firestore tranches ───────────────────────────────────────────────
-    if tranches_input is not None:
-        if not isinstance(tranches_input, list) or len(tranches_input) < 1:
-            return _text({"error": "tranches 至少需 1 筆"})
-        if len(tranches_input) > 4:
-            return _text({"error": "tranches 最多 4 批"})
-        if target_price_high is not None and target_price_low is not None:
-            if float(target_price_high) < float(target_price_low):
-                return _text({"error": "target_price_high 必須 >= target_price_low"})
-        if trade_type != "watch":
-            size_sum = sum(float(t.get("size_ratio", 0)) for t in tranches_input)
-            if not (0.99 <= size_sum <= 1.01):
-                return _text({
-                    "error": "所有 tranches 的 size_ratio 合計必須為 1.0（允許 ±0.01）",
-                    "sum":   round(size_sum, 4),
-                })
-
-        tranches_fs = []
-        for t in tranches_input:
-            rules = t.get("trigger_rules") or []
-            # 只初始化 chip_* 和 manual 的 rule_statuses；price 類不存 Firestore（H-2）
-            rule_statuses: dict = {}
-            for r in rules:
-                rtype = r.get("type", "")
-                if rtype in _CHIP_RULE_TYPES or rtype == "manual":
-                    rule_statuses[rtype] = None  # 初始 null，等批次評估
-            # 驗證必填欄位 + 過濾 triggerRules 只保留允許欄位
-            clean_rules = []
-            for r in rules:
-                rtype      = r.get("type", "")
-                batch_num  = t.get("batch", "?")
-                if rtype in _PERIOD_REQUIRED_TYPES and not isinstance(r.get("period"), int):
-                    return _text({"error": f"batch {batch_num} 的 rule '{rtype}' 缺少必填欄位 period（整數）"})
-                if rtype in _VALUE_REQUIRED_TYPES and r.get("value") is None:
-                    return _text({"error": f"batch {batch_num} 的 rule '{rtype}' 缺少必填欄位 value（數值）"})
-                entry: dict = {"type": rtype}
-                if "value" in r:
-                    entry["value"] = r["value"]
-                if "period" in r:
-                    entry["period"] = r["period"]
-                clean_rules.append(entry)
-            tranches_fs.append({
-                "batch":             int(t.get("batch", 1)),
-                "price_low":         float(t.get("price_low", 0)),
-                "price_high":        float(t.get("price_high", 0)),
-                "size_ratio":        float(t.get("size_ratio", 0)),
-                "shares":            int(t.get("shares", 0)),
-                "trigger_condition": str(t.get("trigger_condition", "")),
-                "trigger_rules":     clean_rules,
-                "rule_statuses":     rule_statuses,
-                "rule_evaluated_at": None,
-                "status":            str(t.get("status", "pending")),
-            })
-    else:
-        # Backward compat：trigger_price → tranches[0]
-        tranches_fs = [{
-            "batch":             1,
-            "price_low":         float(trigger_price),
-            "price_high":        float(trigger_price),
-            "size_ratio":        1.0,
-            "shares":            0,
-            "trigger_condition": "",
-            "trigger_rules":     [],
-            "rule_statuses":     {},
-            "rule_evaluated_at": None,
-            "status":            "pending",
-        }]
-
-    risk_reward_ratio = _compute_risk_reward(trade_type, reference_price, stop_loss_price, target_price_low)
+    target_quantity = int(target_quantity)
+    if target_quantity < 0:
+        return _text({"error": "target_quantity 不可為負數"})
 
     tz_taipei  = timezone(timedelta(hours=8))
-    created_at = datetime.now(tz=tz_taipei).isoformat()
+    updated_at = datetime.now(tz=tz_taipei).isoformat()
 
     doc_data = {
-        "stock_code":             stock_code,
-        "stock_name":             stock_name,
-        "trade_type":             trade_type,
-        "tranches":               tranches_fs,
-        "reference_price":        reference_price,
-        "stop_loss_price":        float(stop_loss_price)   if stop_loss_price   is not None else None,
-        "target_price_low":       float(target_price_low)  if target_price_low  is not None else None,
-        "target_price_high":      float(target_price_high) if target_price_high is not None else None,
-        "risk_reward_ratio":      risk_reward_ratio,
-        "trigger_condition":      trigger_condition,
-        "invalidation_condition": invalidation_condition,
-        "confidence":             confidence,
-        "timeframe":              timeframe,
-        "summary":                summary,
-        "status":                 "active",
-        "dismissed":              False,
-        "created_at":             created_at,
-        "expires_at":             expires_at,
-        # 保留 trigger_price 供舊版 Firestore 讀取（向後相容）
-        "trigger_price":          float(trigger_price) if trigger_price is not None else None,
+        "stock_code":      stock_code,
+        "stock_name":      stock_name,
+        "action":          action,
+        "target_quantity": target_quantity,
+        "priority":        priority,
+        "notes":           notes,
+        "updated_at":      updated_at,
     }
 
     loop = asyncio.get_running_loop()
 
     def _write():
-        from routers.trading_strategies import _to_dto  # 延遲 import，避免循環
-        get_db().collection("trading_strategies").document(stock_code).set(doc_data)
-        return _to_dto(stock_code, doc_data)
+        from routers.trading_strategies import _to_dto, _compute_executed
+        db = get_db()
+        db.collection("trading_strategies").document(stock_code).set(doc_data)
+        executed = _compute_executed(db, stock_code)
+        return _to_dto(stock_code, doc_data, executed)
 
     return _text(await loop.run_in_executor(None, _write))
 
@@ -1149,11 +992,13 @@ async def _get_trading_strategy(stock_code: str) -> dict:
     loop = asyncio.get_running_loop()
 
     def _read():
-        from routers.trading_strategies import _to_dto  # 延遲 import，rule_statuses key 不做 camelCase
-        doc = get_db().collection("trading_strategies").document(stock_code).get()
+        from routers.trading_strategies import _to_dto, _compute_executed
+        db  = get_db()
+        doc = db.collection("trading_strategies").document(stock_code).get()
         if not doc.exists:
             return {"stockCode": stock_code, "strategy": None}
-        return {"stockCode": stock_code, "strategy": _to_dto(doc.id, doc.to_dict())}
+        executed = _compute_executed(db, stock_code)
+        return {"stockCode": stock_code, "strategy": _to_dto(doc.id, doc.to_dict(), executed)}
 
     return _text(await loop.run_in_executor(None, _read))
 

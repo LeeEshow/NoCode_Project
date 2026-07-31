@@ -12,7 +12,6 @@ import SparkLine from '../../components/Charts/SparkLine';
 import StockExpandPanel from '../../components/StockExpandPanel';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Icon from '../../components/Icon';
-import { resolveStrategyStatus } from '../../../utils/tradingStrategy';
 import type { WatchlistItemDTO, KLineDTO, StockProfileDTO, ChipDTO, TradingStrategyDTO } from '../../../types';
 
 function fmt(n: number, decimals = 2) {
@@ -59,8 +58,7 @@ const WatchlistRow = memo(function WatchlistRow({
     useSortable({ id: item.id });
 
   const isBuy = item.signal === 'buy';
-  const hasStrategy = strategy != null && !strategy.dismissed;
-  const stratStatus = hasStrategy ? resolveStrategyStatus(strategy, item.currentPrice) : null;
+  const hasStrategy = strategy != null;
 
   const cls   = item.changePct === 0 ? 'txt-flat' : (item.isUp ? 'txt-up' : 'txt-down');
   const arrow = item.changePct === 0 ? '—' : (item.isUp ? '▲' : '▼');
@@ -141,11 +139,11 @@ const WatchlistRow = memo(function WatchlistRow({
           aria-label={hasStrategy ? `查看 ${item.stockName} AI 交易策略` : undefined}
         >
           {isBuy ? '買進' : '觀望'}
-          {hasStrategy && stratStatus !== 'expired' && (
+          {hasStrategy && (
             <span style={{
               position: 'absolute', top: -4, right: -4,
               width: 6, height: 6, borderRadius: '50%',
-              background: stratStatus === 'triggered' ? 'var(--up)' : 'var(--accent)',
+              background: strategy!.action === 'sell' ? 'var(--up)' : 'var(--accent)',
             }} />
           )}
         </button>

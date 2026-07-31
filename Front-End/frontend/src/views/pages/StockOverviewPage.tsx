@@ -370,7 +370,6 @@ export default function StockOverviewPage() {
   const liveStockInStore = usePlanStore(s => s.liveStockValue);
   const updateStockValue = usePlanStore(s => s.updateStockValue);
   const cashBalance      = useSnapshotStore(s => s.cashBalance);
-  const marketStateAuto  = useSnapshotStore(s => s.marketStateAuto);
   const totalAssetValue  = liveStockInStore + planForexValue + cashBalance;
   const scenario = useScenarioViewModel(risk.tagStats, totalAssetValue);
 
@@ -722,10 +721,7 @@ export default function StockOverviewPage() {
           stockName={addTxTarget.name}
           onClose={() => setAddTxTarget(null)}
           onSuccess={holdings.refreshAfterTx}
-          strategies={strategyVm.strategies}
-          onAddExecution={(batch, executedPrice, executedShares, transactionId, executedAt) =>
-            strategyVm.addExecution(addTxTarget.code, batch, executedPrice, executedShares, transactionId, executedAt)
-          }
+          strategy={strategyVm.strategies[addTxTarget.code] ?? null}
         />
       )}
 
@@ -747,28 +743,15 @@ export default function StockOverviewPage() {
       />
 
       {/* F01：AI 交易策略 */}
-      {(() => {
-        const activeStrategy = strategyVm.strategies[strategyModal.stockCode] ?? null;
-        const matchHolding  = holdings.items.find(h => h.stockCode === strategyModal.stockCode);
-        const matchWatchlist = watchlist.items.find(i => i.stockCode === strategyModal.stockCode);
-        return (
-          <TradingStrategyModal
-            open={strategyModal.open}
-            strategy={activeStrategy}
-            currentPrice={matchHolding?.currentPrice ?? matchWatchlist?.currentPrice ?? 0}
-            sparkline={holdings.sparklines?.[strategyModal.stockCode] ?? []}
-            positionShares={matchHolding?.shares}
-            suggestion={rebalanceSuggestions[strategyModal.stockCode]}
-            onDismiss={() => strategyVm.dismiss(strategyModal.stockCode)}
-            onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
-            onConfirmRule={(batch, ruleType, confirmed) =>
-              strategyVm.confirmManualRule(strategyModal.stockCode, batch, ruleType, confirmed)}
-            onAddExecution={(batch, executedPrice, executedShares) =>
-              strategyVm.addExecution(strategyModal.stockCode, batch, executedPrice, executedShares)}
-            marketStateAuto={marketStateAuto}
-          />
-        );
-      })()}
+      <TradingStrategyModal
+        open={strategyModal.open}
+        strategy={strategyVm.strategies[strategyModal.stockCode] ?? null}
+        stockCode={strategyModal.stockCode}
+        stockName={strategyModal.stockName}
+        onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
+        onUpdated={s => strategyVm.updateLocal(s)}
+        onRemoved={code => strategyVm.remove(code)}
+      />
     </div>
   );
 }
