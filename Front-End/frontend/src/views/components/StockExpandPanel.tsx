@@ -674,7 +674,10 @@ export default function StockExpandPanel({
                   role="tabpanel"
                   id={`expand-panel-${activeTab}`}
                   aria-labelledby={`expand-tab-${activeTab}`}
-                  style={{ flex: 1, minWidth: 0, padding: '8px 16px 12px', height: 400, overflow: 'hidden' }}
+                  style={{
+                    flex: 1, minWidth: 0, padding: '8px 16px 12px', height: 400,
+                    overflow: activeTab === 'tx' ? 'auto' : 'hidden',
+                  }}
                 >
                   {activeTab === 'kline' && (kline
                     ? <KLineSection data={kline} />
