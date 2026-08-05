@@ -8,6 +8,8 @@ import { useTransactionsViewModel } from '../../../viewmodels/useTransactionsVie
 import { toast } from '../../components/Toast';
 import type { TransactionDTO, CreateTransactionPayload } from '../../../types';
 
+const PAGE_SIZE = 8;
+
 function fmt(n: number, decimals = 2) {
   return n.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
@@ -119,8 +121,13 @@ export default function TransactionHistoryPanel({ stockCode, stockName, onAddTx,
   const vm = useTransactionsViewModel(stockCode);
   const [editingTx, setEditingTx] = useState<TransactionDTO | null>(null);
   const [deleteId,  setDeleteId]  = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => { vm.load(); }, []); // eslint-disable-line
+
+  const totalPages   = Math.max(1, Math.ceil(vm.items.length / PAGE_SIZE));
+  const currentPage  = Math.min(page, totalPages);
+  const pagedItems   = vm.items.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const handleSave = async (id: string, payload: Partial<CreateTransactionPayload>) => {
     await vm.updateTx(id, payload, () => {
@@ -180,7 +187,7 @@ export default function TransactionHistoryPanel({ stockCode, stockName, onAddTx,
               </tr>
             </thead>
             <tbody>
-              {vm.items.map(tx => (
+              {pagedItems.map(tx => (
                 <tr key={tx.id}>
                   <td><TypeTag type={tx.type} /></td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{tx.date}</td>
@@ -213,6 +220,36 @@ export default function TransactionHistoryPanel({ stockCode, stockName, onAddTx,
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!vm.loading && totalPages > 1 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          gap: 8, padding: '8px 4px 0',
+        }}>
+          <button
+            className="btn-icon"
+            disabled={currentPage === 1}
+            onClick={() => setPage(currentPage - 1)}
+            aria-label="上一頁"
+          >
+            <Icon name="chevron_left" size={24} />
+          </button>
+          <span style={{
+            fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
+            color: 'var(--dim)', minWidth: 52, textAlign: 'center',
+          }}>
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            className="btn-icon"
+            disabled={currentPage === totalPages}
+            onClick={() => setPage(currentPage + 1)}
+            aria-label="下一頁"
+          >
+            <Icon name="chevron_right" size={24} />
+          </button>
         </div>
       )}
 
