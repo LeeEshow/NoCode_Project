@@ -60,4 +60,50 @@
   - **佐證**：`grep -rn "run_coroutine_threadsafe" services/` 目前僅剩這一處。
 
   - **已套用修正（2026-07-22）**：`services/shioaji_manager.py` 的 `on_event`（`event_code == 4` 重連分支）已改為 `self._loop.call_soon_threadsafe(asyncio.ensure_future, self._resubscribe_startup())`，比照 `on_fop_tick` 已驗證模式，並補上相同說明註解。全文複查 `python-backend/` 已無殘留 `run_coroutine_threadsafe` 呼叫。
-  - **待驗證**：需部署至 GCE 後，在盤中觀察至少一次 Shioaji 斷線重連事件（或人為觸發），確認 process 不再卡死、`fastapi.service` 維持正常回應。驗證通過後再將本項標記為完成並移入「現況」區塊。
+  - **⚠️ 驗證結果：修正不完全，8/6 又復發**。2026-08-06 12:31–12:33（台北時間；伺服器為 UTC）再次發生同樣症狀，`git log -1` 確認 GCE 上已跑著含上述修正的版本（commit `4768284`），`grep` 確認全專案已無 `run_coroutine_threadsafe`。代表 `on_event` 那個修法本身沒錯，但**不是這個 bug 唯一的觸發點**，Shioaji 1.5.0 原生 tick 派送層與 Python 3.14 的 GIL 互動存在不只一處風險，無法靠逐一修補 Python callback 根治。詳細後續診斷、與 Gemini/Antigravity（暱稱 agy）交叉討論後的共識與待辦，見下方新條目。
+
+---
+
+- **【規劃中】Shioaji GIL 卡死 — 根因升級診斷 + 分層防護計畫（2026-08-07，Claude + Gemini/Antigravity 交叉審查共識）**
+
+  ### 已知事實（三次卡死事件時間軸，伺服器時區確認為 UTC）
+
+  | 事件 | UTC 時間 | 台北時間 | 落點 |
+  |------|----------|----------|------|
+  | Jun 17 | 03:26–03:31 | 11:26–11:31 | 台股盤中 |
+  | Jul 14 | 01:00–01:03 | 09:00–09:03 | 台股開盤瞬間 |
+  | Aug 06 | 04:31–04:33 | 12:31–12:33 | 台股盤中 |
+
+  三次全部發生在台股交易時段內，跟日夜盤換盤時間點（台北 05:00／15:00）對不上，**收盤後關閉 Shioaji 連線對這三次事件沒有幫助**——卡死當下連線本來就是必要的，此方向已評估後排除。
+
+  ### 根因層級診斷
+
+  1. **GIL 整個被卡死，不是單純某個 coroutine 忘記 await**。8/6 事件用 `py-spy dump` 抓到 `on_stk_tick`（`services/shioaji_manager.py:83`）卡在原生 callback thread，但更關鍵的是：`main.py` 既有的 `_watchdog_thread`（heartbeat 90 秒逾時 or HTTP `/health` 連續 3 次失敗 → 自動 `SIGTERM`）**這次完全沒有觸發**，卡了 5 天沒自動重啟。Watchdog thread 本身也是 Python thread，一樣需要 GIL 才能執行 `os.kill()`，GIL 死鎖時它自己也一起被凍結，這是「進程內 watchdog」的結構性缺陷，不是這次才有的巧合。
+  2. 確認開發環境 GIL 為標準開啟模式（`sys._is_gil_enabled() == True`），排除 free-threading build 的臆測。
+  3. 查證 Shioaji PyPI metadata：`requires_python = ">=3.7"`，無上限、無版本 classifier，官方沒有為任何特定 Python 版本背書。降版建議的理由**不是**「Python 3.14 不穩定」（3.14 已於 2025/10 GA，伺服器上的 `3.14.5` 是第 5 個 patch release，屬正常穩定版），而是「Shioaji 是小眾券商 SDK，底層 pybind11 編譯的原生 C++ thread，實務上不太可能驗證過最新 CPython 內部機制（3.13+ 為 free-threading 鋪路調整了不少 threading 底層），且本專案已獨立在 `on_fop_tick`、`on_event` 兩處分別踩過同一類『Python 3.14 callback thread + threading lock』的坑，這次 `on_stk_tick` 附近又復發，指向問題出在 Shioaji 原生派送層，不是能靠逐一修 Python callback 根治的」。
+
+  ### 執行優先順序（依風險/效益排序，前後兩層彼此獨立可平行進行）
+
+  **順位 1（已完成，2026-08-07）：Systemd 外部 Watchdog（`sd_notify` + `WatchdogSec`）**
+
+  - **實作**：commit `ee40ad6`（`main.py` 新增 `_sd_notify`/`_http_healthy_async`/`_sd_notify_loop`）、`e0e3877`（補啟動緩衝期修正部署後觀察到的偽陽性）。`/etc/systemd/system/fastapi.service` 改 `Type=notify` + `WatchdogSec=90`（此檔不在 git repo，已於 GCE 手動改）。
+  - **部署驗證**：`journalctl` 確認 `Running under systemd Type=notify; external watchdog active (WatchdogSec)` 正常輸出；啟動後每 15 秒一次 `GET /health` 皆為 `200 OK`，無任何 `Warning: HTTP health check failed`。
+  - **過程教訓（記錄避免重演）**：第一次部署時**先改了 systemd 設定、後補程式碼**，導致舊版程式碼（不會送 `READY=1`）遇到 `Type=notify` 卡在 `activating (start)` 直到逾時。往後任何需要「程式碼 + systemd 設定」搭配生效的變更，**必須先確認新程式碼已部署到伺服器並重啟驗證過，才能動 systemd unit 設定**，順序不可顛倒。
+  - **尚未驗證的部分**：目前只確認「正常運作時不會誤判、不會亂重啟」，**尚未實際驗證「event loop 真的卡死時，systemd 是否會在 90 秒內確實強制重啟」**。建議找非交易時段找方式模擬卡死（如故意跑一段長時間佔用 GIL 的同步操作）驗證這條路徑，目前無法保證 watchdog 對真實 GIL 死鎖有效，只能保證邏輯設計上應該有效。
+
+  **順位 2（現在排期、獨立驗證軌道，不可因順位 1 上線而降低優先度）：Python 3.14 → 3.12 降版**
+  - 理由：Watchdog 只縮短卡死後的恢復時間，不會降低卡死本身的發生機率；三次事件都在盤中，每次卡死對交易輔助系統都是真實成本。用「觀察一兩週重啟頻率」來決定要不要降版在統計上不成立——三次已知事件全靠人工發現才被記錄，watchdog 上線前完全沒有系統性監控，樣本數本身就是低估的下界；且已知事件間隔本來就是數週一次，一兩週的觀察窗不具統計意義。
+  - 影響範圍（明顯大於順位 1，需獨立測試視窗）：整個 `.venv` 重建（`requirements.txt` 內容不變，3.12 下重新安裝）、需完整跑 `pytest` 並手動驗證所有 Shioaji 依賴功能（即時報價、台指期快取、22 個 MCP Tool、開機暖身流程）、建議先在獨立測試環境驗證再切換 production，不要原地降版。爆炸半徑是整個後端而非只有 Shioaji。
+
+  **順位 3（現在只做設計，不可上線）：Shioaji Canary 自癒機制（TXF tick 新鮮度監控 + 分層修復）**
+  - 概念：`services/shioaji_manager.py` 新增背景迴圈，若台指期近月合約 tick 在交易時段內超過設定秒數未更新，先呼叫既有的 scoped reinitialize 邏輯自我修復，僅在連續多次失敗後才升級為停止送 `WATCHDOG=1`、觸發 systemd 全域重啟（避免子系統故障就讓完全不依賴 Shioaji 的其他 API 一起被重啟拖下水）。
+  - **上線前必須解決的阻塞項（目前設計有真實漏洞，未解決前不可部署）**：
+    1. 「是否為交易時段」的判斷**不可另外手刻一套規則**，必須與既有 `_txf_session()` 共用同一個真實來源，避免專案內出現兩套不一致的交易時段定義。
+    2. **完全沒有處理國定假日**（尤其農曆春節連續休市近一週）。目前設計只用星期幾 + 時分判斷，遇到長假會連續好幾天每隔設定週期誤判為「tick 黑洞」並瘋狂觸發 reinitialize，正是設計本身想避免的「重連風暴導致帳號被鎖」風險，只是觸發原因從網路中斷換成假日誤判。**建議先確認 Shioaji SDK 是否有官方交易日曆/合約狀態查詢 API，沒有的話至少要接一份有維護的休市日清單（可先查 FinMind 資料源是否已有交易日曆端點），不要重新手刻曆法規則**——手刻日期邊界正是 `_txf_session()` 換盤那次 bug 的同一種風險類型，這次會出現在故障偵測機制本身。
+    3. 自動觸發 reinitialize 前必須檢查並共用既有的 `self._reinitializing` flag，避免跟手動觸發的 `POST /system/shioaji/reinitialize` 端點併發登入。
+    4. `shioaji_enabled() == False`（如本機開發未設定 API key）時，canary 背景迴圈不應啟動，避免拿空 cache 誤判。
+  - 影響範圍（阻塞項解決後）：僅限 `services/shioaji_manager.py`，自癒動作只重建 Shioaji 連線，不影響其他 API；只有多次失敗才升級為全域重啟。
+
+  **順位 4（現階段不執行，僅保留為後路）：Multiprocessing 隔離**
+  - 將 Shioaji 連線隔離至獨立子進程，即使該進程卡死也不影響主 FastAPI process；若未來降版後仍復發，代表問題不是 Python 版本造成、而是 Shioaji SDK 自身的併發問題，屆時這會是唯一的結構性解法。
+  - 現階段不確定降版能否解決根因之前先不投入，避免浪費工程資源；若真的要做，設計原則是子進程只做「啟動 Shioaji + 接收 tick」，透過 Pipe/Queue 只回傳純資料（`code, price, timestamp` 等），避免傳遞無法 pickle 的 Shioaji C++ 物件。
