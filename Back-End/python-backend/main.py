@@ -98,6 +98,7 @@ async def _sd_notify_loop() -> None:
     重啟的是 systemd 在進程外部依 WatchdogSec 逾時，這個因果順序不要寫反。"""
     _sd_notify("READY=1\nSTATUS=Application initialized")
     logger.info("Systemd NOTIFY_SOCKET detected, external watchdog enabled")
+    await asyncio.sleep(15)  # 等 uvicorn listen socket 完全穩定，避免啟動瞬間偽陽性失敗
     http_fail = 0
     while True:
         if await _http_healthy_async():
