@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import signal
+import socket
 import sys
 import threading
 import time
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 # ── Event Loop Watchdog ────────────────────────────────────────────────────────
 _heartbeat_ts: float = 0.0  # asyncio 協程每 5s 更新；OS thread 監控是否停止
+_NOTIFY_SOCKET = os.environ.get("NOTIFY_SOCKET")  # systemd Type=notify 時由 systemd 注入
 
 async def _heartbeat_loop() -> None:
     global _heartbeat_ts
@@ -46,6 +48,72 @@ def _http_healthy() -> bool:
             return b"200" in s.recv(64)
     except Exception:
         return False
+
+
+def _sd_notify(status: str) -> None:
+    """透過 Unix Domain Socket 向 systemd 發送通知，純標準庫實作（免裝 python-systemd）。
+    NOTIFY_SOCKET 未設定（非 systemd Type=notify 環境）時直接跳過。"""
+    if not _NOTIFY_SOCKET:
+        return
+    addr = _NOTIFY_SOCKET
+    if addr.startswith("@"):
+        addr = "\x00" + addr[1:]  # abstract namespace socket
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+            s.connect(addr)
+            s.sendall(status.encode("utf-8"))
+    except Exception as e:
+        logger.debug("sd_notify failed: %s", e)
+
+
+async def _http_healthy_async(timeout: float = 5.0) -> bool:
+    """非同步版 /health 檢查，維持與 _http_healthy 相同的嚴謹度（完整 HTTP GET
+    並驗證 200 回應，不只是 TCP handshake——event loop 卡死時 kernel accept
+    queue 仍可能自行完成三次握手，只測連線會有偽陽性）。不佔用共用
+    _io_executor，避免跟業務邏輯搶 thread。"""
+    writer = None
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection("127.0.0.1", 8000), timeout=timeout
+        )
+        writer.write(b"GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n")
+        await writer.drain()
+        data = await asyncio.wait_for(reader.read(64), timeout=timeout)
+        return b"200" in data
+    except Exception:
+        return False
+    finally:
+        if writer is not None:
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), timeout=2)
+            except Exception:
+                pass
+
+
+async def _sd_notify_loop() -> None:
+    """systemd Type=notify 環境專用的外部監控回報迴圈。
+    注意：GIL 死鎖時本協程會直接停止被排程執行，並非「偵測到卡住後主動停止」
+    ——process 內部沒有任何程式碼能在 GIL 死鎖當下判斷自己被卡住。真正動手
+    重啟的是 systemd 在進程外部依 WatchdogSec 逾時，這個因果順序不要寫反。"""
+    _sd_notify("READY=1\nSTATUS=Application initialized")
+    logger.info("Systemd NOTIFY_SOCKET detected, external watchdog enabled")
+    http_fail = 0
+    while True:
+        if await _http_healthy_async():
+            http_fail = 0
+            _sd_notify("WATCHDOG=1\nSTATUS=Healthy")
+        else:
+            http_fail += 1
+            logger.warning("sd_notify: HTTP health check failed (%d/3)", http_fail)
+            if http_fail < 3:
+                _sd_notify("WATCHDOG=1\nSTATUS=Warning: HTTP health check failed")
+            else:
+                logger.critical(
+                    "HTTP health check failed 3 consecutive times! Stopping WATCHDOG=1, "
+                    "systemd will force-restart within WatchdogSec."
+                )
+        await asyncio.sleep(15)
 
 
 def _watchdog_thread(threshold: float = 90.0) -> None:
@@ -137,14 +205,24 @@ async def lifespan(app: FastAPI):
             logger.warning("Shioaji warmup failed (non-critical): %s", e)
 
     # ── Event loop watchdog 啟動 ─────────────────────────────────────────────
+    # 有 systemd NOTIFY_SOCKET（Type=notify）時改用外部 sd_notify watchdog：
+    # 進程內 watchdog thread 一樣需要 GIL 才能執行 os.kill()，GIL 死鎖時會跟
+    # 主程式一起被凍結，無法真正兜底；systemd 在進程外部偵測逾時不受影響。
     _heartbeat_task = asyncio.ensure_future(_heartbeat_loop())
-    threading.Thread(target=_watchdog_thread, daemon=True, name="el-watchdog").start()
-    logger.info("Event loop watchdog started (threshold=90s)")
+    _sd_notify_task = None
+    if _NOTIFY_SOCKET:
+        _sd_notify_task = asyncio.ensure_future(_sd_notify_loop())
+        logger.info("Running under systemd Type=notify; external watchdog active (WatchdogSec)")
+    else:
+        threading.Thread(target=_watchdog_thread, daemon=True, name="el-watchdog").start()
+        logger.info("Event loop watchdog started (threshold=90s, local in-process mode)")
 
     yield
 
     # ── Shioaji shutdown ──────────────────────────────────────────────────────
     _heartbeat_task.cancel()
+    if _sd_notify_task is not None:
+        _sd_notify_task.cancel()
     if _warmup_task is not None and not _warmup_task.done():
         _warmup_task.cancel()
         try:
