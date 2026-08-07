@@ -89,7 +89,9 @@
   - **實作**：commit `ee40ad6`（`main.py` 新增 `_sd_notify`/`_http_healthy_async`/`_sd_notify_loop`）、`e0e3877`（補啟動緩衝期修正部署後觀察到的偽陽性）。`/etc/systemd/system/fastapi.service` 改 `Type=notify` + `WatchdogSec=90`（此檔不在 git repo，已於 GCE 手動改）。
   - **部署驗證**：`journalctl` 確認 `Running under systemd Type=notify; external watchdog active (WatchdogSec)` 正常輸出；啟動後每 15 秒一次 `GET /health` 皆為 `200 OK`，無任何 `Warning: HTTP health check failed`。
   - **過程教訓（記錄避免重演）**：第一次部署時**先改了 systemd 設定、後補程式碼**，導致舊版程式碼（不會送 `READY=1`）遇到 `Type=notify` 卡在 `activating (start)` 直到逾時。往後任何需要「程式碼 + systemd 設定」搭配生效的變更，**必須先確認新程式碼已部署到伺服器並重啟驗證過，才能動 systemd unit 設定**，順序不可顛倒。
-  - **尚未驗證的部分**：目前只確認「正常運作時不會誤判、不會亂重啟」，**尚未實際驗證「event loop 真的卡死時，systemd 是否會在 90 秒內確實強制重啟」**。建議找非交易時段找方式模擬卡死（如故意跑一段長時間佔用 GIL 的同步操作）驗證這條路徑，目前無法保證 watchdog 對真實 GIL 死鎖有效，只能保證邏輯設計上應該有效。
+  - **✅ 真實事故驗證通過（2026-08-07 01:13–01:15 UTC）**：部署後不到 10 分鐘，剛好又發生一次真實的 GIL 卡死，watchdog 完整生效：`01:13:10` 最後一次健康檢查成功 → event loop 卡住 → `01:14:40` systemd 判定 `Watchdog timeout (limit 1min 30s)`，送 `SIGABRT` 強制終止（`status=6/ABRT`）→ `Restart=always` 於 `01:14:51` 排程重啟 → `01:15:00` 服務完全恢復。**從卡死到自動恢復全程約 110 秒，零人工介入**，對比先前一次卡 5 天沒人發現，順位 1 的價值已用真實事件證實。
+    - 底層 GIL 卡死本身**沒有解決**，這次只證明「卡死後的自動恢復」有效，不影響順位 2、3 的必要性與優先度。
+    - 嘗試用 `coredumpctl` 撈這次卡死當下的 thread 狀態（`code=dumped` 代表理論上有 core dump），但伺服器未安裝 `systemd-coredump`，無法取得這次卡死當下的第一手 stack trace，只能等下次卡死時人工 `py-spy dump`（若剛好在系統重啟前來得及）才能補上更多細節。
 
   **順位 2（現在排期、獨立驗證軌道，不可因順位 1 上線而降低優先度）：Python 3.14 → 3.12 降版**
   - 理由：Watchdog 只縮短卡死後的恢復時間，不會降低卡死本身的發生機率；三次事件都在盤中，每次卡死對交易輔助系統都是真實成本。用「觀察一兩週重啟頻率」來決定要不要降版在統計上不成立——三次已知事件全靠人工發現才被記錄，watchdog 上線前完全沒有系統性監控，樣本數本身就是低估的下界；且已知事件間隔本來就是數週一次，一兩週的觀察窗不具統計意義。
