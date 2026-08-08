@@ -572,4 +572,4 @@ async def test_add_execution_partial_not_completed(client, cleanup):
 async def test_tools_list_count_22(client):
     res   = await client.post(MCP, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     tools = res.json()["result"]["tools"]
-    assert len(tools) == 22, f"預期 22 個 tool，實際 {len(tools)}"
+    assert len(tools) == 24, f"預期 24 個 tool，實際 {len(tools)}"

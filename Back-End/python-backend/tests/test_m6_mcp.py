@@ -39,6 +39,9 @@ TOOL_NAMES = {
     # M10 交易策略工具
     "save_trading_strategy",
     "get_trading_strategy",
+    # M11 每日評估工具
+    "save_daily_assessment",
+    "get_daily_assessments",
 }
 
 

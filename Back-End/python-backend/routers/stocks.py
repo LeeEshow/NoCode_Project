@@ -87,10 +87,37 @@ def list_meta():
 
 @router.post("/list/refresh")
 def list_refresh():
-    import os
-    if not os.getenv("SHIOAJI_API_URL"):
-        raise HTTPException(status_code=400, detail="未設定 SHIOAJI_API_URL，此端點需要 Shioaji 服務")
-    raise HTTPException(status_code=501, detail="Shioaji 整合尚未啟用")
+    import datetime as dt
+    from services.shioaji_manager import shioaji_manager
+
+    if not shioaji_manager.initialized:
+        raise HTTPException(status_code=503, detail="Shioaji 未連線，無法更新股票清單")
+
+    api = shioaji_manager.api
+    stocks: list[dict] = []
+    for exchange, market_label in [("TSE", "TSE"), ("OTC", "OTC")]:
+        try:
+            group = getattr(api.Contracts.Stocks, exchange)
+            for c in group:
+                stocks.append({"code": c.code, "name": c.name, "market": market_label})
+        except Exception:
+            pass
+
+    if not stocks:
+        raise HTTPException(status_code=502, detail="無法從 Shioaji 取得合約清單")
+
+    count = len(stocks)
+    updated_at = dt.datetime.now(dt.timezone.utc).isoformat()
+
+    db = get_db()
+    db.collection("stock_list").document("data").set({
+        "stocks":     stocks,
+        "count":      count,
+        "updated_at": updated_at,
+    })
+    cache_set("stocks:all-list", stocks, 3600)
+
+    return {"success": True, "data": {"count": count, "updatedAt": updated_at}}
 
 
 # ─── POST /stocks/quotes ─────────────────────────────────────────────────────
