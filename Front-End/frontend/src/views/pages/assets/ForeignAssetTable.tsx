@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import Icon from '../../components/Icon';
 import type { ForeignAssetDTO, CreateForeignAssetPayload } from '../../../types';
 
@@ -15,7 +15,7 @@ function yearsTo(maturityDate: string | null): number {
 }
 
 function maturityValue(item: ForeignAssetDTO): number | null {
-  if (!item.maturityDate) return null; // 活存：不顯示
+  if (!item.maturityDate) return null;
   const years = yearsTo(item.maturityDate);
   return item.amount * (1 + item.interestRate * years);
 }
@@ -30,18 +30,21 @@ const TYPE_COLOR: Record<string, string> = {
 
 function TypeBadge({ type }: { type: string }) {
   return (
-    <span className="fa-type-badge" style={{ '--badge-color': TYPE_COLOR[type] ?? 'var(--dim)' } as React.CSSProperties}>
+    <span
+      className="fa-type-badge"
+      style={{ '--badge-color': TYPE_COLOR[type] ?? 'var(--dim)' } as React.CSSProperties}
+    >
       {type}
     </span>
   );
 }
 
-/* ── RateCell（匯率選擇） ── */
+/* ── RateCell：單列，匯率值 + 模式 badge ── */
 
 interface RateCellProps {
-  item:    ForeignAssetDTO;
-  saving:  boolean;
-  onSave:  (patch: Partial<CreateForeignAssetPayload>) => void;
+  item:   ForeignAssetDTO;
+  saving: boolean;
+  onSave: (patch: Partial<CreateForeignAssetPayload>) => void;
 }
 
 function RateCell({ item, saving, onSave }: RateCellProps) {
@@ -51,52 +54,56 @@ function RateCell({ item, saving, onSave }: RateCellProps) {
 
   if (item.currency === 'TWD') return <span className="fa-dim">—</span>;
 
-  return (
-    <div className="assets-rate-cell">
-      {/* 即時匯率 */}
-      <label className={`assets-rate-row${!item.useManualRate ? ' active' : ''}`}>
-        <input
-          type="radio"
-          checked={!item.useManualRate}
-          disabled={saving}
-          onChange={() => onSave({ useManualRate: false })}
-        />
-        <span className="assets-rate-label">即時</span>
-        <span className="assets-rate-value">
-          {item.liveRate != null ? fmt(item.liveRate, 4) : '—'}
-        </span>
-      </label>
+  const liveDisplay = item.liveRate != null ? fmt(item.liveRate, 4) : null;
 
-      {/* 手動匯率 */}
-      <label className={`assets-rate-row${item.useManualRate ? ' active' : ''}`}>
-        <input
-          type="radio"
-          checked={item.useManualRate}
-          disabled={saving}
-          onChange={() => {
-            const rate = item.manualRate > 0 ? item.manualRate : (item.liveRate ?? 0);
-            setManualDraft(String(rate));
-            onSave({ useManualRate: true, manualRate: rate });
-          }}
-        />
-        <span className="assets-rate-label">手動</span>
-        <input
-          className="assets-rate-input"
-          type="number"
-          min={0}
-          step={0.001}
-          value={manualDraft}
-          disabled={saving || !item.useManualRate}
-          onChange={e => setManualDraft(e.target.value)}
-          onBlur={() => {
-            const v = parseFloat(manualDraft);
-            if (!isNaN(v) && v > 0 && v !== item.manualRate) {
-              onSave({ useManualRate: true, manualRate: v });
-            }
-          }}
-          onClick={e => e.stopPropagation()}
-        />
-      </label>
+  return (
+    <div className="assets-rate-inline">
+      {item.useManualRate ? (
+        <>
+          <input
+            className="assets-rate-input"
+            type="number"
+            min={0}
+            step={0.001}
+            value={manualDraft}
+            disabled={saving}
+            onChange={e => setManualDraft(e.target.value)}
+            onBlur={() => {
+              const v = parseFloat(manualDraft);
+              if (!isNaN(v) && v > 0 && v !== item.manualRate) {
+                onSave({ useManualRate: true, manualRate: v });
+              }
+            }}
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            className="assets-rate-badge assets-rate-badge--manual"
+            disabled={saving}
+            onClick={() => onSave({ useManualRate: false })}
+            title={liveDisplay ? `即時匯率 ${liveDisplay}，點擊切換` : '點擊切換為即時匯率'}
+          >
+            手動
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="assets-rate-live-value">
+            {liveDisplay ?? <span className="fa-dim">—</span>}
+          </span>
+          <button
+            className="assets-rate-badge assets-rate-badge--live"
+            disabled={saving}
+            onClick={() => {
+              const rate = item.manualRate > 0 ? item.manualRate : (item.liveRate ?? 0);
+              setManualDraft(String(rate));
+              onSave({ useManualRate: true, manualRate: rate });
+            }}
+            title="點擊切換為手動匯率"
+          >
+            即時
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -119,24 +126,24 @@ export default function ForeignAssetTable({
   if (items.length === 0) {
     return (
       <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
-        尚無外幣資產，點擊右上方的「新增」加入
+        尚無固定收益資產，點擊右上方的「新增」加入
       </div>
     );
   }
 
   return (
-    <div className="ft-table-wrap">
-      <table className="ft-table">
+    <div className="ft-table-scroll">
+      <table className="ft-table" style={{ width: '100%', minWidth: 860 }}>
         <thead>
           <tr>
-            <th>類型</th>
-            <th>幣別 / 名稱</th>
-            <th style={{ textAlign: 'right' }}>持有金額</th>
-            <th style={{ textAlign: 'right' }}>年利率</th>
-            <th>到期日</th>
-            <th>匯率</th>
-            <th style={{ textAlign: 'right' }}>到期估值</th>
-            <th style={{ textAlign: 'right' }}>台幣換算</th>
+            <th style={{ width: 64, whiteSpace: 'nowrap' }}>類別</th>
+            <th style={{ width: 180, whiteSpace: 'nowrap' }}>標題</th>
+            <th style={{ textAlign: 'right', width: 130, whiteSpace: 'nowrap' }}>持有金額</th>
+            <th style={{ textAlign: 'right', width: 80, whiteSpace: 'nowrap' }}>年利率</th>
+            <th style={{ width: 150, whiteSpace: 'nowrap' }}>匯率</th>
+            <th style={{ textAlign: 'right', width: 110, whiteSpace: 'nowrap' }}>台幣換算</th>
+            <th style={{ textAlign: 'right', width: 130, whiteSpace: 'nowrap' }}>到期估值</th>
+            <th style={{ whiteSpace: 'nowrap' }}>備註</th>
             <th style={{ width: 72 }}></th>
           </tr>
         </thead>
@@ -144,28 +151,24 @@ export default function ForeignAssetTable({
           {items.map(item => {
             const effectiveRate = item.currency === 'TWD' ? 1
               : (item.useManualRate ? item.manualRate : (item.liveRate ?? 0));
-            const twdValue  = item.amount * effectiveRate;
-            const matVal    = maturityValue(item);
+            const twdValue = item.amount * effectiveRate;
+            const matVal   = maturityValue(item);
 
             return (
               <tr key={item.id}>
-                {/* 類型 */}
+                {/* 類別 */}
                 <td><TypeBadge type={item.type} /></td>
 
-                {/* 幣別 / 名稱 */}
+                {/* 標題 */}
                 <td>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{item.currency}</span>
-                    {item.name && (
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>{item.name}</span>
-                    )}
-                  </div>
+                  <span style={{ fontWeight: 500 }}>{item.title}</span>
                 </td>
 
-                {/* 持有金額（行內輸入） */}
+                {/* 持有金額（行內輸入 + 幣別單位） */}
                 <td style={{ textAlign: 'right' }}>
                   <AmountInput
                     value={item.amount}
+                    currency={item.currency}
                     saving={saving}
                     onSave={amount => onPatch(item.id, { amount })}
                   />
@@ -173,15 +176,12 @@ export default function ForeignAssetTable({
 
                 {/* 年利率 */}
                 <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)' }}>
-                  {item.interestRate > 0 ? `${fmt(item.interestRate * 100, 2)}%` : <span className="fa-dim">—</span>}
+                  {item.interestRate > 0
+                    ? `${fmt(item.interestRate * 100, 2)}%`
+                    : <span className="fa-dim">—</span>}
                 </td>
 
-                {/* 到期日 */}
-                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-value)' }}>
-                  {item.maturityDate ?? <span className="fa-dim">活存</span>}
-                </td>
-
-                {/* 匯率 */}
+                {/* 匯率（單列） */}
                 <td>
                   <RateCell
                     item={item}
@@ -190,17 +190,34 @@ export default function ForeignAssetTable({
                   />
                 </td>
 
-                {/* 到期估值（原幣） */}
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)' }}>
-                  {matVal != null
-                    ? <>{fmt(matVal, 0)} <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>{item.currency}</span></>
-                    : <span className="fa-dim">—</span>
-                  }
-                </td>
-
                 {/* 台幣換算 */}
                 <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)', fontWeight: 600 }}>
-                  {fmt(twdValue, 0)}
+                  <span>{fmt(twdValue, 0)}</span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginLeft: 3 }}>NT</span>
+                </td>
+
+                {/* 到期估值 */}
+                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)' }}>
+                  {matVal != null
+                    ? <>
+                        {fmt(matVal, 0)}
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginLeft: 3 }}>{item.currency}</span>
+                      </>
+                    : <span className="fa-dim">—</span>}
+                </td>
+
+                {/* 備註（過長截斷，hover 顯示全文） */}
+                <td>
+                  {item.notes
+                    ? (
+                      <span
+                        className="fa-notes-cell"
+                        title={item.notes}
+                      >
+                        {item.notes}
+                      </span>
+                    )
+                    : <span className="fa-dim">—</span>}
                 </td>
 
                 {/* 操作 */}
@@ -208,7 +225,7 @@ export default function ForeignAssetTable({
                   <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                     <button
                       className="btn-icon"
-                      title="編輯"
+                      aria-label="編輯"
                       disabled={saving}
                       onClick={() => onEdit(item)}
                     >
@@ -216,7 +233,7 @@ export default function ForeignAssetTable({
                     </button>
                     <button
                       className="btn-icon"
-                      title="刪除"
+                      aria-label="刪除"
                       disabled={saving}
                       onClick={() => onDelete(item.id)}
                     >
@@ -233,30 +250,35 @@ export default function ForeignAssetTable({
   );
 }
 
-/* ── 行內金額輸入 ── */
+/* ── 行內金額輸入（帶幣別單位） ── */
 
-function AmountInput({ value, saving, onSave }: {
-  value:  number;
-  saving: boolean;
-  onSave: (v: number) => void;
+function AmountInput({ value, currency, saving, onSave }: {
+  value:    number;
+  currency: string;
+  saving:   boolean;
+  onSave:   (v: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
 
   return (
-    <input
-      className="assets-inline-input"
-      style={{ textAlign: 'right' }}
-      type="number"
-      min={0}
-      value={draft}
-      disabled={saving}
-      onChange={e => setDraft(e.target.value)}
-      onBlur={() => {
-        const v = parseFloat(draft);
-        if (!isNaN(v) && v >= 0 && v !== value) onSave(v);
-        else setDraft(String(value));
-      }}
-    />
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end' }}>
+      <input
+        className="assets-inline-input"
+        style={{ textAlign: 'right' }}
+        type="number"
+        min={0}
+        value={draft}
+        disabled={saving}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => {
+          const v = parseFloat(draft);
+          if (!isNaN(v) && v >= 0 && v !== value) onSave(v);
+          else setDraft(String(value));
+        }}
+      />
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+        {currency}
+      </span>
+    </div>
   );
 }
-

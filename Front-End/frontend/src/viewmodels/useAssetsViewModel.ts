@@ -5,6 +5,7 @@ import {
   updateForeignAsset,
   deleteForeignAsset,
 } from '../models/foreignAssetModel';
+import { usePlanStore } from '../stores/planStore';
 import type { ForeignAssetDTO, CreateForeignAssetPayload } from '../types';
 
 interface State {
@@ -85,6 +86,13 @@ export function useAssetsViewModel() {
     const rate = item.useManualRate ? item.manualRate : (item.liveRate ?? 0);
     return sum + item.amount * rate;
   }, 0);
+
+  /* 同步到 planStore，讓 PanelHeader / StockOverviewPage 在 AssetsPage 操作後即時更新 */
+  useEffect(() => {
+    if (!state.loading) {
+      usePlanStore.setState({ forexValue: totalTwd });
+    }
+  }, [totalTwd, state.loading]);
 
   return {
     ...state,

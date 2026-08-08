@@ -1,12 +1,13 @@
 """M2-E 驗證：foreign-assets + liveRate 注入"""
 from tests.helpers import assert_success, assert_keys, assert_no_snake
 
-ASSET_KEYS = ["id", "type", "name", "currency", "amount", "interestRate",
+ASSET_KEYS = ["id", "type", "title", "notes", "currency", "amount", "interestRate",
               "maturityDate", "useManualRate", "manualRate", "updatedAt", "liveRate"]
 
 TEST_ASSET = {
     "type":          "活存",
-    "name":          "pytest 測試",
+    "title":         "pytest 測試",
+    "notes":         "",
     "currency":      "USD",
     "amount":        1000.0,
     "interestRate":  0.03,
@@ -39,6 +40,12 @@ async def test_get_assets_has_live_rate(client):
 
 async def test_create_asset_validates_type(client):
     bad = {**TEST_ASSET, "type": "invalid"}
+    res = await client.post("/api/v1/foreign-assets/", json=bad)
+    assert res.status_code == 400
+
+
+async def test_create_asset_validates_title(client):
+    bad = {**TEST_ASSET, "title": ""}
     res = await client.post("/api/v1/foreign-assets/", json=bad)
     assert res.status_code == 400
 

@@ -22,20 +22,22 @@ const TYPE_OPTIONS: { value: ForeignAssetType; label: string }[] = [
 ];
 
 interface FormState {
-  type:          ForeignAssetType;
-  name:          string;
-  currency:      string;
-  amount:        string;
+  type:            ForeignAssetType;
+  title:           string;
+  notes:           string;
+  currency:        string;
+  amount:          string;
   interestRatePct: string;
-  maturityDate:  string;
-  useManualRate: boolean;
-  manualRate:    string;
+  maturityDate:    string;
+  useManualRate:   boolean;
+  manualRate:      string;
 }
 
 function defaultForm(item?: ForeignAssetDTO): FormState {
   return {
     type:            item?.type          ?? '活存',
-    name:            item?.name          ?? '',
+    title:           item?.title         ?? '',
+    notes:           item?.notes         ?? '',
     currency:        item?.currency      ?? 'USD',
     amount:          item != null ? String(item.amount) : '',
     interestRatePct: item != null ? String(+(item.interestRate * 100).toFixed(4)) : '',
@@ -67,25 +69,25 @@ export default function ForeignAssetModal({
   }
 
   const needsMaturity = form.type === '定存' || form.type === '債券';
-  const needsName     = form.type === '債券';
 
   const handleSubmit = () => {
-    const amount      = parseFloat(form.amount);
+    const amount       = parseFloat(form.amount);
     const interestRate = parseFloat(form.interestRatePct) / 100;
-    const manualRate  = parseFloat(form.manualRate);
+    const manualRate   = parseFloat(form.manualRate);
 
-    if (!form.currency)                  { toast.error('請選擇幣別'); return; }
-    if (isNaN(amount) || amount <= 0)    { toast.error('請填寫持有金額'); return; }
-    if (isNaN(interestRate))             { toast.error('請填寫年利率（可填 0）'); return; }
+    if (!form.title.trim())                  { toast.error('請填寫標題'); return; }
+    if (!form.currency)                      { toast.error('請選擇幣別'); return; }
+    if (isNaN(amount) || amount <= 0)        { toast.error('請填寫持有金額'); return; }
+    if (isNaN(interestRate))                 { toast.error('請填寫年利率（可填 0）'); return; }
     if (needsMaturity && !form.maturityDate) { toast.error('請填寫到期日'); return; }
-    if (needsName && !form.name.trim())  { toast.error('請填寫債券名稱'); return; }
     if (form.useManualRate && (isNaN(manualRate) || manualRate <= 0)) {
       toast.error('請填寫手動匯率'); return;
     }
 
     const payload: CreateForeignAssetPayload = {
       type:          form.type,
-      name:          form.name.trim(),
+      title:         form.title.trim(),
+      notes:         form.notes.trim(),
       currency:      form.currency,
       amount,
       interestRate,
@@ -104,7 +106,7 @@ export default function ForeignAssetModal({
     <Modal
       open={open}
       onClose={handleClose}
-      title={isEdit ? '編輯外幣資產' : '新增外幣資產'}
+      title={isEdit ? '編輯固定收益資產' : '新增固定收益資產'}
       size="sm"
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -143,6 +145,24 @@ export default function ForeignAssetModal({
           </div>
         </FormField>
 
+        {/* 標題 */}
+        <FormField label="標題" required>
+          <TextInput
+            value={form.title}
+            onChange={e => field('title', e.target.value)}
+            placeholder="例：花旗美元活存、美國10年期公債"
+          />
+        </FormField>
+
+        {/* 備註 */}
+        <FormField label="備註">
+          <TextInput
+            value={form.notes}
+            onChange={e => field('notes', e.target.value)}
+            placeholder="選填，例：花旗銀行帳戶"
+          />
+        </FormField>
+
         {/* 幣別 + 金額 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <FormField label="幣別" required>
@@ -162,15 +182,6 @@ export default function ForeignAssetModal({
             />
           </FormField>
         </div>
-
-        {/* 名稱（債券必填，其他選填） */}
-        <FormField label={needsName ? '債券名稱' : '備註名稱'} required={needsName}>
-          <TextInput
-            value={form.name}
-            onChange={e => field('name', e.target.value)}
-            placeholder={needsName ? '例：美國10年期公債' : '選填'}
-          />
-        </FormField>
 
         {/* 年利率 + 到期日 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

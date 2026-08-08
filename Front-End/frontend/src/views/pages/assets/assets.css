@@ -22,13 +22,63 @@
   cursor: not-allowed;
 }
 
-/* ── 匯率雙列 ── */
-.assets-rate-cell {
+/* ── 匯率欄：單列版（rate value + mode badge） ── */
+.assets-rate-inline {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
 }
 
+.assets-rate-live-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-value);
+}
+
+/* ── 備註欄截斷（max-width 由欄寬決定，不硬設） ── */
+.fa-notes-cell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--dim);
+  cursor: default;
+}
+
+/* 模式徽章（即時 / 手動），點擊切換 */
+.assets-rate-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid;
+  background: transparent;
+  cursor: pointer;
+  line-height: 1.6;
+  transition: opacity var(--trans-fast);
+  flex-shrink: 0;
+}
+.assets-rate-badge:hover:not(:disabled) { opacity: 0.7; }
+.assets-rate-badge:disabled { cursor: not-allowed; opacity: 0.4; }
+
+.assets-rate-badge--live {
+  color: var(--accent);
+  border-color: var(--accent-bd);
+}
+
+.assets-rate-badge--manual {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+/* Modal 匯率選擇（保留舊 radio 樣式供 Modal 使用） */
 .assets-rate-row {
   display: flex;
   align-items: center;
@@ -52,11 +102,6 @@
 
 .assets-rate-row.active .assets-rate-label {
   color: var(--muted);
-}
-
-.assets-rate-value {
-  font-size: var(--text-sm);
-  color: var(--text-value);
 }
 
 .assets-rate-input {

@@ -166,7 +166,7 @@ export default function PlanTable({
             <th style={{ width: 130 }}>預期總額</th>
             <th className="exec-col exec-first" style={{ width: 110 }}>今年再投</th>
             <th className="exec-col" style={{ width: 110 }}>股票現值</th>
-            <th className="exec-col" style={{ width: 110 }}>外幣資產</th>
+            <th className="exec-col" style={{ width: 110 }}>固定收益</th>
             <th className="exec-col" style={{ width: 110 }}>流動資金</th>
             <th className="exec-col" style={{ width: 130 }}>執行合計</th>
             <th className="exec-col" style={{ width: 130 }}>損益</th>

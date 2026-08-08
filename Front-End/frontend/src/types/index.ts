@@ -254,14 +254,15 @@ export interface UpdateWatchlistPayload {
   group?:       string | null;
 }
 
-/* ── 外幣資產（統一） ───────────────────────────────────────── */
+/* ── 固定收益資產 ────────────────────────────────────────────── */
 
 export type ForeignAssetType = '活存' | '定存' | '債券';
 
 export interface ForeignAssetDTO {
   id:            string;
   type:          ForeignAssetType;
-  name:          string;
+  title:         string;
+  notes:         string;
   currency:      string;
   amount:        number;
   interestRate:  number;
@@ -274,31 +275,12 @@ export interface ForeignAssetDTO {
 
 export interface CreateForeignAssetPayload {
   type:          ForeignAssetType;
-  name:          string;
+  title:         string;
+  notes:         string;
   currency:      string;
   amount:        number;
   interestRate:  number;
   maturityDate:  string | null;
-  useManualRate: boolean;
-  manualRate:    number;
-}
-
-/* ── 外幣（舊，保留相容） ──────────────────────────────────── */
-
-export type CurrencyCode = 'USD' | 'JPY' | 'EUR' | 'CNY' | 'HKD' | 'GBP' | 'AUD' | 'SGD';
-
-export interface ForeignCurrencyDTO {
-  currencyCode:  CurrencyCode;
-  amount:        number;
-  useManualRate: boolean;
-  manualRate:    number;
-  liveRate:      number | null;
-  twdValue:      number;
-  updatedAt:     string;
-}
-
-export interface UpdateForeignCurrencyPayload {
-  amount:        number;
   useManualRate: boolean;
   manualRate:    number;
 }

@@ -21,7 +21,8 @@ def deserialize_asset(doc) -> dict:
     return {
         "id":            doc.id,
         "type":          d.get("type"),
-        "name":          d.get("name", ""),
+        "title":         d.get("title") or d.get("name", ""),  # 舊資料 fallback
+        "notes":         d.get("notes", ""),
         "currency":      d.get("currency"),
         "amount":        d.get("amount", 0),
         "interestRate":  d.get("interest_rate", 0),
@@ -35,6 +36,8 @@ def deserialize_asset(doc) -> dict:
 def validate_input(body: dict) -> None:
     if body.get("type") not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="type 必須為 活存 | 定存 | 債券")
+    if not str(body.get("title", "")).strip():
+        raise HTTPException(status_code=400, detail="title 不可為空")
     currency = str(body.get("currency", "")).upper()
     if currency not in ALLOWED_CURRENCIES:
         raise HTTPException(
@@ -78,7 +81,8 @@ async def create(body: dict):
     ref = db.collection("foreign_assets").document()
     ref.set({
         "type":           body["type"],
-        "name":           str(body.get("name", "")),
+        "title":          str(body["title"]).strip(),
+        "notes":          str(body.get("notes", "")).strip(),
         "currency":       str(body["currency"]).upper(),
         "amount":         float(body["amount"]),
         "interest_rate":  float(body["interestRate"]),
@@ -105,7 +109,8 @@ async def update(asset_id: str, body: dict):
 
     patch: dict = {"updated_at": fs.SERVER_TIMESTAMP}
     if "type"          in body: patch["type"]           = body["type"]
-    if "name"          in body: patch["name"]           = str(body["name"])
+    if "title"         in body: patch["title"]          = str(body["title"]).strip()
+    if "notes"         in body: patch["notes"]          = str(body.get("notes", "")).strip()
     if "currency"      in body: patch["currency"]       = str(body["currency"]).upper()
     if "amount"        in body: patch["amount"]         = float(body["amount"])
     if "interestRate"  in body: patch["interest_rate"]  = float(body["interestRate"])

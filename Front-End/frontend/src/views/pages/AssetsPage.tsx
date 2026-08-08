@@ -74,7 +74,7 @@ export default function AssetsPage() {
       {/* ── PanelHeader ── */}
       <PanelHeader exposureMode="forex" foreignAssetTwd={vm.totalTwd}>
         <div className="ph-stat">
-          <span className="ph-stat__label">外幣資產總計（台幣）</span>
+          <span className="ph-stat__label">固定收益資產總計（台幣）</span>
           <span className="ph-stat__value" style={{ color: 'var(--text-value)', fontWeight: 700 }}>
             {fmt(vm.totalTwd)}
           </span>
@@ -84,7 +84,7 @@ export default function AssetsPage() {
       <div style={{ padding: '16px 28px 28px' }}>
         <div className="ft-panel">
           <div className="ft-section-header">
-            <span className="ft-section-title">外幣資產</span>
+            <span className="ft-section-title">固定收益資產</span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="btn-ghost" onClick={vm.load}>重新整理</button>
               <button className="btn-ghost" onClick={openAdd}><Icon name="add" size={20} aria-hidden="true" /> 新增</button>

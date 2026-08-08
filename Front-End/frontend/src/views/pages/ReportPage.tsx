@@ -160,7 +160,7 @@ function SnapshotTable({ rows, page, totalPages, onPage, onNoteChange }: {
               <th>日期</th>
               <th>累計投入</th>
               <th>股票現值</th>
-              <th>外幣資產</th>
+              <th>固定收益</th>
               <th>流動資金</th>
               <th>未實現損益</th>
               <th>淨損益</th>
