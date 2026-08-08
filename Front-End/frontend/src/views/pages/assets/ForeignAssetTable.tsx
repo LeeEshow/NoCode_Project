@@ -1,4 +1,13 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, verticalListSortingStrategy,
+  useSortable, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Icon from '../../components/Icon';
 import type { ForeignAssetDTO, CreateForeignAssetPayload } from '../../../types';
 
@@ -108,148 +117,6 @@ function RateCell({ item, saving, onSave }: RateCellProps) {
   );
 }
 
-/* ── Props ── */
-
-export interface ForeignAssetTableProps {
-  items:   ForeignAssetDTO[];
-  saving:  boolean;
-  onEdit:  (item: ForeignAssetDTO) => void;
-  onPatch: (id: string, patch: Partial<CreateForeignAssetPayload>) => void;
-  onDelete:(id: string) => void;
-}
-
-/* ── Table ── */
-
-export default function ForeignAssetTable({
-  items, saving, onEdit, onPatch, onDelete,
-}: ForeignAssetTableProps) {
-  if (items.length === 0) {
-    return (
-      <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
-        尚無固定收益資產，點擊右上方的「新增」加入
-      </div>
-    );
-  }
-
-  return (
-    <div className="ft-table-scroll">
-      <table className="ft-table" style={{ width: '100%', minWidth: 860 }}>
-        <thead>
-          <tr>
-            <th style={{ width: 64, whiteSpace: 'nowrap' }}>類別</th>
-            <th style={{ width: 180, whiteSpace: 'nowrap' }}>標題</th>
-            <th style={{ textAlign: 'right', width: 130, whiteSpace: 'nowrap' }}>持有金額</th>
-            <th style={{ textAlign: 'right', width: 80, whiteSpace: 'nowrap' }}>年利率</th>
-            <th style={{ width: 150, whiteSpace: 'nowrap' }}>匯率</th>
-            <th style={{ textAlign: 'right', width: 110, whiteSpace: 'nowrap' }}>台幣換算</th>
-            <th style={{ textAlign: 'right', width: 130, whiteSpace: 'nowrap' }}>到期估值</th>
-            <th style={{ whiteSpace: 'nowrap' }}>備註</th>
-            <th style={{ width: 72 }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map(item => {
-            const effectiveRate = item.currency === 'TWD' ? 1
-              : (item.useManualRate ? item.manualRate : (item.liveRate ?? 0));
-            const twdValue = item.amount * effectiveRate;
-            const matVal   = maturityValue(item);
-
-            return (
-              <tr key={item.id}>
-                {/* 類別 */}
-                <td><TypeBadge type={item.type} /></td>
-
-                {/* 標題 */}
-                <td>
-                  <span style={{ fontWeight: 500 }}>{item.title}</span>
-                </td>
-
-                {/* 持有金額（行內輸入 + 幣別單位） */}
-                <td style={{ textAlign: 'right' }}>
-                  <AmountInput
-                    value={item.amount}
-                    currency={item.currency}
-                    saving={saving}
-                    onSave={amount => onPatch(item.id, { amount })}
-                  />
-                </td>
-
-                {/* 年利率 */}
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)' }}>
-                  {item.interestRate > 0
-                    ? `${fmt(item.interestRate * 100, 2)}%`
-                    : <span className="fa-dim">—</span>}
-                </td>
-
-                {/* 匯率（單列） */}
-                <td>
-                  <RateCell
-                    item={item}
-                    saving={saving}
-                    onSave={patch => onPatch(item.id, patch)}
-                  />
-                </td>
-
-                {/* 台幣換算 */}
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)', fontWeight: 600 }}>
-                  <span>{fmt(twdValue, 0)}</span>
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginLeft: 3 }}>NT</span>
-                </td>
-
-                {/* 到期估值 */}
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)' }}>
-                  {matVal != null
-                    ? <>
-                        {fmt(matVal, 0)}
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginLeft: 3 }}>{item.currency}</span>
-                      </>
-                    : <span className="fa-dim">—</span>}
-                </td>
-
-                {/* 備註（過長截斷，hover 顯示全文） */}
-                <td>
-                  {item.notes
-                    ? (
-                      <span
-                        className="fa-notes-cell"
-                        title={item.notes}
-                      >
-                        {item.notes}
-                      </span>
-                    )
-                    : <span className="fa-dim">—</span>}
-                </td>
-
-                {/* 操作 */}
-                <td>
-                  <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                    <button
-                      className="btn-icon"
-                      aria-label="編輯"
-                      disabled={saving}
-                      onClick={() => onEdit(item)}
-                    >
-                      <Icon name="edit" size={24} />
-                    </button>
-                    <button
-                      className="btn-icon"
-                      aria-label="刪除"
-                      disabled={saving}
-                      onClick={() => onDelete(item.id)}
-                    >
-                      <Icon name="delete" size={24} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /* ── 行內金額輸入（帶幣別單位） ── */
 
 function AmountInput({ value, currency, saving, onSave }: {
@@ -280,5 +147,206 @@ function AmountInput({ value, currency, saving, onSave }: {
         {currency}
       </span>
     </div>
+  );
+}
+
+/* ── 可拖拉列 ── */
+
+function SortableAssetRow({
+  item, saving, onEdit, onPatch, onDelete,
+}: {
+  item:    ForeignAssetDTO;
+  saving:  boolean;
+  onEdit:  (item: ForeignAssetDTO) => void;
+  onPatch: (id: string, patch: Partial<CreateForeignAssetPayload>) => void;
+  onDelete:(id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: item.id });
+
+  const effectiveRate = item.currency === 'TWD' ? 1
+    : (item.useManualRate ? item.manualRate : (item.liveRate ?? 0));
+  const twdValue = item.amount * effectiveRate;
+  const matVal   = maturityValue(item);
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        cursor: isDragging ? 'grabbing' : undefined,
+      }}
+    >
+      {/* 拖拉控點 */}
+      <td style={{ paddingLeft: 6, width: 32 }}>
+        <span
+          {...attributes} {...listeners}
+          onClick={e => e.stopPropagation()}
+          className="drag-handle"
+        >
+          <Icon name="drag_indicator" size={24} />
+        </span>
+      </td>
+
+      {/* 類別 */}
+      <td><TypeBadge type={item.type} /></td>
+
+      {/* 標題 */}
+      <td>
+        <span style={{ fontWeight: 500 }}>{item.title}</span>
+      </td>
+
+      {/* 持有金額（行內輸入 + 幣別單位） */}
+      <td style={{ textAlign: 'right' }}>
+        <AmountInput
+          value={item.amount}
+          currency={item.currency}
+          saving={saving}
+          onSave={amount => onPatch(item.id, { amount })}
+        />
+      </td>
+
+      {/* 年利率 */}
+      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)' }}>
+        {item.interestRate > 0
+          ? `${fmt(item.interestRate * 100, 2)}%`
+          : <span className="fa-dim">—</span>}
+      </td>
+
+      {/* 匯率（單列） */}
+      <td>
+        <RateCell
+          item={item}
+          saving={saving}
+          onSave={patch => onPatch(item.id, patch)}
+        />
+      </td>
+
+      {/* 台幣換算 */}
+      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)', fontWeight: 600 }}>
+        <span>{fmt(twdValue, 0)}</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginLeft: 3 }}>NT</span>
+      </td>
+
+      {/* 到期估值 */}
+      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-value)' }}>
+        {matVal != null
+          ? <>
+              {fmt(matVal, 0)}
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginLeft: 3 }}>{item.currency}</span>
+            </>
+          : <span className="fa-dim">—</span>}
+      </td>
+
+      {/* 備註（過長截斷，hover 顯示全文） */}
+      <td>
+        {item.notes
+          ? (
+            <span
+              className="fa-notes-cell"
+              title={item.notes}
+            >
+              {item.notes}
+            </span>
+          )
+          : <span className="fa-dim">—</span>}
+      </td>
+
+      {/* 操作 */}
+      <td>
+        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+          <button
+            className="btn-icon"
+            aria-label="編輯"
+            disabled={saving}
+            onClick={() => onEdit(item)}
+          >
+            <Icon name="edit" size={24} />
+          </button>
+          <button
+            className="btn-icon"
+            aria-label="刪除"
+            disabled={saving}
+            onClick={() => onDelete(item.id)}
+          >
+            <Icon name="delete" size={24} />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/* ── Props ── */
+
+export interface ForeignAssetTableProps {
+  items:    ForeignAssetDTO[];
+  saving:   boolean;
+  onEdit:   (item: ForeignAssetDTO) => void;
+  onPatch:  (id: string, patch: Partial<CreateForeignAssetPayload>) => void;
+  onDelete: (id: string) => void;
+  onReorder:(newItems: ForeignAssetDTO[]) => void;
+}
+
+/* ── Table ── */
+
+export default function ForeignAssetTable({
+  items, saving, onEdit, onPatch, onDelete, onReorder,
+}: ForeignAssetTableProps) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = items.findIndex(i => i.id === active.id);
+    const newIndex = items.findIndex(i => i.id === over.id);
+    onReorder(arrayMove(items, oldIndex, newIndex));
+  }, [items, onReorder]);
+
+  if (items.length === 0) {
+    return (
+      <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 'var(--text-sm)' }}>
+        尚無固定收益資產，點擊右上方的「新增」加入
+      </div>
+    );
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+        <div className="ft-table-scroll">
+          <table className="ft-table" style={{ width: '100%', minWidth: 892 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 32 }}></th>
+                <th style={{ width: 64, whiteSpace: 'nowrap' }}>類別</th>
+                <th style={{ width: 180, whiteSpace: 'nowrap' }}>標題</th>
+                <th style={{ textAlign: 'right', width: 130, whiteSpace: 'nowrap' }}>持有金額</th>
+                <th style={{ textAlign: 'right', width: 80, whiteSpace: 'nowrap' }}>年利率</th>
+                <th style={{ width: 150, whiteSpace: 'nowrap' }}>匯率</th>
+                <th style={{ textAlign: 'right', width: 110, whiteSpace: 'nowrap' }}>台幣換算</th>
+                <th style={{ textAlign: 'right', width: 130, whiteSpace: 'nowrap' }}>到期估值</th>
+                <th style={{ whiteSpace: 'nowrap' }}>備註</th>
+                <th style={{ width: 72 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(item => (
+                <SortableAssetRow
+                  key={item.id}
+                  item={item}
+                  saving={saving}
+                  onEdit={onEdit}
+                  onPatch={onPatch}
+                  onDelete={onDelete}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }

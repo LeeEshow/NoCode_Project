@@ -22,3 +22,7 @@ export async function updateForeignAsset(
 export async function deleteForeignAsset(id: string): Promise<void> {
   await api.delete(`/foreign-assets/${id}`);
 }
+
+export async function reorderForeignAssets(order: string[]): Promise<void> {
+  await api.put('/foreign-assets/reorder', { order });
+}

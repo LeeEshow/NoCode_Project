@@ -101,6 +101,7 @@ export default function AssetsPage() {
                   onEdit={openEdit}
                   onPatch={handlePatch}
                   onDelete={handleDelete}
+                  onReorder={vm.reorder}
                 />
                 {vm.items.length > 0 && (
                   <div className="assets-total-bar">

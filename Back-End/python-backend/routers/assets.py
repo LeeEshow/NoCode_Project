@@ -57,8 +57,12 @@ def validate_input(body: dict) -> None:
 @router.get("")
 async def get_all():
     db = get_db()
-    snap = db.collection("foreign_assets").order_by("updated_at", direction="DESCENDING").get()
-    assets = [deserialize_asset(doc) for doc in snap]
+    snap = db.collection("foreign_assets").get()
+    docs = sorted(
+        snap,
+        key=lambda d: (d.to_dict().get("sort_index", 9999), d.to_dict().get("updated_at") or ""),
+    )
+    assets = [deserialize_asset(doc) for doc in docs]
 
     try:
         rate_map = get_live_rate_map()
@@ -93,6 +97,22 @@ async def create(body: dict):
     })
     created = deserialize_asset(ref.get())
     return {"success": True, "data": created}
+
+
+# ─── PUT /foreign-assets/reorder ──────────────────────────────────────────────
+
+@router.put("/reorder")
+def reorder(body: dict):
+    order = body.get("order")
+    if not isinstance(order, list):
+        raise HTTPException(status_code=400, detail="order 必須為 ID 陣列")
+    db = get_db()
+    batch = db.batch()
+    for i, asset_id in enumerate(order):
+        ref = db.collection("foreign_assets").document(str(asset_id))
+        batch.update(ref, {"sort_index": i})
+    batch.commit()
+    return {"success": True, "data": {"reordered": len(order)}}
 
 
 # ─── PUT /foreign-assets/:id ───────────────────────────────────────────────────

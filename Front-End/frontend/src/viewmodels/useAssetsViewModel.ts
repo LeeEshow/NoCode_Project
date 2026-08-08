@@ -4,6 +4,7 @@ import {
   createForeignAsset,
   updateForeignAsset,
   deleteForeignAsset,
+  reorderForeignAssets,
 } from '../models/foreignAssetModel';
 import { usePlanStore } from '../stores/planStore';
 import type { ForeignAssetDTO, CreateForeignAssetPayload } from '../types';
@@ -65,6 +66,11 @@ export function useAssetsViewModel() {
     }
   }, []);
 
+  const reorder = useCallback((newItems: ForeignAssetDTO[]) => {
+    setState(s => ({ ...s, items: newItems }));
+    reorderForeignAssets(newItems.map(i => i.id)).catch(() => {});
+  }, []);
+
   const removeItem = useCallback(async (id: string, onSuccess?: () => void) => {
     setState(s => ({ ...s, saving: true, error: null }));
     try {
@@ -100,6 +106,7 @@ export function useAssetsViewModel() {
     addItem,
     editItem,
     removeItem,
+    reorder,
     totalTwd,
   };
 }
