@@ -138,16 +138,28 @@ async def record_snapshot() -> dict:
             "unrealizedProfit": upl,
         })
 
-    # 計算 forexValue
+    # 計算 forexValue，同時記錄各筆明細（含當時匯率）
     forex_value = 0.0
+    foreign_assets_snapshot = []
     for asset in foreign_assets:
         currency = asset.get("currency", "")
         amount   = float(asset.get("amount", 0) or 0)
-        if asset.get("use_manual_rate"):
+        if currency == "TWD":
+            rate = 1.0
+        elif asset.get("use_manual_rate"):
             rate = float(asset.get("manual_rate", 0) or 0)
         else:
             rate = rate_map.get(currency, 0) or 0
-        forex_value += amount * rate
+        value_twd = round(amount * rate)
+        forex_value += value_twd
+        foreign_assets_snapshot.append({
+            "type":     asset.get("type", ""),
+            "title":    asset.get("title", ""),
+            "currency": currency,
+            "amount":   amount,
+            "rate":     rate,
+            "valueTwd": value_twd,
+        })
 
     # 寫入快照（merge 冪等）
     from firebase_admin import firestore as fs
@@ -161,8 +173,9 @@ async def record_snapshot() -> dict:
         "forex_value":       round(forex_value),
         "unrealized_profit": round(unrealized_profit),
         "note":              "",
-        "holdings":          snapshot_holdings,
-        "vix":               vix,
+        "holdings":        snapshot_holdings,
+        "foreign_assets":  foreign_assets_snapshot,
+        "vix":             vix,
         "market_state_auto": market_state_auto,
         "recorded_at":       fs.SERVER_TIMESTAMP,
     }, merge=True))
@@ -193,6 +206,19 @@ def _deserialize_snapshot_dict(date_id: str, d: dict) -> dict:
             "unrealizedProfit": h.get("unrealizedProfit", 0),
         })
 
+    raw_foreign = d.get("foreign_assets", [])
+    normalized_foreign = [
+        {
+            "type":     fa.get("type", ""),
+            "title":    fa.get("title", ""),
+            "currency": fa.get("currency", ""),
+            "amount":   fa.get("amount", 0),
+            "rate":     fa.get("rate", 0),
+            "valueTwd": fa.get("valueTwd", 0),
+        }
+        for fa in raw_foreign
+    ]
+
     return {
         "date":             d.get("date", date_id),
         "execCapital":      d.get("exec_capital", 0),
@@ -203,6 +229,7 @@ def _deserialize_snapshot_dict(date_id: str, d: dict) -> dict:
         "unrealizedProfit": d.get("unrealized_profit", 0),
         "note":             d.get("note", ""),
         "holdings":         normalized_holdings,
+        "foreignAssets":    normalized_foreign,
         "vix":              d.get("vix"),
         "marketStateAuto":  d.get("market_state_auto"),
         "recordedAt":       recorded_at,

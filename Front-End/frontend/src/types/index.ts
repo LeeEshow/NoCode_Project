@@ -391,6 +391,15 @@ export interface SnapshotHoldingDTO {
   unrealizedProfit: number;
 }
 
+export interface SnapshotForeignAssetEntry {
+  type:     string;
+  title:    string;
+  currency: string;
+  amount:   number;
+  rate:     number;
+  valueTwd: number;
+}
+
 export interface DailySnapshotDTO {
   date:             string;
   execCapital:      number;
@@ -402,6 +411,7 @@ export interface DailySnapshotDTO {
   note?:            string;
   recordedAt?:      string;
   holdings?:        SnapshotHoldingDTO[];
+  foreignAssets?:   SnapshotForeignAssetEntry[];
   vix?:             number | null;
   marketStateAuto?: MarketState | null;
 }

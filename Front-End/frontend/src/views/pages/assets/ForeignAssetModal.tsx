@@ -5,6 +5,7 @@ import { toast } from '../../components/Toast/toastStore';
 import type { ForeignAssetDTO, ForeignAssetType, CreateForeignAssetPayload } from '../../../types';
 
 const CURRENCY_OPTIONS = [
+  { value: 'TWD', label: 'TWD — 新台幣' },
   { value: 'USD', label: 'USD — 美元' },
   { value: 'JPY', label: 'JPY — 日圓' },
   { value: 'EUR', label: 'EUR — 歐元' },
@@ -84,6 +85,7 @@ export default function ForeignAssetModal({
       toast.error('請填寫手動匯率'); return;
     }
 
+    const isTwd = form.currency === 'TWD';
     const payload: CreateForeignAssetPayload = {
       type:          form.type,
       title:         form.title.trim(),
@@ -92,8 +94,8 @@ export default function ForeignAssetModal({
       amount,
       interestRate,
       maturityDate:  needsMaturity ? form.maturityDate : null,
-      useManualRate: form.useManualRate,
-      manualRate:    form.useManualRate ? manualRate : 0,
+      useManualRate: isTwd ? false : form.useManualRate,
+      manualRate:    isTwd ? 0 : (form.useManualRate ? manualRate : 0),
     };
 
     onSubmit(payload, editItem?.id);
@@ -205,8 +207,8 @@ export default function ForeignAssetModal({
           )}
         </div>
 
-        {/* 匯率設定 */}
-        <FormField label="匯率設定">
+        {/* 匯率設定（TWD 不需要） */}
+        {form.currency !== 'TWD' && <FormField label="匯率設定">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <label className={`assets-rate-row${!form.useManualRate ? ' active' : ''}`}>
               <input
@@ -237,7 +239,7 @@ export default function ForeignAssetModal({
               />
             </label>
           </div>
-        </FormField>
+        </FormField>}
 
       </div>
     </Modal>
