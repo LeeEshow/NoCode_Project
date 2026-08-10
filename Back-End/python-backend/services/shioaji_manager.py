@@ -82,15 +82,19 @@ class ShioajiManager:
 
         @self._api.on_tick_stk_v1()
         def on_stk_tick(exchange: Exchange, tick: TickSTKv1) -> None:
-            """個股 tick push → 寫入 memory cache（不佔 thread pool）"""
-            _ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
+            """個股 tick push → 寫入 memory cache（不佔 thread pool）
+            shioaji 1.5.3「Optimized」tick 物件欄位變更（vs 1.5.0）：
+            datetime 已是 datetime.datetime（非 7 元素 tuple）；
+            price_chg/pct_chg/total_volume 取代舊版 diff_price/diff_rate/vol_sum。
+            pct_chg 是否仍需 /100 待盤中以真實 tick 驗證。"""
+            _ts = tick.datetime.replace(tzinfo=_TZ_TAIPEI)
             self._stock_cache[tick.code] = {
                 "price":         float(tick.close),
-                "change":        float(tick.diff_price),
-                "changePercent": float(tick.diff_rate) / 100,
+                "change":        float(tick.price_chg),
+                "changePercent": float(tick.pct_chg) / 100,
                 "high":          float(tick.high),
                 "low":           float(tick.low),
-                "volume":        int(tick.vol_sum),
+                "volume":        int(tick.total_volume),
                 "updatedAt":     int(_ts.timestamp()),
                 "timestamp":     _ts.isoformat(),
             }
@@ -102,14 +106,14 @@ class ShioajiManager:
             ref = self._txf_reference
             change = round(price - ref, 0) if ref else None
             change_pct = round((price - ref) / ref * 100, 2) if ref else None
-            _ts = datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)
+            _ts = tick.datetime.replace(tzinfo=_TZ_TAIPEI)
             self._futures_cache[tick.code] = {
                 "code":           tick.code,
                 "price":          price,
                 "open":           float(tick.open),
                 "high":           float(tick.high),
                 "low":            float(tick.low),
-                "volume":         tick.vol_sum,
+                "volume":         tick.total_volume,
                 "change":         change,
                 "change_percent": change_pct,
                 "timestamp":      _ts.isoformat(),

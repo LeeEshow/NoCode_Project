@@ -109,3 +109,35 @@
   **順位 4（現階段不執行，僅保留為後路）：Multiprocessing 隔離**
   - 將 Shioaji 連線隔離至獨立子進程，即使該進程卡死也不影響主 FastAPI process；若未來降版後仍復發，代表問題不是 Python 版本造成、而是 Shioaji SDK 自身的併發問題，屆時這會是唯一的結構性解法。
   - 現階段不確定降版能否解決根因之前先不投入，避免浪費工程資源；若真的要做，設計原則是子進程只做「啟動 Shioaji + 接收 tick」，透過 Pipe/Queue 只回傳純資料（`code, price, timestamp` 等），避免傳遞無法 pickle 的 Shioaji C++ 物件。
+
+---
+
+- **【已完成，僅本機】shioaji 1.5.3 tick 欄位相容性修正（2026-08-10）**
+
+  ### 背景
+  使用者回報本週開盤個股即時股價不再更新。追查發現 `requirements.txt` 已於 commit `2e00257`（8/7）改為 `shioaji==1.5.3`（因 1.5.0 被 PyPI yank：market-data callback 同時註冊會 deadlock），但該 commit 本身標註「待辦：需在獨立測試 venv 驗證後才能切換 production」，本機 venv 當時實際仍是 1.5.0——這個升版從未被真正驗證或套用，requirements.txt 只是宣告值，沒人重新 `pip install` 過。
+
+  ### 根因確認
+  本機 `.venv` 實際升級到 1.5.3 後，比對套件內建的 `_core.pyi` 型別定義發現：`on_tick_stk_v1`/`on_tick_fop_v1` callback 收到的 `TickSTKv1`/`TickFOPv1` 物件（經 `shioaji/__init__.py:165,167` 確認 `TickSTKv1 = TickSTKv1Optimized`）欄位名稱**變回了 1.3.x 時代的命名**（對照本檔案 2026-06-04 條目與 `CLAUDE.md`「shioaji 1.5.0 破壞性變更」表格）：
+
+  | 欄位 | 1.3.x | 1.5.0 | 1.5.3（本次確認） |
+  |------|-------|-------|-------|
+  | datetime | `datetime` 物件 | 7 元素 tuple | `datetime` 物件（變回） |
+  | 漲跌 | `price_chg` | `diff_price` | `price_chg`（變回） |
+  | 漲跌幅 | `pct_chg`（int，/100） | `diff_rate`（int，/100） | `pct_chg`（變回，scale 待盤中驗證） |
+  | 成交量 | `total_volume` | `vol_sum` | `total_volume`（變回） |
+
+  現有 `services/shioaji_manager.py` 是照 1.5.0 欄位名稱寫的，升級到 1.5.3 後 `on_stk_tick`/`on_fop_tick` 的第一行 `datetime(*tick.datetime, tzinfo=_TZ_TAIPEI)` 會對已經是 `datetime` 物件的 `tick.datetime` 做 `*` 展開 → `TypeError`。此例外發生在 Shioaji 原生 callback thread 內被靜默吞掉，**cache 從此不再被寫入但服務表面正常（`connected`/`initialized` 皆為 true）**——這正是「個股報價不更新」的直接原因，與 production `GET /api/v1/system/status` 觀察到的 `cachedFutures: 0`（TXF 開機即訂閱，卻一筆 tick 都沒成功寫入）互相佐證。`cachedStocks: 13` 則是開機 `warmup_stocks()` 一次性 HTTP snapshot 灌入的舊資料，並非 tick 即時更新。
+
+  `pytest` 完全沒有涵蓋 tick callback 解析邏輯（無 mock Tick 物件呼叫 `on_stk_tick`/`on_fop_tick` 的測試），所以這個問題不會被既有測試擋下。
+
+  ### 已修正（僅本機開發環境，尚未部署 production）
+  - 本機 `.venv`：`pip install shioaji==1.5.3`（原 1.5.0）
+  - `services/shioaji_manager.py`：`on_stk_tick`/`on_fop_tick` 改用新欄位名稱，`datetime(*tick.datetime, ...)` 改為 `tick.datetime.replace(tzinfo=_TZ_TAIPEI)`
+  - `pytest tests/ -v`：245 passed / 2 failed（失敗案例為 `test_m4_market.py` 既有的 `taiex`/`twii` id 命名不一致，與此次修正無關，未處理）
+
+  ### 待辦
+  1. **`pct_chg` 是否仍需 `/100`**：目前沿用舊語意（int，/100），有 1.3.x 同名欄位的歷史紀錄佐證，但 1.5.3 是否維持相同 scale 未經真實 tick 驗證，需盤中連線確認。
+  2. **`tick.datetime` 是否為 naive 台北時間**：`.replace(tzinfo=_TZ_TAIPEI)` 假設新物件本身是 naive、內容為台北本地時間分量（沿用舊 tuple 解讀方式），若實際帶其他 tzinfo 會被錯誤覆蓋，需盤中驗證。
+  3. 驗證通過後才能：(a) 更新 `Back-End/CLAUDE.md`「shioaji 1.5.0 破壞性變更」章節為 1.5.3 現況；(b) 部署至 production（GCE 上目前仍是 1.5.0，因為 requirements.txt 的版本宣告從未真正被 `pip install` 套用過）。
+  4. 部署前建議同時確認 shioaji 1.5.1/1.5.2 被 yank 的兩個原因（callback 同時註冊 deadlock、空盤 tick decode panic）是否在 1.5.3 真正修復，避免解決了欄位問題卻換到另一個已知 bug；亦可與順位 1–4 的 GIL 卡死追蹤（見上方條目）交叉比對，兩者可能是不同層面的問題但都影響 tick 更新。
