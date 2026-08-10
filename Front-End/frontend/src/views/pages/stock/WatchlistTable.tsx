@@ -143,7 +143,7 @@ const WatchlistRow = memo(function WatchlistRow({
             <span style={{
               position: 'absolute', top: -4, right: -4,
               width: 6, height: 6, borderRadius: '50%',
-              background: strategy!.action === 'sell' ? 'var(--up)' : 'var(--accent)',
+              background: strategy!.tradeType === 'sell' ? 'var(--up)' : 'var(--accent)',
             }} />
           )}
         </button>

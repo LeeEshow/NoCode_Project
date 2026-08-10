@@ -1,178 +1,62 @@
-import { useState } from 'react';
 import Modal from '../../components/Modal';
 import Icon from '../../components/Icon';
 import StatusBadge from '../../components/StatusBadge';
 import type { BadgeVariant } from '../../components/StatusBadge';
-import { upsert as upsertStrategy, remove as removeStrategy } from '../../../models/tradingStrategyModel';
+import { remove as removeStrategy } from '../../../models/tradingStrategyModel';
 import { toast } from '../../components/Toast/toastStore';
-import type { TradingStrategyDTO, StrategyAction, StrategyPriority } from '../../../types';
+import { resolveStrategyStatus } from '../../../utils/tradingStrategy';
+import type { TradingStrategyDTO, TradeType, StrategyStatus } from '../../../types';
+import { useState } from 'react';
 
 export interface TradingStrategyModalProps {
-  open:       boolean;
-  strategy:   TradingStrategyDTO | null;
-  stockCode:  string;
-  stockName:  string;
-  onClose:    () => void;
-  onUpdated?: (s: TradingStrategyDTO) => void;
-  onRemoved?: (stockCode: string)     => void;
+  open:        boolean;
+  strategy:    TradingStrategyDTO | null;
+  stockCode:   string;
+  stockName:   string;
+  onClose:     () => void;
+  onDismissed?: (stockCode: string) => void;
+  onRemoved?:   (stockCode: string) => void;
 }
 
-const ACTION_LABEL: Record<StrategyAction, string>        = { buy: '計劃買進', sell: '計劃賣出', hold: '觀察中' };
-const ACTION_VARIANT: Record<StrategyAction, BadgeVariant> = { buy: 'accent',   sell: 'up',      hold: 'muted'  };
-const PRIORITY_LABEL: Record<StrategyPriority, string>    = { normal: '一般',   urgent: '緊急'                  };
+const TRADE_LABEL:   Record<TradeType, string>      = { buy: '買進', sell: '賣出', hold: '觀察' };
+const TRADE_VARIANT: Record<TradeType, BadgeVariant> = { buy: 'accent', sell: 'up', hold: 'muted' };
 
-function fmtShares(n: number): string {
-  return n.toLocaleString('zh-TW') + ' 股';
+const STATUS_LABEL:   Record<StrategyStatus, string>      = {
+  active:    '活躍',
+  triggered: '已觸發',
+  completed: '已完成',
+  dismissed: '已忽略',
+  expired:   '已過期',
+};
+const STATUS_VARIANT: Record<StrategyStatus, BadgeVariant> = {
+  active:    'flat',
+  triggered: 'accent',
+  completed: 'down',
+  dismissed: 'muted',
+  expired:   'muted',
+};
+
+function fmtPrice(n: number | null | undefined): string {
+  if (n == null) return '–';
+  return n.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fmtDate(iso: string | undefined): string {
+function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '–';
   const d = new Date(iso);
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/* ── 進度條 ─────────────────────────────────────────────────── */
-function ProgressBar({ target, executed }: { target: number; executed: number }) {
-  const pct = target > 0 ? Math.min(100, Math.round((executed / target) * 100)) : 0;
-  return (
-    <div style={{ marginTop: 4 }}>
-      <div style={{ height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{
-          height: '100%', width: `${pct}%`,
-          background: 'var(--accent)', borderRadius: 3, transition: 'width 0.3s',
-        }} />
-      </div>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', marginTop: 4,
-        fontSize: 'var(--text-xs)', color: 'var(--dim)',
-      }}>
-        <span>已連結交易 {fmtShares(executed)}</span>
-        <span>{pct}%</span>
-      </div>
-    </div>
-  );
-}
-
-/* ── 編輯表單 ────────────────────────────────────────────────── */
-interface EditFormProps {
-  stockCode: string;
-  stockName: string;
-  initial?:  TradingStrategyDTO | null;
-  onSaved:   (s: TradingStrategyDTO) => void;
-  onCancel:  () => void;
-}
-
-function EditForm({ stockCode, stockName, initial, onSaved, onCancel }: EditFormProps) {
-  const [action,   setAction]   = useState<StrategyAction>(initial?.action   ?? 'buy');
-  const [target,   setTarget]   = useState(initial?.targetQuantity?.toString() ?? '');
-  const [priority, setPriority] = useState<StrategyPriority>(initial?.priority ?? 'normal');
-  const [notes,    setNotes]    = useState(initial?.notes ?? '');
-  const [saving,   setSaving]   = useState(false);
-
-  async function handleSave() {
-    const qty = parseInt(target, 10);
-    if (isNaN(qty) || qty < 0) {
-      toast.error('目標股數必須為非負整數');
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = await upsertStrategy(stockCode, stockName, action, qty, priority, notes);
-      onSaved(updated);
-      toast.success('策略已儲存');
-    } catch {
-      toast.error('儲存失敗，請重試');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', background: 'var(--surface)',
-    border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)',
-    color: 'var(--text)', padding: '7px 10px',
-    fontSize: 'var(--text-sm)', boxSizing: 'border-box',
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 6 }}>操作方向</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {(['buy', 'sell', 'hold'] as StrategyAction[]).map(a => (
-            <button
-              key={a}
-              className={`btn-ghost${action === a ? ' btn-ghost--accent' : ''}`}
-              style={{ flex: 1, justifyContent: 'center' }}
-              onClick={() => setAction(a)}
-            >
-              {ACTION_LABEL[a]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 6 }}>
-          目標股數（股）
-        </label>
-        <input
-          type="number" min={0} step={1}
-          value={target} onChange={e => setTarget(e.target.value)}
-          placeholder="0" style={inputStyle}
-        />
-      </div>
-
-      <div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 6 }}>優先度</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {(['normal', 'urgent'] as StrategyPriority[]).map(p => (
-            <button
-              key={p}
-              className={`btn-ghost${priority === p ? ' btn-ghost--accent' : ''}`}
-              style={{ flex: 1, justifyContent: 'center' }}
-              onClick={() => setPriority(p)}
-            >
-              {PRIORITY_LABEL[p]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: 6 }}>
-          備註 / 布局理由
-        </label>
-        <textarea
-          value={notes} onChange={e => setNotes(e.target.value)}
-          maxLength={200} rows={3}
-          placeholder="選填，例：等待回調至支撐區"
-          style={{ ...inputStyle, resize: 'vertical' }}
-        />
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button className="btn-ghost" onClick={onCancel}>取消</button>
-        <button className="btn-ghost btn-ghost--accent" disabled={saving} onClick={handleSave}>
-          {saving ? '儲存中…' : '儲存策略'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ── Main ───────────────────────────────────────────────────── */
+const TRANCHE_STATUS_LABEL: Record<string, string> = {
+  pending:   '待觸發',
+  triggered: '已觸發',
+  executed:  '已執行',
+};
 
 export default function TradingStrategyModal({
-  open, strategy, stockCode, stockName, onClose, onUpdated, onRemoved,
+  open, strategy, stockCode, stockName, onClose, onDismissed, onRemoved,
 }: TradingStrategyModalProps) {
-  const [editing,  setEditing]  = useState(false);
   const [removing, setRemoving] = useState(false);
-
-  function handleClose() {
-    setEditing(false);
-    onClose();
-  }
 
   async function handleRemove() {
     if (!strategy) return;
@@ -181,7 +65,7 @@ export default function TradingStrategyModal({
       await removeStrategy(stockCode);
       onRemoved?.(stockCode);
       toast.success('策略已刪除');
-      handleClose();
+      onClose();
     } catch {
       toast.error('刪除失敗，請重試');
     } finally {
@@ -189,115 +73,205 @@ export default function TradingStrategyModal({
     }
   }
 
-  /* 新增 or 編輯表單 */
-  if (!strategy || editing) {
-    return (
-      <Modal open={open} size="sm" onClose={handleClose}
-        title={`${stockCode} ${stockName}｜${strategy ? '編輯策略' : '新增策略'}`}
-      >
-        <EditForm
-          stockCode={stockCode}
-          stockName={stockName}
-          initial={strategy}
-          onSaved={s => { onUpdated?.(s); setEditing(false); }}
-          onCancel={() => strategy ? setEditing(false) : handleClose()}
-        />
-      </Modal>
-    );
+  function handleDismiss() {
+    onDismissed?.(stockCode);
+    toast.success('已忽略此策略');
+    onClose();
   }
 
-  /* 詳情顯示 */
-  const target      = strategy.targetQuantity;
-  const executed    = strategy.executedQuantity;
-  const remaining   = strategy.remainingQuantity;
-  const isCompleted = target > 0 && remaining === 0;
+  const status  = strategy ? resolveStrategyStatus(strategy) : null;
+  const isDone  = status === 'dismissed' || status === 'expired' || status === 'completed';
 
   const footer = (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
       <button
         className="btn-ghost"
         style={{ color: 'var(--up)', borderColor: 'transparent' }}
-        disabled={removing}
+        disabled={removing || !strategy}
         onClick={handleRemove}
       >
         {removing ? '刪除中…' : '刪除策略'}
       </button>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn-ghost" onClick={() => setEditing(true)}>
-          <Icon name="edit" size={14} aria-hidden="true" /> 編輯
-        </button>
-        <button className="btn-ghost btn-ghost--accent" onClick={handleClose}>關閉</button>
+        {strategy && !isDone && (
+          <button className="btn-ghost" onClick={handleDismiss}>
+            忽略策略
+          </button>
+        )}
+        <button className="btn-ghost btn-ghost--accent" onClick={onClose}>關閉</button>
       </div>
     </div>
   );
 
   return (
-    <Modal open={open} size="sm" onClose={handleClose} footer={footer}
-      title={`${stockCode} ${stockName}｜布局策略`}
+    <Modal open={open} size="md" onClose={onClose} footer={footer}
+      title={`${stockCode} ${stockName}｜AI 交易策略`}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-        {/* 方向 + 優先度 + 完成狀態 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <StatusBadge variant={ACTION_VARIANT[strategy.action]}>
-            {ACTION_LABEL[strategy.action]}
-          </StatusBadge>
-          {strategy.priority === 'urgent' && (
-            <StatusBadge variant="up">緊急</StatusBadge>
-          )}
-          {isCompleted && (
-            <StatusBadge variant="flat">已達標</StatusBadge>
-          )}
+      {!strategy ? (
+        <div style={{ color: 'var(--dim)', fontSize: 'var(--text-sm)', padding: '16px 0' }}>
+          尚無 AI 交易策略
         </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* 目標 / 進度 */}
-        {strategy.action !== 'hold' && target > 0 && (
-          <div style={{
-            padding: '12px 14px',
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-xs)',
-          }}>
-            <div style={{ display: 'flex', gap: 20, fontSize: 'var(--text-sm)', marginBottom: 12 }}>
-              <div>
-                <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginBottom: 2 }}>目標</div>
-                <div className="num-value">{fmtShares(target)}</div>
+          {/* Badges */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <StatusBadge variant={TRADE_VARIANT[strategy.tradeType]}>
+              <Icon name="tips_and_updates" size={12} aria-hidden="true" />
+              {' '}{TRADE_LABEL[strategy.tradeType]}
+            </StatusBadge>
+            {status && (
+              <StatusBadge variant={STATUS_VARIANT[status]}>
+                {STATUS_LABEL[status]}
+              </StatusBadge>
+            )}
+            {strategy.confidence != null && (
+              <StatusBadge variant="flat">信心 {strategy.confidence}%</StatusBadge>
+            )}
+            {strategy.timeframe && (
+              <StatusBadge variant="muted">{strategy.timeframe}</StatusBadge>
+            )}
+          </div>
+
+          {/* 摘要 */}
+          {strategy.summary && (
+            <div style={{
+              padding: '12px 14px',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-xs)',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text)',
+              lineHeight: 1.7,
+            }}>
+              <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginBottom: 6 }}>
+                策略摘要
               </div>
-              <div>
-                <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginBottom: 2 }}>剩餘</div>
-                <div className="num-value" style={{ color: remaining > 0 ? 'var(--accent)' : 'var(--down)' }}>
-                  {fmtShares(remaining)}
+              {strategy.summary}
+            </div>
+          )}
+
+          {/* 價格區塊 */}
+          {(strategy.referencePrice != null || strategy.targetPriceLow != null || strategy.stopLossPrice != null) && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 1,
+              background: 'var(--border)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-xs)',
+              overflow: 'hidden',
+            }}>
+              {[
+                { label: '參考價', value: fmtPrice(strategy.referencePrice) },
+                {
+                  label: '目標區間',
+                  value: strategy.targetPriceLow != null && strategy.targetPriceHigh != null
+                    ? `${fmtPrice(strategy.targetPriceLow)} – ${fmtPrice(strategy.targetPriceHigh)}`
+                    : fmtPrice(strategy.targetPriceLow ?? strategy.targetPriceHigh),
+                },
+                { label: '止損價', value: fmtPrice(strategy.stopLossPrice) },
+              ].map(({ label, value }) => (
+                <div key={label} style={{
+                  padding: '10px 12px',
+                  background: 'var(--surface)',
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                }}>
+                  <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)' }}>{label}</div>
+                  <div className="num-value" style={{ fontSize: 'var(--text-sm)' }}>{value}</div>
                 </div>
-              </div>
-              <div>
-                <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginBottom: 2 }}>已連結</div>
-                <div className="num-value">{fmtShares(executed)}</div>
+              ))}
+            </div>
+          )}
+
+          {/* 風報比 */}
+          {strategy.riskRewardRatio != null && (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)' }}>
+              風險報酬比 <span className="num-value" style={{ color: 'var(--accent)' }}>
+                1 : {strategy.riskRewardRatio.toFixed(1)}
+              </span>
+            </div>
+          )}
+
+          {/* 觸發條件 */}
+          {strategy.triggerCondition && (
+            <div style={{
+              padding: '10px 14px',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-xs)',
+            }}>
+              <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>觸發條件</div>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', lineHeight: 1.6 }}>
+                {strategy.triggerCondition}
               </div>
             </div>
-            <ProgressBar target={target} executed={executed} />
-          </div>
-        )}
+          )}
 
-        {/* 備註 */}
-        {strategy.notes && (
+          {/* 失效條件 */}
+          {strategy.invalidationCondition && (
+            <div style={{
+              padding: '10px 14px',
+              background: 'var(--surface)',
+              border: '1px solid var(--up-bd)',
+              borderRadius: 'var(--radius-xs)',
+            }}>
+              <div style={{ color: 'var(--up)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>失效條件</div>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', lineHeight: 1.6 }}>
+                {strategy.invalidationCondition}
+              </div>
+            </div>
+          )}
+
+          {/* 批次列表 */}
+          {strategy.tranches.length > 0 && (
+            <div>
+              <div style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', marginBottom: 8 }}>
+                分批計畫（共 {strategy.tranches.length} 批）
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {strategy.tranches.map(t => (
+                  <div key={t.batch} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-xs)',
+                    fontSize: 'var(--text-sm)',
+                  }}>
+                    <div style={{ color: 'var(--muted)' }}>批次 {t.batch}</div>
+                    <div className="num-value" style={{ flex: 1, textAlign: 'center' }}>
+                      {t.priceLow != null && t.priceHigh != null
+                        ? `${fmtPrice(t.priceLow)} – ${fmtPrice(t.priceHigh)}`
+                        : '–'}
+                    </div>
+                    {t.shares != null && (
+                      <div className="num-value" style={{ color: 'var(--accent)', marginRight: 12 }}>
+                        {t.shares.toLocaleString('zh-TW')} 股
+                      </div>
+                    )}
+                    <StatusBadge variant={t.status === 'executed' ? 'down' : t.status === 'triggered' ? 'accent' : 'muted'}>
+                      {TRANCHE_STATUS_LABEL[t.status] ?? t.status}
+                    </StatusBadge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 底部：到期日 + 更新日 */}
           <div style={{
-            padding: '10px 14px',
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-xs)',
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text)',
-            lineHeight: 1.6,
+            display: 'flex', justifyContent: 'space-between',
+            fontSize: 'var(--text-xs)', color: 'var(--dim)',
           }}>
-            <span style={{ color: 'var(--dim)', fontSize: 'var(--text-xs)', display: 'block', marginBottom: 4 }}>備註</span>
-            {strategy.notes}
+            {strategy.expiresAt
+              ? <span>到期：{fmtDate(strategy.expiresAt)}</span>
+              : <span />
+            }
+            <span>更新：{fmtDate(strategy.updatedAt)}</span>
           </div>
-        )}
-
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', textAlign: 'right' }}>
-          更新：{fmtDate(strategy.updatedAt)}
         </div>
-      </div>
+      )}
     </Modal>
   );
 }

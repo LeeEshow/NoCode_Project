@@ -84,7 +84,7 @@ function WatchlistCard({
 
   const hasStrategy = strategy != null;
   const showDot     = hasStrategy;
-  const dotColor    = strategy?.action === 'sell' ? 'var(--up)' : 'var(--accent)';
+  const dotColor    = strategy?.tradeType === 'sell' ? 'var(--up)' : 'var(--accent)';
 
   function handleClick() {
     if (hasStrategy) onOpenStrategy?.(item.stockCode);

@@ -62,7 +62,7 @@ function StrategyBadge({ strategy, stockName, onClick }: {
   stockName:    string;
   onClick:      (e: React.MouseEvent) => void;
 }) {
-  const action  = strategy?.action ?? null;
+  const action  = strategy?.tradeType ?? null;
   const label   = action ? _ACTION_LABEL[action]   ?? 'AI 策略' : '無策略';
   const variant = action ? _ACTION_VARIANT[action] ?? 'muted'   : 'muted';
 

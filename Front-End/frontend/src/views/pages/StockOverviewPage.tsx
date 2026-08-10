@@ -749,7 +749,7 @@ export default function StockOverviewPage() {
         stockCode={strategyModal.stockCode}
         stockName={strategyModal.stockName}
         onClose={() => setStrategyModal(s => ({ ...s, open: false }))}
-        onUpdated={s => strategyVm.updateLocal(s)}
+        onDismissed={code => strategyVm.dismiss(code)}
         onRemoved={code => strategyVm.remove(code)}
       />
     </div>

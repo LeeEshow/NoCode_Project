@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { getAll, remove as removeApi } from '../models/tradingStrategyModel';
+import { getAll, dismiss as dismissApi, remove as removeApi } from '../models/tradingStrategyModel';
 import type { TradingStrategyDTO } from '../types';
 
 export function useTradingStrategyViewModel() {
@@ -18,6 +18,22 @@ export function useTradingStrategyViewModel() {
     }
   }, []);
 
+  const dismiss = useCallback(async (stockCode: string) => {
+    setStrategies(prev => {
+      if (!prev[stockCode]) return prev;
+      return { ...prev, [stockCode]: { ...prev[stockCode], dismissed: true } };
+    });
+    try {
+      const updated = await dismissApi(stockCode);
+      setStrategies(prev => ({ ...prev, [stockCode]: updated }));
+    } catch {
+      setStrategies(prev => {
+        if (!prev[stockCode]) return prev;
+        return { ...prev, [stockCode]: { ...prev[stockCode], dismissed: false } };
+      });
+    }
+  }, []);
+
   const remove = useCallback(async (stockCode: string) => {
     setStrategies(prev => {
       const next = { ...prev };
@@ -31,9 +47,5 @@ export function useTradingStrategyViewModel() {
     }
   }, []);
 
-  const updateLocal = useCallback((updated: TradingStrategyDTO) => {
-    setStrategies(prev => ({ ...prev, [updated.stockCode]: updated }));
-  }, []);
-
-  return { strategies, loading, load, remove, updateLocal };
+  return { strategies, loading, load, dismiss, remove };
 }

@@ -667,17 +667,45 @@ export interface StressScenario {
 
 /* ── AI 交易策略（F01）───────────────────────────────────────── */
 
-export type StrategyAction   = 'buy' | 'sell' | 'hold';
-export type StrategyPriority = 'normal' | 'urgent';
+export type TradeType      = 'buy' | 'sell' | 'hold';
+export type StrategyStatus = 'active' | 'triggered' | 'completed' | 'dismissed' | 'expired';
+
+export interface TradingStrategyTranche {
+  batch:            number;
+  priceLow:         number | null;
+  priceHigh:        number | null;
+  sizeRatio:        number | null;
+  shares:           number | null;
+  triggerCondition: string | null;
+  triggerRules:     string[];
+  ruleStatuses:     Record<string, boolean>;
+  status:           string;
+  executions:       Array<{
+    executedPrice:  number;
+    executedShares: number;
+    transactionId:  string;
+    executedAt:     string | null;
+  }>;
+}
 
 export interface TradingStrategyDTO {
-  stockCode:          string;
-  stockName:          string;
-  action:             StrategyAction;
-  targetQuantity:     number;
-  priority:           StrategyPriority;
-  notes:              string;
-  updatedAt:          string;
-  executedQuantity:   number;
-  remainingQuantity:  number;
+  stockCode:             string;
+  stockName:             string;
+  tradeType:             TradeType;
+  referencePrice:        number | null;
+  stopLossPrice:         number | null;
+  targetPriceLow:        number | null;
+  targetPriceHigh:       number | null;
+  triggerCondition:      string | null;
+  invalidationCondition: string | null;
+  confidence:            number | null;
+  timeframe:             string | null;
+  summary:               string;
+  expiresAt:             string | null;
+  dismissed:             boolean;
+  status:                StrategyStatus;
+  createdAt:             string | null;
+  updatedAt:             string | null;
+  riskRewardRatio:       number | null;
+  tranches:              TradingStrategyTranche[];
 }

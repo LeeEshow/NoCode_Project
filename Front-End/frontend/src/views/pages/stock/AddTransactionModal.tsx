@@ -184,7 +184,7 @@ export default function AddTransactionModal({
                 連結至布局策略
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--dim)', marginTop: 2 }}>
-                計入策略進度（{strategy!.targetQuantity.toLocaleString('zh-TW')} 股目標）
+                計入策略執行（{strategy!.tranches.reduce((s, t) => s + (t.shares ?? 0), 0).toLocaleString('zh-TW')} 股分批計畫）
               </div>
             </div>
           </div>
