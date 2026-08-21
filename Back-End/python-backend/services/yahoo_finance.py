@@ -116,12 +116,15 @@ def get_quote(stock_id: str) -> dict:
         # OTC 或 TWSE 失敗 → fallthrough 至 Yahoo Finance
 
     # ── 盤中 or TWSE fallback：Yahoo Finance ──────────────────────────────────
+    # range="1d" 時 meta.chartPreviousClose 不可信任（見 _fetch_index_card 註解），
+    # 改抓 range="2d" 取 close 陣列倒數第二筆當昨收。
     symbol = resolve_symbol(stock_id)
-    data = _yf_chart(symbol, "1d", "1d")
+    data = _yf_chart(symbol, "1d", "2d")
     meta = data["meta"]
+    closes = data.get("indicators", {}).get("quote", [{}])[0].get("close", [])
 
     price = _f(meta.get("regularMarketPrice"), 0.0)
-    prev  = _f(meta.get("chartPreviousClose"), price)
+    prev  = _f(closes[-2], price) if len(closes) >= 2 else _f(meta.get("chartPreviousClose"), price)
     change     = round(price - prev, 2) if price and prev else 0.0
     change_pct = round((price - prev) / prev * 100, 2) if price and prev else 0.0
 
@@ -144,11 +147,12 @@ def get_yahoo_quote(stock_id: str) -> dict:
     供 quote_service 使用，確保 quoteSource 能正確標記為 "yahoo"。
     """
     symbol = resolve_symbol(stock_id)
-    data = _yf_chart(symbol, "1d", "1d")
+    data = _yf_chart(symbol, "1d", "2d")
     meta = data["meta"]
+    closes = data.get("indicators", {}).get("quote", [{}])[0].get("close", [])
 
     price = _f(meta.get("regularMarketPrice"), 0.0)
-    prev  = _f(meta.get("chartPreviousClose"), price)
+    prev  = _f(closes[-2], price) if len(closes) >= 2 else _f(meta.get("chartPreviousClose"), price)
     change     = round(price - prev, 2) if price and prev else 0.0
     change_pct = round((price - prev) / prev * 100, 2) if price and prev else 0.0
 
@@ -212,12 +216,18 @@ INDEX_SYMBOLS = [
 
 
 def _fetch_index_card(item: dict) -> dict:
-    """Yahoo v8 Chart API 取得單一指數報價"""
+    """Yahoo v8 Chart API 取得單一指數報價。
+
+    range="1d" 時 meta.chartPreviousClose 對指數（^TWII 等）不可信任，會回傳
+    非「前一交易日」的基準價，導致漲跌誤算（見 2026-08-21 台股大盤 -374.96 誤判為 +200 的事故）。
+    改用 range="2d" 並取 close 陣列倒數第二筆作為基準價，避開此欄位的怪異行為。
+    """
     try:
-        data = _yf_chart(item["symbol"], "1d", "1d")
+        data = _yf_chart(item["symbol"], "1d", "2d")
         meta = data["meta"]
+        closes = data.get("indicators", {}).get("quote", [{}])[0].get("close", [])
         price = _f(meta.get("regularMarketPrice"))
-        prev  = _f(meta.get("chartPreviousClose"))
+        prev = _f(closes[-2]) if len(closes) >= 2 else _f(meta.get("chartPreviousClose"))
         change     = round(price - prev, 2) if price is not None and prev is not None else None
         change_pct = round((price - prev) / prev * 100, 2) if price is not None and prev else None
         return {"id": item["id"], "name": item["name"],

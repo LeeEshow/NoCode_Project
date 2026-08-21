@@ -31,36 +31,11 @@
 - **M15-BE-2 preferences `wlCollapsedGroups` 完成（2026-06-12）**：`DEFAULTS` 加 `wlCollapsedGroups: []`；`_from_firestore` 讀取並回傳；`PUT /preferences` 直接取代（非 deep merge）；Firestore `.set()` 寫入；GET 無欄位時預設 `[]`。9 個 pytest 全過。
 - **M15-BE 關注清單 `group` 欄位完成（2026-06-12）**：`watchlist/{stockId}` Firestore document 新增 `group: str | None`；`GET /watchlist` response 帶出 `group` 欄位（無欄位時回 `null`）；`PUT /watchlist/{id}` 接受 `group` 更新（`null` 清空分組）；400 校驗改為三個可選欄位均未提供才報錯。9 個 pytest 全過。
 - **M14 Firestore 讀取優化完成（2026-06-10）**：新增 `POST /api/v1/stocks/quotes`（`routers/stocks.py`）；前端帶 `{ codes: string[] }` 直接查報價，後端呼叫 `get_quotes()` 零 Firestore 讀取；Pydantic `QuotesRequest` model 驗證（空陣列 / 超過 50 支回 422）；`GET /holdings/prices` 保留不動（deprecated）；`test_m4_stocks.py` 補 5 個 M14 測試案例，全套 pytest 通過。
+- **大盤指數/個股 Yahoo fallback 漲跌%誤用 chartPreviousClose 修正（2026-08-21）**：`services/yahoo_finance.py` 的 `_fetch_index_card()`（市場指數卡）、`get_quote()`、`get_yahoo_quote()`（個股 Yahoo fallback 報價）三處皆改用 `range="2d"`，取 `indicators.quote[0].close` 陣列倒數第二筆當昨收，不再信任 `meta.chartPreviousClose`（該欄位在 `range="1d"` 時對指數類商品會回傳錯誤基準價）。用真實 Yahoo API 驗證：台股大盤修正後由誤判的 `-374.96（-0.83%）` 改為正確的 `+214.39（+0.48%）`，2330.TW 個股驗證亦正確。全套 pytest 247 passed（`test_m4_market.py` 9 項含在內）。未另補「mock close 陣列與 meta 不同值」的專屬回歸測試（原代辦建議項），為僅存缺口。
 
 ---
 
 ## 代辦事項
-
----
-
-- **【已修正待驗證】Shioaji event loop 卡死（2026-07-22 定位，2026-07-22 修正）**：後端 `fastapi.service` 近期反覆卡死（7/14、7/22 各發生一次，症状皆為所有 HTTP 端點無回應、需 `systemctl restart` 才恢復）。用 `py-spy dump` 在卡死當下（7/22 03:xx）抓到的 stack trace 顯示：
-
-  - Shioaji SDK 原生 callback thread（非 Python `threading` 建立，`py-spy` 只看得到單一 Python frame、無 `_bootstrap` 呼叫鏈）停在 `services/shioaji_manager.py:86`（`on_stk_tick` 內），事件迴圈 thread（uvicorn main）與所有 worker thread 同時呈現 idle，符合「GIL 被某個 callback thread 卡住不放」的模式。
-  - 追查程式碼發現 `services/shioaji_manager.py:143`（`on_event` 的 `event_code == 4` 重連分支）**仍在使用 `asyncio.run_coroutine_threadsafe(self._resubscribe_startup(), self._loop)`**。
-  - 但 `services/shioaji_manager.py:119-129`（`on_fop_tick` 換盤偵測，commit `28c98f7fix(shioaji)`）的程式碼註解已明確記載同一類 bug 並改用 `call_soon_threadsafe` 修復：
-    > 使用 call_soon_threadsafe 而非 run_coroutine_threadsafe，避免在 Python 3.14 的 callback thread 中建立 concurrent.futures.Future 而導致 threading lock 阻塞 Shioaji callback thread。
-  - **研判根因**：`on_event` 重連回呼（Shioaji WebSocket 斷線重連時觸發，`event_code==4`）沒有套用同樣的修法，仍在建立 `concurrent.futures.Future`（`run_coroutine_threadsafe` 內部行為），在 Python 3.14 + 非 Python 建立的原生 callback thread 組合下觸發同一個 threading lock 阻塞，進而卡住整個 process（含 event loop thread），導致所有 API 無回應，只能重啟恢復。`on_stk_tick` 本身不含任何 asyncio 呼叫，py-spy 抓到它停在該行，較可能是「受害者」（GIL 被 `on_event` 卡住的 thread 佔用不放，導致其他 callback thread 也連帶卡在自己正在執行的那一行），而非它自己是根因。
-
-  - **建議修法**（比照 `on_fop_tick` 已驗證有效的模式）：
-    ```python
-    # services/shioaji_manager.py:143
-    # before:
-    asyncio.run_coroutine_threadsafe(self._resubscribe_startup(), self._loop)
-    # after:
-    self._loop.call_soon_threadsafe(
-        asyncio.ensure_future, self._resubscribe_startup()
-    )
-    ```
-  - **驗證方式**：修正後需在盤中觀察至少一次 Shioaji 斷線重連事件（或人為觸發重連），確認 `on_event` 不再導致 process 卡死；另建議全文搜尋是否還有其他 callback（`on_tick_*`、`on_event`、`on_*`）殘留 `run_coroutine_threadsafe` 呼叫，一併改用 `call_soon_threadsafe`。
-  - **佐證**：`grep -rn "run_coroutine_threadsafe" services/` 目前僅剩這一處。
-
-  - **已套用修正（2026-07-22）**：`services/shioaji_manager.py` 的 `on_event`（`event_code == 4` 重連分支）已改為 `self._loop.call_soon_threadsafe(asyncio.ensure_future, self._resubscribe_startup())`，比照 `on_fop_tick` 已驗證模式，並補上相同說明註解。全文複查 `python-backend/` 已無殘留 `run_coroutine_threadsafe` 呼叫。
-  - **⚠️ 驗證結果：修正不完全，8/6 又復發**。2026-08-06 12:31–12:33（台北時間；伺服器為 UTC）再次發生同樣症狀，`git log -1` 確認 GCE 上已跑著含上述修正的版本（commit `4768284`），`grep` 確認全專案已無 `run_coroutine_threadsafe`。代表 `on_event` 那個修法本身沒錯，但**不是這個 bug 唯一的觸發點**，Shioaji 1.5.0 原生 tick 派送層與 Python 3.14 的 GIL 互動存在不只一處風險，無法靠逐一修補 Python callback 根治。詳細後續診斷、與 Gemini/Antigravity（暱稱 agy）交叉討論後的共識與待辦，見下方新條目。
 
 ---
 
@@ -141,3 +116,7 @@
   2. **`tick.datetime` 是否為 naive 台北時間**：`.replace(tzinfo=_TZ_TAIPEI)` 假設新物件本身是 naive、內容為台北本地時間分量（沿用舊 tuple 解讀方式），若實際帶其他 tzinfo 會被錯誤覆蓋，需盤中驗證。
   3. 驗證通過後才能：(a) 更新 `Back-End/CLAUDE.md`「shioaji 1.5.0 破壞性變更」章節為 1.5.3 現況；(b) 部署至 production（GCE 上目前仍是 1.5.0，因為 requirements.txt 的版本宣告從未真正被 `pip install` 套用過）。
   4. 部署前建議同時確認 shioaji 1.5.1/1.5.2 被 yank 的兩個原因（callback 同時註冊 deadlock、空盤 tick decode panic）是否在 1.5.3 真正修復，避免解決了欄位問題卻換到另一個已知 bug；亦可與順位 1–4 的 GIL 卡死追蹤（見上方條目）交叉比對，兩者可能是不同層面的問題但都影響 tick 更新。
+
+---
+
+（大盤指數/個股 Yahoo fallback 漲跌%誤用 chartPreviousClose 問題已修正，詳見上方「現況」2026-08-21 條目）
