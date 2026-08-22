@@ -87,21 +87,11 @@ export default memo(function ReportChart({ portfolioSeries, stockSeries, txBars,
   const hasTxBars  = (txBars?.length ?? 0) > 0;
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>(loadLegendSelected);
 
-  // 沒有股票時：以快照日期為唯一來源（含交易日期）
-  // 有股票時：取交集，只保留「portfolio 有快照且每支股票都有資料」的日期，消除假日空洞
+  // 以 portfolio 快照日期為基準，股票系列缺失日期回傳 null，虛線 ghost series 負責橋接
+  // 不做交集：避免股票歷史 API 尚未更新最新日期時，把已存在的快照日期裁掉
   const portfolioDates = new Set(portfolioSeries.flatMap(s => s.data.map(d => d.date)));
   const txDateSet      = new Set(txBars?.map(t => t.date) ?? []);
-  let allDates: string[];
-  if (!hasStocks) {
-    allDates = [...new Set([...portfolioDates, ...txDateSet])].sort();
-  } else {
-    let valid = [...portfolioDates];
-    for (const stock of stockSeries) {
-      const stockDateSet = new Set(stock.data.map(d => d.date));
-      valid = valid.filter(d => stockDateSet.has(d));
-    }
-    allDates = [...new Set([...valid, ...txDateSet])].sort();
-  }
+  const allDates       = [...new Set([...portfolioDates, ...txDateSet])].sort();
 
   if (allDates.length === 0) {
     return (
