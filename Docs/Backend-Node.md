@@ -1,3 +1,5 @@
+> ⚠️ **已棄用（2026-08-21 標記）**：本文件描述的 Node.js 後端已於 2026-05-25 完全移除（`Back-End/backend/`、`Back-End/Shioaji_API/`），現行後端為 Python FastAPI（`Back-End/python-backend/`），架構規範請見 [`Back-End/CLAUDE.md`](../Back-End/CLAUDE.md)。本文件僅保留作歷史參考，內容已不適用於現行系統。
+
 # Backend Node.js + Firestore 架構設計原則
 
 ## 🎯 設計定位

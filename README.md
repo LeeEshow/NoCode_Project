@@ -68,7 +68,8 @@ Firebase Firestore（Spark 免費方案）
 GitHub Actions
   ├─ deploy-python-backend.yml   → 推送 Back-End/python-backend/** SSH 部署至 GCE
   ├─ azure-static-web-apps-*.yml → 推送 Front-End/frontend/** 自動部署前端
-  └─ daily-snapshot.yml          → 每日 14:00（台灣時間）自動快照 + FinMind 同步
+  ├─ daily-snapshot.yml          → 每日 14:00（台灣時間）自動快照 + FinMind 同步
+  └─ monthly-ndc-scraper.yml     → 每週一 06:00（台灣時間）景氣燈號/PMI 爬蟲
 ```
 
 ### 前端（`Front-End/frontend/`）
@@ -96,7 +97,7 @@ GitHub Actions
 | FastAPI | - | Web 框架 |
 | Uvicorn | - | ASGI 伺服器 |
 | Firebase Admin SDK | - | Firestore 存取 |
-| 永豐金 Shioaji | 1.5.0 | 台股即時報價 SDK（選用） |
+| 永豐金 Shioaji | 1.5.3 | 台股即時報價 SDK（選用） |
 
 報價來源切換策略：盤中優先走 Shioaji WebSocket，盤外 fallback Yahoo Finance；Circuit Breaker 自動偵測異常（失敗 3 次 → 冷卻 60 秒）。**未設定 `SJ_API_KEY` 時全程使用 Yahoo Finance（Yahoo-only 模式），無需 Shioaji 帳號。**
 

@@ -1,6 +1,6 @@
 # 雲端部署文件
 
-> 最後更新：2026-07-23  
+> 最後更新：2026-08-21  
 > 架構：Azure Static Web Apps（前端）+ Cloud Run Proxy + GCE e2-micro（後端）
 
 ---
@@ -23,7 +23,9 @@ Firebase Firestore（Spark 免費方案，同 Google 網路延遲 ~1–5ms）
 GitHub Actions
   ├─ deploy-python-backend.yml  → Back-End/python-backend/** 變更 SSH 部署至 GCE
   ├─ azure-static-web-apps-*.yml → Front-End/frontend/** 變更自動部署前端
-  └─ daily-snapshot.yml         → 每日 14:00（台灣時間）快照 + FinMind 同步
+  ├─ daily-snapshot.yml         → 每日 14:00（台灣時間）快照 + FinMind 同步
+  └─ monthly-ndc-scraper.yml    → 每週一 06:00（台灣時間）爬取景氣燈號/PMI 寫入 Firestore
+                                   （繞開 GCE IP 被 NDC 官網封鎖的問題，跑在 GitHub Actions runner 上）
 ```
 
 | 服務 | 月費 |
@@ -64,6 +66,19 @@ curl http://localhost:8000/api/v1/health
 ```bash
 gcloud compute ssh fintarck-backend --zone=asia-east1-b
 ```
+
+**systemd Watchdog（`/etc/systemd/system/fastapi.service`，2026-08-07 新增，⚠️ 不在 git repo 裡，只存在於這台 GCE 機器上）：**
+
+```ini
+[Service]
+Type=notify
+WatchdogSec=90
+...（其餘設定不變）
+```
+
+`main.py` 的 `_sd_notify_loop()` 每 15 秒做一次非同步 `/health` 檢查並回報 `WATCHDOG=1`；若 event loop 因 GIL 死鎖等原因完全停止排程（含卡死本身，不是「偵測到卡住後主動停止」），systemd 會在 90 秒內於**進程外部**強制 `SIGABRT` + 自動重啟，不受目標 process 凍結影響。背景：Shioaji SDK 原生 callback thread 與 Python 3.14 GIL 曾多次觸發整個 process 卡死且進程內 watchdog 一併失效（詳見 `Back-End/Task_Backend.md`），此設定是外部防護層。
+
+**⚠️ 重建機器或還原設定時務必補上**：`fastapi.service` 不受 git 版控，重灌或換機器時必須手動加回 `Type=notify` + `WatchdogSec=90` 這兩行，否則會回到「卡死後不會自動恢復」的舊行為。
 
 **環境變數（`/app/Back-End/python-backend/.env`）：**
 
@@ -107,6 +122,15 @@ gcloud compute ssh fintarck-backend --zone=asia-east1-b
 
 觸發：`Back-End/python-backend/**` push 到 main，或手動 `workflow_dispatch`。  
 流程：SSH 進 GCE → `git pull` → `pip install -r requirements.txt` → `sudo systemctl restart fastapi` → 確認服務狀態。
+
+**⚠️ 不含 `daemon-reload`**：這個流程只會 `restart`，不會重新載入 systemd unit file。如果之後又要改 `/etc/systemd/system/fastapi.service` 的設定（例如 `WatchdogSec`、`ExecStart` 等），auto-deploy **不會**幫你套用，必須手動 SSH 進去跑 `sudo systemctl daemon-reload` 才會生效。單純的程式碼 / `requirements.txt` 變更則不受影響，push 後 auto-deploy 就會自動處理，通常不需要再手動 SSH 重複 `git pull` + `restart`。
+
+### 景氣燈號 / PMI 爬蟲（`monthly-ndc-scraper.yml`）
+
+排程：每週一 06:00（台灣時間），或手動 `workflow_dispatch`。  
+流程：GitHub Actions runner（Python 3.11）直接執行 `azure-functions/run_scraper.py`，寫入 Firestore `market_indicators` collection（`business_cycle` / `pmi` 文件）。後端 `GET /market/indices` 的 `ndcIndicators` 欄位直接讀這個 collection。
+
+這是 2026-06-05 那次「後端內建 NDC 爬蟲因 GCE IP 被封鎖而移除」之後的替代方案——改在 GitHub Actions runner（非 GCE IP）執行，繞開封鎖問題，跟後端 process 完全獨立。
 
 ### 每日快照（`daily-snapshot.yml`）
 
